@@ -354,44 +354,7 @@ VITE_WS_BASE=
 
 
 
-## 🧪 测试
-
-### 运行测试
-```bash
-# 后端测试
-cd detection-api
-npm test
-
-# 运行特定测试
-npm test getStartCommand.test.ts          # 单元测试
-npm test smartPortInjection.test.ts       # 集成测试
-npm test vitePortInjection.test.ts        # Vite应用测试
-npm test nextjsPortInjection.test.ts      # Next.js应用测试
-npm test angularPortInjection.test.ts     # Angular应用测试
-npm test performanceAndStability.test.ts  # 性能测试
-
-# 前端测试
-cd main-portal
-npm test
-```
-
-### 测试覆盖
-- **单元测试**: 核心业务逻辑测试 (16个测试用例)
-- **适配器测试**: 技术栈适配器测试 (26个测试用例)
-- **集成测试**: API 接口测试 (14个测试用例)
-- **真实应用测试**: Vite、Next.js、Angular应用测试 (75个测试用例)
-- **向后兼容性测试**: 错误处理和兼容性测试 (25个测试用例)
-- **性能测试**: 性能和稳定性测试 (11个测试用例)
-- **总计**: 167个测试用例，100%通过率
-
-### 性能测试结果
-- **响应时间**: 平均 0.12ms (目标 < 100ms)
-- **吞吐量**: 9,311 次/秒 (目标 > 1,000 次/秒)
-- **内存效率**: 每次调用增长 112 字节 (目标 < 1KB)
-- **并发安全**: 100% 数据一致性
-- **错误恢复**: 100% 成功率
-
-## 🤝 贡献指南
+##  贡献指南
 
 1. Fork 本项目
 2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
