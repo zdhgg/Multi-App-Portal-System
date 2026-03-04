@@ -1,8 +1,12 @@
-# 智能多Web应用门户系统 v2.0
+# 智能多Web应用门户系统 (Multi-App Portal System)
+
+![Version](https://img.shields.io/github/package-json/v/zdhgg/Multi-App-Portal-System?filename=detection-api%2Fpackage.json)
+![License](https://img.shields.io/github/license/zdhgg/Multi-App-Portal-System)
+[![GitHub stars](https://img.shields.io/github/stars/zdhgg/Multi-App-Portal-System?style=social)](https://github.com/zdhgg/Multi-App-Portal-System)
 
 一个智能化的Web应用检测、管理和统一门户系统，能够自动识别工作区内的各种技术栈应用，并提供统一的管理界面。
 
-## ✨ v2.0 新特性
+## ✨ 新特性
 
 - **管道架构重构**: 全新的检测管道架构（Scanner → Analyzer → Aggregator → PortAllocator）
 - **智能全栈项目识别**: 自动识别 monorepo 和全栈项目结构，支持非标准命名（如 main-portal/detection-api）
@@ -44,6 +48,7 @@
 - **可视化管理**: 直观的应用卡片界面，支持网格和列表布局
 - **状态监控**: 实时显示应用运行状态（在线/离线/错误/维护中）
 - **快速启动**: 一键启动、停止和访问应用
+- **外部应用接入**: 支持 Windows 外部独立 EXE 程序的直接接入与启停管理
 - **主题定制**: 支持浅色/深色模式和自定义主题色
 
 ### ⚙️ 高级应用管理
@@ -52,7 +57,7 @@
 - **搜索过滤**: 按名称、技术栈、状态等多维度筛选
 - **导入导出**: 应用配置的导入导出功能
 
-### 🛡️ 安全特性 (v2.0 Phase 3)
+### 🛡️ 安全特性 (Phase 3)
 - **RBAC 角色权限**: 支持 admin/operator/guest 三种角色，细粒度权限控制
 - **JWT 认证硬化**: 生产环境强制配置安全密钥，Token 黑名单机制
 - **会话管理**: 支持查看、撤销会话，管理员可管理所有用户会话
@@ -103,7 +108,7 @@
 └── README.md
 ```
 
-### 🔄 检测管道架构 (v2.0)
+### 🔄 检测管道架构
 
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
@@ -591,7 +596,7 @@ npm test
 
 ## 🎯 路线图
 
-### 已完成 (v2.0) ✅
+### 已完成 ✅
 - [x] 检测管道架构重构
 - [x] 智能全栈项目识别（支持非标准命名）
 - [x] 精确扫描深度控制
