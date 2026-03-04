@@ -1,0 +1,187 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-09-28T11:48:00.000Z",
+  "accounts": {
+    "users": [
+      {
+        "id": "admin-001",
+        "username": "admin",
+        "password": "$2a$10$/U5hIFtYAVjyS8TX0srVTu5vjINB3EAcfSxC2qNheSAc36c7K/MOK",
+        "role": "admin",
+        "enabled": true,
+        "mustChangePassword": false,
+        "createdAt": "2025-11-09T13:17:38.008Z",
+        "createdBy": "system",
+        "updatedAt": "2025-12-11T15:18:26.338Z"
+      },
+      {
+        "username": "123",
+        "password": "$2a$10$hdVh0iV6VpIfGNFIi2ZAxe2imttrzi/QMPJb8GIzY8FUs5TrExysq",
+        "role": "operator",
+        "enabled": true,
+        "mustChangePassword": true,
+        "id": "user-1761754146762",
+        "createdAt": "2025-10-29T16:09:06.762Z"
+      }
+    ],
+    "settings": {
+      "maxLoginAttempts": 5,
+      "lockoutDurationMinutes": 15,
+      "passwordExpiryDays": 90,
+      "requireEmailVerification": false
+    }
+  },
+  "notifications": {
+    "enabled": true,
+    "channels": {
+      "email": {
+        "enabled": false,
+        "smtpHost": "",
+        "smtpPort": 587,
+        "smtpUser": "",
+        "smtpPassword": "",
+        "fromAddress": "noreply@portal.local"
+      },
+      "webhook": {
+        "enabled": false,
+        "url": "",
+        "timeout": 5000
+      },
+      "log": {
+        "enabled": true,
+        "level": "info"
+      }
+    },
+    "events": {
+      "userLogin": {
+        "enabled": true,
+        "channels": [
+          "log"
+        ]
+      },
+      "configChange": {
+        "enabled": true,
+        "channels": [
+          "log"
+        ]
+      },
+      "systemError": {
+        "enabled": true,
+        "channels": [
+          "log"
+        ]
+      },
+      "portConflict": {
+        "enabled": true,
+        "channels": [
+          "log"
+        ]
+      }
+    },
+    "settings": {
+      "quietHoursStart": "22:00",
+      "quietHoursEnd": "08:00",
+      "enableQuietHours": false,
+      "batchDelay": 60,
+      "maxBatchSize": 10
+    }
+  },
+  "security": {
+    "passwordPolicy": {
+      "minLength": 8,
+      "requireNumber": true,
+      "requireUppercase": false,
+      "requireSpecial": false
+    },
+    "session": {
+      "timeoutMinutes": 30,
+      "localTrustedMinutes": 0
+    },
+    "access": {
+      "enableIPWhitelist": false,
+      "allowedIPs": [
+        "127.0.0.1",
+        "::1"
+      ],
+      "enableRateLimiting": true,
+      "rateLimitWindowMinutes": 15,
+      "rateLimitMaxRequests": 100
+    },
+    "audit": {
+      "enableAuditLog": true,
+      "logRetentionDays": 90,
+      "logLevel": "info"
+    },
+    "pathAccess": {
+      "allowWorkspaceParent": true,
+      "allowedBasePaths": [
+        "D:\\My Programs",
+        "D:\\CLIProxyAPI_6.8.40"
+      ]
+    }
+  },
+  "logging": {
+    "level": "info",
+    "enableConsole": true,
+    "enableFile": true,
+    "filePath": "./logs/system.log",
+    "maxFileSize": "10MB",
+    "maxFiles": 5,
+    "enableRotation": true,
+    "categories": {
+      "auth": {
+        "enabled": true,
+        "level": "info"
+      },
+      "api": {
+        "enabled": true,
+        "level": "info"
+      },
+      "port": {
+        "enabled": true,
+        "level": "info"
+      },
+      "system": {
+        "enabled": true,
+        "level": "info"
+      }
+    }
+  },
+  "system": {
+    "enableMetrics": true,
+    "metricsInterval": 60,
+    "enableHealthCheck": true,
+    "healthCheckInterval": 30,
+    "maintenance": {
+      "enableScheduledMaintenance": false,
+      "maintenanceWindow": "02:00-04:00",
+      "autoBackupBeforeMaintenance": true
+    }
+  },
+  "backup": {
+    "enableAutoBackup": true,
+    "backupInterval": "daily",
+    "backupTime": "02:00",
+    "retentionDays": 30,
+    "includeUserData": true,
+    "includeLogs": false,
+    "compressionEnabled": true,
+    "backupPath": "./backups"
+  },
+  "ui": {
+    "theme": {
+      "primaryColor": "#409eff",
+      "darkMode": false,
+      "compactMode": false
+    },
+    "dashboard": {
+      "refreshInterval": 5000,
+      "showSystemStats": true,
+      "showQuickActions": true
+    },
+    "advanced": {
+      "enableDebugMode": false,
+      "showInternalMetrics": false
+    }
+  }
+}

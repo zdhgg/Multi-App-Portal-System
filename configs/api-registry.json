@@ -1,0 +1,286 @@
+{
+  "version": "2.0.0",
+  "categories": [
+    "system",
+    "application",
+    "monitoring",
+    "configuration",
+    "authentication",
+    "detection"
+  ],
+  "statistics": {
+    "totalApis": 7,
+    "healthyApis": 7,
+    "lastHealthCheck": "2025-09-23T10:47:27.227Z",
+    "unhealthyApis": 0
+  },
+  "apis": [
+    {
+      "status": "healthy",
+      "responseTime": 112.4293,
+      "category": "system",
+      "lastChecked": "2025-09-23T10:47:20.940Z",
+      "id": "b1a2dabe-0e55-4d79-b534-f530c1a14813",
+      "port": 3000,
+      "path": "/health",
+      "statistics": {
+        "successfulRequests": 1,
+        "averageResponseTime": 112.4293,
+        "totalRequests": 1,
+        "failedRequests": 0,
+        "lastError": null
+      },
+      "discoveredAt": "2025-09-23T10:46:28.861Z",
+      "healthHistory": [
+        {
+          "error": null,
+          "name": "Auto-discovered API on port 3000",
+          "responseTime": 112.4293,
+          "statusCode": 200,
+          "id": "b1a2dabe-0e55-4d79-b534-f530c1a14813",
+          "status": "healthy",
+          "timestamp": "2025-09-23T10:47:20.940Z",
+          "url": "http://localhost:3000/health"
+        }
+      ],
+      "baseUrl": "http://localhost:3000",
+      "name": "Auto-discovered API on port 3000",
+      "description": "Automatically discovered API endpoint",
+      "url": "http://localhost:3000/health",
+      "tags": [
+        "auto-discovered",
+        "health-check"
+      ],
+      "method": "GET"
+    },
+    {
+      "status": "healthy",
+      "responseTime": 8.8084,
+      "category": "system",
+      "lastChecked": "2025-09-23T10:47:21.077Z",
+      "id": "3e11daf1-575c-41f5-98d4-7f964f586032",
+      "port": 3000,
+      "path": "/api",
+      "statistics": {
+        "successfulRequests": 1,
+        "averageResponseTime": 8.8084,
+        "totalRequests": 1,
+        "failedRequests": 0,
+        "lastError": null
+      },
+      "discoveredAt": "2025-09-23T10:46:28.884Z",
+      "healthHistory": [
+        {
+          "error": null,
+          "name": "Auto-discovered API on port 3000",
+          "responseTime": 8.8084,
+          "statusCode": 200,
+          "id": "3e11daf1-575c-41f5-98d4-7f964f586032",
+          "status": "healthy",
+          "timestamp": "2025-09-23T10:47:21.077Z",
+          "url": "http://localhost:3000/api"
+        }
+      ],
+      "baseUrl": "http://localhost:3000",
+      "name": "Auto-discovered API on port 3000",
+      "description": "Automatically discovered API endpoint",
+      "url": "http://localhost:3000/api",
+      "tags": [
+        "auto-discovered",
+        "health-check"
+      ],
+      "method": "GET"
+    },
+    {
+      "status": "healthy",
+      "responseTime": 5.51,
+      "category": "system",
+      "lastChecked": "2025-09-23T10:47:21.088Z",
+      "id": "a15ddc60-d845-4fea-8f20-47db0db580cb",
+      "port": 3000,
+      "path": "/api/health",
+      "statistics": {
+        "successfulRequests": 1,
+        "averageResponseTime": 5.51,
+        "totalRequests": 1,
+        "failedRequests": 0,
+        "lastError": null
+      },
+      "discoveredAt": "2025-09-23T10:46:28.891Z",
+      "healthHistory": [
+        {
+          "error": null,
+          "name": "Auto-discovered API on port 3000",
+          "responseTime": 5.51,
+          "statusCode": 200,
+          "id": "a15ddc60-d845-4fea-8f20-47db0db580cb",
+          "status": "healthy",
+          "timestamp": "2025-09-23T10:47:21.088Z",
+          "url": "http://localhost:3000/api/health"
+        }
+      ],
+      "baseUrl": "http://localhost:3000",
+      "name": "Auto-discovered API on port 3000",
+      "description": "Automatically discovered API endpoint",
+      "url": "http://localhost:3000/api/health",
+      "tags": [
+        "auto-discovered",
+        "health-check"
+      ],
+      "method": "GET"
+    },
+    {
+      "status": "healthy",
+      "responseTime": 9.6477,
+      "category": "system",
+      "lastChecked": "2025-09-23T10:47:21.097Z",
+      "id": "59e1a5c2-a679-4797-8913-898d690f087e",
+      "port": 3000,
+      "path": "/status",
+      "statistics": {
+        "successfulRequests": 1,
+        "averageResponseTime": 9.6477,
+        "totalRequests": 1,
+        "failedRequests": 0,
+        "lastError": null
+      },
+      "discoveredAt": "2025-09-23T10:46:28.902Z",
+      "healthHistory": [
+        {
+          "error": null,
+          "name": "Auto-discovered API on port 3000",
+          "responseTime": 9.6477,
+          "statusCode": 200,
+          "id": "59e1a5c2-a679-4797-8913-898d690f087e",
+          "status": "healthy",
+          "timestamp": "2025-09-23T10:47:21.097Z",
+          "url": "http://localhost:3000/status"
+        }
+      ],
+      "baseUrl": "http://localhost:3000",
+      "name": "Auto-discovered API on port 3000",
+      "description": "Automatically discovered API endpoint",
+      "url": "http://localhost:3000/status",
+      "tags": [
+        "auto-discovered",
+        "health-check"
+      ],
+      "method": "GET"
+    },
+    {
+      "status": "healthy",
+      "responseTime": 2040.9279,
+      "category": "system",
+      "lastChecked": "2025-09-23T10:47:21.109Z",
+      "id": "0ff9f290-83f5-4daf-9b59-11738ef54b49",
+      "port": 8001,
+      "path": "/health",
+      "statistics": {
+        "successfulRequests": 1,
+        "averageResponseTime": 2040.9279,
+        "totalRequests": 1,
+        "failedRequests": 0,
+        "lastError": null
+      },
+      "discoveredAt": "2025-09-23T10:46:30.944Z",
+      "healthHistory": [
+        {
+          "error": null,
+          "name": "Auto-discovered API on port 8001",
+          "responseTime": 2040.9279,
+          "statusCode": 200,
+          "id": "0ff9f290-83f5-4daf-9b59-11738ef54b49",
+          "status": "healthy",
+          "timestamp": "2025-09-23T10:47:21.109Z",
+          "url": "http://localhost:8001/health"
+        }
+      ],
+      "baseUrl": "http://localhost:8001",
+      "name": "Auto-discovered API on port 8001",
+      "description": "Automatically discovered API endpoint",
+      "url": "http://localhost:8001/health",
+      "tags": [
+        "auto-discovered",
+        "health-check"
+      ],
+      "method": "GET"
+    },
+    {
+      "status": "healthy",
+      "responseTime": 2034.6136,
+      "category": "system",
+      "lastChecked": "2025-09-23T10:47:23.153Z",
+      "id": "b8183668-5d72-46f7-9cf1-8a5928e8646f",
+      "port": 8001,
+      "path": "/api",
+      "statistics": {
+        "successfulRequests": 1,
+        "averageResponseTime": 2034.6136,
+        "totalRequests": 1,
+        "failedRequests": 0,
+        "lastError": null
+      },
+      "discoveredAt": "2025-09-23T10:46:32.973Z",
+      "healthHistory": [
+        {
+          "error": null,
+          "name": "Auto-discovered API on port 8001",
+          "responseTime": 2034.6136,
+          "statusCode": 200,
+          "id": "b8183668-5d72-46f7-9cf1-8a5928e8646f",
+          "status": "healthy",
+          "timestamp": "2025-09-23T10:47:23.153Z",
+          "url": "http://localhost:8001/api"
+        }
+      ],
+      "baseUrl": "http://localhost:8001",
+      "name": "Auto-discovered API on port 8001",
+      "description": "Automatically discovered API endpoint",
+      "url": "http://localhost:8001/api",
+      "tags": [
+        "auto-discovered",
+        "health-check"
+      ],
+      "method": "GET"
+    },
+    {
+      "status": "healthy",
+      "responseTime": 2031.2113,
+      "category": "system",
+      "lastChecked": "2025-09-23T10:47:25.191Z",
+      "id": "6e56e559-1334-486c-8d48-63e45c64626e",
+      "port": 8001,
+      "path": "/api/health",
+      "statistics": {
+        "successfulRequests": 1,
+        "averageResponseTime": 2031.2113,
+        "totalRequests": 1,
+        "failedRequests": 0,
+        "lastError": null
+      },
+      "discoveredAt": "2025-09-23T10:46:35.012Z",
+      "healthHistory": [
+        {
+          "error": null,
+          "name": "Auto-discovered API on port 8001",
+          "responseTime": 2031.2113,
+          "statusCode": 200,
+          "id": "6e56e559-1334-486c-8d48-63e45c64626e",
+          "status": "healthy",
+          "timestamp": "2025-09-23T10:47:25.191Z",
+          "url": "http://localhost:8001/api/health"
+        }
+      ],
+      "baseUrl": "http://localhost:8001",
+      "name": "Auto-discovered API on port 8001",
+      "description": "Automatically discovered API endpoint",
+      "url": "http://localhost:8001/api/health",
+      "tags": [
+        "auto-discovered",
+        "health-check"
+      ],
+      "method": "GET"
+    }
+  ],
+  "lastUpdated": "2025-09-23T10:47:27.229Z"
+}

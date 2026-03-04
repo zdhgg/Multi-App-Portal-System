@@ -1,0 +1,125 @@
+{
+  "portConfiguration": {
+    "frontendRange": {
+      "start": 3001,
+      "end": 3100,
+      "description": "前端应用端口范围"
+    },
+    "backendRange": {
+      "start": 8001,
+      "end": 8100,
+      "description": "后端应用端口范围"
+    },
+    "reservedPorts": [
+      {
+        "port": 22,
+        "description": "SSH",
+        "category": "system"
+      },
+      {
+        "port": 80,
+        "description": "HTTP",
+        "category": "system"
+      },
+      {
+        "port": 443,
+        "description": "HTTPS",
+        "category": "system"
+      },
+      {
+        "port": 3000,
+        "description": "门户系统主服务",
+        "category": "portal"
+      },
+      {
+        "port": 8002,
+        "description": "门户系统后端API",
+        "category": "portal"
+      },
+      {
+        "port": 8317,
+        "description": "External EXE: CLI Proxy API",
+        "category": "external-exe"
+      }
+    ],
+    "allocationPolicy": {
+      "randomizeStartPort": true,
+      "description": "随机选择起始端口以避免总是从最小端口开始分配",
+      "maxRetries": 3,
+      "retryDelayMs": 100,
+      "conflictResolution": "auto_reassign"
+    },
+    "monitoring": {
+      "healthCheckIntervalMs": 60000,
+      "stalePortCheckIntervalMs": 300000,
+      "portUtilizationWarningThreshold": 80,
+      "portUtilizationCriticalThreshold": 95,
+      "enableRealTimeMonitoring": true
+    }
+  },
+  "applicationConfiguration": {
+    "defaultTechStackPorts": {
+      "Vue 3 + Vite": {
+        "frontend": 5173,
+        "backend": null
+      },
+      "Node.js + Express": {
+        "frontend": null,
+        "backend": 3000
+      }
+    },
+    "startupTimeout": 30000,
+    "shutdownTimeout": 10000,
+    "environmentVariables": {
+      "NODE_ENV": "development"
+    }
+  },
+  "systemConfiguration": {
+    "dataDirectory": "./data",
+    "logsDirectory": "./logs",
+    "backupRetentionDays": 30,
+    "configBackupIntervalHours": 24,
+    "enableConfigHistory": true,
+    "maxConfigHistoryEntries": 50
+  },
+  "securityConfiguration": {
+    "allowPortRangeModification": true,
+    "requireConfirmationForCriticalChanges": true,
+    "allowedConfigModifiers": [
+      "admin",
+      "system"
+    ],
+    "configChangeAuditLog": true,
+    "validateConfigIntegrity": true
+  },
+  "ui": {
+    "theme": {
+      "primaryColor": "#007bff",
+      "darkMode": false
+    },
+    "dashboard": {
+      "refreshIntervalMs": 5000
+    },
+    "portManagement": {
+      "showPortUsageChart": true
+    }
+  },
+  "notifications": {
+    "enabled": true,
+    "channels": {
+      "log": {
+        "enabled": true
+      }
+    },
+    "events": {}
+  },
+  "performance": {
+    "caching": {
+      "enablePortStatusCache": true
+    },
+    "optimization": {
+      "batchPortChecks": true
+    }
+  },
+  "experimental": {}
+}

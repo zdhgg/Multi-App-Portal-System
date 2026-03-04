@@ -1,0 +1,20 @@
+{
+  "monitoring": {
+    "refreshInterval": 2
+  },
+  "ports": {
+    "backend": 8002,
+    "frontend": 3000
+  },
+  "system": {
+    "environment": "development",
+    "mode": "development"
+  },
+  "logging": {
+    "level": "DEBUG"
+  },
+  "startup": {
+    "verboseOutput": true,
+    "skipBuild": false
+  }
+}

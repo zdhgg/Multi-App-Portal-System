@@ -1,0 +1,123 @@
+{
+  "backups": [
+    {
+      "path": "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\backups\\data\\test-config-backup-v2.zip",
+      "name": "test-config-backup-v2",
+      "metadata": {
+        "creator": "ZhuanZ（无密码）",
+        "systemVersion": "10.0.19045",
+        "version": "2.0.0",
+        "machine": "ZDH"
+      },
+      "status": "completed",
+      "compressed": true,
+      "id": "7b742e20-e7a3-44fd-a7da-1c3897bdb682",
+      "type": "config",
+      "createdAt": "2025-09-23T11:03:20.911Z",
+      "description": "Backup created by backup.ps1",
+      "size": 4136,
+      "filesCount": 4,
+      "checksum": "114B0A05B3ECBAD3AB3E859D225BB3351B9CE22126AC315EE5E13BEAF3E9D31E",
+      "includedFiles": [
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\configs\\system-config.json",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\configs\\api-config.json",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\configs\\api-registry.json",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\configs\\portal-config.json"
+      ]
+    },
+    {
+      "name": "full-backup-20250923-110451",
+      "size": 1439276,
+      "status": "completed",
+      "metadata": {
+        "creator": "ZhuanZ（无密码）",
+        "machine": "ZDH",
+        "systemVersion": "10.0.19045",
+        "version": "2.0.0"
+      },
+      "compressed": true,
+      "checksum": "2473754BFBF94A153CF25474FA87024B8D2BD774943E81DD6809B027363B0ACB",
+      "id": "e98faaaa-4bca-4af5-97af-d7c781873276",
+      "filesCount": 39,
+      "description": "Backup created by backup.ps1",
+      "type": "full",
+      "includedFiles": [
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\configs\\system-config.json",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\configs\\api-config.json",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\configs\\api-registry.json",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\configs\\portal-config.json",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\logs\\api.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\logs\\backup.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\logs\\monitor.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\logs\\recovery.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\logs\\startup.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\logs\\system.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\logs\\combined.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\logs\\combined1.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\logs\\combined2.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\logs\\combined3.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\logs\\combined4.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\logs\\combined5.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\logs\\error.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\logs\\pm2-combined.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\logs\\pm2-error.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\logs\\pm2-out.log",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\data\\port-allocation-state.json",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\data\\portal.db",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\data\\portal.db.backup.20250826_110855",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\api.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\backup.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\config.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\deploy-pm2.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\enhanced-start.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\fix-es-imports.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\fix-pm2-windows.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\logs.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\monitor.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\recovery.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\setup-config.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\start-dev.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\start.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\switch-env.ps1",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\ecosystem.config.js",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\package.json"
+      ],
+      "path": "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\backups\\data\\full-backup-20250923-110451.zip",
+      "createdAt": "2025-09-23T11:04:52.063Z"
+    },
+    {
+      "status": "completed",
+      "checksum": "6187D926070FB539AF106FDA1CE7A39C2CE9FD786CF2417FC3D65711069DA5DD",
+      "type": "config",
+      "id": "59c5e409-e1c7-4ca1-99b3-a3521568fa31",
+      "metadata": {
+        "creator": "ZhuanZ（无密码）",
+        "machine": "ZDH",
+        "systemVersion": "10.0.19045",
+        "version": "2.0.0"
+      },
+      "compressed": true,
+      "name": "api-backup-test",
+      "createdAt": "2025-09-23T11:13:54.742Z",
+      "path": "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\backups\\data\\api-backup-test.zip",
+      "description": "Backup created by backup.ps1",
+      "size": 4136,
+      "includedFiles": [
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\configs\\system-config.json",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\configs\\api-config.json",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\configs\\api-registry.json",
+        "D:\\My Programs\\Intelligent Multi-App Portal SystemV1.0\\detection-api\\configs\\portal-config.json"
+      ],
+      "filesCount": 4
+    }
+  ],
+  "version": "2.0.0",
+  "statistics": {
+    "totalSize": 1447548,
+    "failedBackups": 2,
+    "lastBackup": "2025-09-23T11:13:54.742Z",
+    "successfulBackups": 3,
+    "totalBackups": 3
+  },
+  "lastUpdated": "2025-09-23T11:13:54.918Z"
+}

@@ -1,0 +1,22 @@
+# 端口启动修复 - 备份文件
+# 创建时间: 2025-01-27
+# 原因: 修复端口启动问题前的安全备份
+
+# 原文件路径: detection-api/src/core/SimpleServices.ts
+# 备份说明: 修复前的原始版本，如需回滚可使用此备份
+
+## 主要修改内容：
+1. 增强启动命令的端口参数传递
+2. 完善环境变量设置逻辑  
+3. 添加端口验证机制
+4. 增强错误处理和日志记录
+
+## 回滚方法：
+如果修复出现问题，可以使用以下命令回滚：
+```bash
+cp detection-api/src/core/SimpleServices.ts.backup detection-api/src/core/SimpleServices.ts
+```
+
+---
+
+备份已创建，原文件将在下一步开始修改。

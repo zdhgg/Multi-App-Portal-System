@@ -1,0 +1,58 @@
+{
+  "monitoring": {
+    "healthCheckEndpoints": [],
+    "timeout": 30,
+    "interval": 60,
+    "enabled": true,
+    "retries": 3
+  },
+  "discovery": {
+    "scanInterval": 300,
+    "knownPorts": [
+      3000,
+      8001,
+      8002,
+      8003
+    ],
+    "scanPaths": [
+      "/health",
+      "/api",
+      "/api/health",
+      "/status"
+    ],
+    "enabled": true,
+    "autoScan": true
+  },
+  "backgroundScanning": {
+    "enabled": true,
+    "lightweightInterval": 180000,
+    "fullScanInterval": 900000,
+    "portRangeStart": 3000,
+    "portRangeEnd": 9000,
+    "lightweightTimeout": 500,
+    "fullScanTimeout": 1000,
+    "maxConcurrency": 5,
+    "cacheTTL": 300000,
+    "description": "自动后台端口扫描配置 - 保守参数，用户无感知运行"
+  },
+  "documentation": {
+    "autoGenerate": true,
+    "outputFormat": "markdown",
+    "enabled": true,
+    "includeExamples": true
+  },
+  "version": "2.0.0",
+  "integration": {
+    "monitor": true,
+    "config": true,
+    "recovery": true,
+    "logging": true
+  },
+  "lastUpdated": "2025-09-28T15:30:00.000Z",
+  "testing": {
+    "defaultTimeout": 30,
+    "maxConcurrentTests": 5,
+    "enabled": true,
+    "testSuites": []
+  }
+}

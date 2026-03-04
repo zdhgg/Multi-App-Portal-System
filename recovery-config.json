@@ -1,0 +1,37 @@
+{
+  "notifications": {
+    "logLevel": "INFO",
+    "enabled": true,
+    "maxLogSize": 10485760
+  },
+  "monitoring": {
+    "processCheckEnabled": true,
+    "resourceCheckEnabled": true,
+    "healthCheckTimeout": 10,
+    "portCheckEnabled": true
+  },
+  "recovery": {
+    "enabled": true,
+    "autoRecover": true,
+    "maxRetries": 3,
+    "strategies": {
+      "serviceRepair": {
+        "enabled": true,
+        "configReset": true,
+        "rebuildOnFailure": false
+      },
+      "portCleanup": {
+        "enabled": true,
+        "forceKill": false,
+        "waitTime": 5
+      },
+      "processRestart": {
+        "enabled": true,
+        "cooldownPeriod": 60,
+        "maxAttempts": 3
+      }
+    },
+    "retryDelay": 10,
+    "checkInterval": 30
+  }
+}

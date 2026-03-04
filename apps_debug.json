@@ -1,0 +1,86 @@
+[
+  {
+    "id": "38b21799-893a-4b0b-ab38-af64eb72ad41",
+    "name": "MilTrainLog V1.0",
+    "directory": "D:\\My Programs\\MilTrainLog V1.0",
+    "techStack": {
+      "name": "Vue",
+      "category": "fullstack",
+      "startCommand": "npm start"
+    },
+    "network": {
+      "primaryPort": 3051,
+      "secondaryPorts": [
+        8051
+      ],
+      "protocol": "http"
+    },
+    "state": "stopped",
+    "metadata": {
+      "description": "全栈项目：Vue + Express",
+      "icon": "🟢",
+      "color": "#4FC08D",
+      "createdAt": 1763746161,
+      "updatedAt": 1764321635
+    },
+    "deploymentMode": "unknown",
+    "pm2ProcessName": null,
+    "build_script": null
+  },
+  {
+    "id": "a7e7d52c-813e-4fb2-8776-3c85a4a095a8",
+    "name": "training-system-v3.2",
+    "directory": "D:\\My Programs\\training-system-v3.2",
+    "techStack": {
+      "name": "Vue",
+      "category": "fullstack",
+      "startCommand": "npm start"
+    },
+    "network": {
+      "primaryPort": 3051,
+      "secondaryPorts": [
+        8051
+      ],
+      "protocol": "http"
+    },
+    "state": "stopped",
+    "metadata": {
+      "description": "全栈项目：Vue + Express",
+      "icon": "🟢",
+      "color": "#4FC08D",
+      "createdAt": 1760978289,
+      "updatedAt": 1763742032
+    },
+    "deploymentMode": "unknown",
+    "pm2ProcessName": "training-system-v3.2",
+    "build_script": "npm run start:prod"
+  },
+  {
+    "id": "f545897a-bf00-460e-b19a-731a03e608da",
+    "name": "Teaching-inspection-systemV1.3",
+    "directory": "D:\\My Programs\\Teaching-inspection-systemV1.3",
+    "techStack": {
+      "name": "Vue",
+      "category": "fullstack",
+      "startCommand": "npm start"
+    },
+    "network": {
+      "primaryPort": 3041,
+      "secondaryPorts": [
+        8041
+      ],
+      "protocol": "http"
+    },
+    "state": "stopped",
+    "metadata": {
+      "description": "全栈项目：Vue + Express",
+      "icon": "🟢",
+      "color": "#4FC08D",
+      "createdAt": 1760024373,
+      "updatedAt": 1763742032
+    },
+    "deploymentMode": "unknown",
+    "pm2ProcessName": "teaching-inspection-systemv1.3",
+    "build_script": null
+  }
+]

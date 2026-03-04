@@ -1,0 +1,39 @@
+{
+  "presetPaths": [
+    {
+      "path": "D:\\Projects",
+      "description": "项目根目录",
+      "category": "project",
+      "isDefault": true
+    },
+    {
+      "path": "D:\\Development",
+      "description": "开发目录",
+      "category": "workspace",
+      "isDefault": true
+    },
+    {
+      "path": "C:\\Code",
+      "description": "代码目录",
+      "category": "common",
+      "isDefault": true
+    },
+    {
+      "path": "E:\\WorkSpace",
+      "description": "工作空间",
+      "category": "workspace",
+      "isDefault": true
+    }
+  ],
+  "recentPaths": [
+    "D:/My Programs",
+    "/test/path"
+  ],
+  "preferences": {
+    "smartFilter": true,
+    "realTimePreview": true,
+    "maxRecentPaths": 10
+  },
+  "createdAt": "2025-08-27T11:31:50.198Z",
+  "updatedAt": "2025-08-27T11:33:12.270Z"
+}

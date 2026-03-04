@@ -1,0 +1,171 @@
+import { existsSync, readFileSync, writeFileSync, mkdirSync, watch } from 'fs'
+import { join, dirname } from 'path'
+import { logger } from '@utils/logger'
+import { EventEmitter } from 'events'
+
+/**
+ * 端口配置接口
+ */
+export interface PortConfiguration {
+  frontendRange: {
+    start: number
+    end: number
+    description: string
+  }
+  backendRange: {`r`n          start: 8001,`r`n          end: 8100,
+          description: '后端应用端口范围'
+        },
+        reservedPorts: [
+          { port: 22, description: 'SSH', category: 'system' },
+          { port: 80, description: 'HTTP', category: 'system' },
+          { port: 443, description: 'HTTPS', category: 'system' },
+          { port: 3000, description: '门户系统主服务', category: 'portal' },
+          { port: 8001, description: '门户系统后端API', category: 'portal' }
+        ],
+        allocationPolicy: {
+          randomizeStartPort: true,
+          description: '随机选择起始端口以避免总是从最小端口开始分配',
+          maxRetries: 3,
+          retryDelayMs: 100,
+          conflictResolution: 'auto_reassign'
+        },
+        monitoring: {
+          healthCheckIntervalMs: 60000,
+          stalePortCheckIntervalMs: 300000,
+          portUtilizationWarningThreshold: 80,
+          portUtilizationCriticalThreshold: 95,
+          enableRealTimeMonitoring: true
+        }
+      },
+      applicationConfiguration: {
+        defaultTechStackPorts: {
+          'Vue 3 + Vite': { frontend: 5173, backend: null },
+          'Node.js + Express': { frontend: null, backend: 3000 }
+        },
+        startupTimeout: 30000,
+        shutdownTimeout: 10000,
+        environmentVariables: {
+          NODE_ENV: 'development'
+        }
+      },
+      systemConfiguration: {
+        dataDirectory: './data',
+        logsDirectory: './logs',
+        backupRetentionDays: 30,
+        configBackupIntervalHours: 24,
+        enableConfigHistory: true,
+        maxConfigHistoryEntries: 50
+      },
+      securityConfiguration: {
+        allowPortRangeModification: true,
+        requireConfirmationForCriticalChanges: true,
+        allowedConfigModifiers: ['admin', 'system'],
+        configChangeAuditLog: true,
+        validateConfigIntegrity: true
+      },
+       ui: {
+         theme: { primaryColor: '#007bff', darkMode: false },
+         dashboard: { refreshIntervalMs: 5000 },
+         portManagement: { showPortUsageChart: true }
+       },
+       notifications: {
+         enabled: true,
+         channels: { log: { enabled: true } },
+         events: {}
+       },
+       performance: {
+         caching: { enablePortStatusCache: true },
+         optimization: { batchPortChecks: true }
+       },
+       experimental: {}
+    }
+  }
+
+  /**
+   * 创建默认配置
+   */
+  private async createDefaultConfig(): Promise<void> {
+    // 如果配置文件已存在，直接加载
+    if (existsSync(this.configPath)) {
+      return
+    }
+
+    try {
+      // ✅ 使用统一的默认配置方法
+      const defaultConfig = this.getBasicDefaultConfig()
+      await this.saveConfig(defaultConfig)
+      this.currentConfig = defaultConfig
+      logger.info('默认配置创建成功')
+    } catch (error) {
+      logger.error('创建默认配置失败:', error)
+      throw error
+    }
+  }
+
+  /**
+   * 启动文件监控
+   */
+  private async startFileWatching(): Promise<void> {
+    if (!this.enableFileWatching) {
+      return
+    }
+
+    try {
+      // ✅ 修复：使用动态导入替代require  
+      const chokidar = await import('chokidar')
+      this.configWatcher = chokidar.watch(this.configPath, async (eventType: string) => {
+        if (eventType === 'change' && !this.isLoading) {
+          logger.debug('检测到配置文件变更，重新加载配置')
+          
+          try {
+            await this.loadConfig()
+            this.emit('configReloaded', this.currentConfig)
+          } catch (error) {
+            logger.error('配置文件重新加载失败:', error)
+            this.emit('configError', error)
+          }
+        }
+      })
+
+      logger.debug('配置文件监控已启动')
+
+    } catch (error) {
+      logger.error('启动配置文件监控失败:', error)
+    }
+  }
+
+  /**
+   * 停止文件监控
+   */
+  private stopFileWatching(): void {
+    if (this.configWatcher) {
+      this.configWatcher.close()
+      this.configWatcher = null
+      logger.debug('配置文件监控已停止')
+    }
+  }
+
+
+
+  /**
+   * 关闭配置管理器
+   */
+  async shutdown(): Promise<void> {
+    this.stopFileWatching()
+    this.removeAllListeners()
+    logger.info('配置管理器已关闭')
+  }
+}
+
+// 创建默认实例
+export const defaultConfigManager = new ConfigManager()
+
+// 优雅关闭处理
+process.on('SIGINT', async () => {
+  await defaultConfigManager.shutdown()
+})
+
+process.on('SIGTERM', async () => {
+  await defaultConfigManager.shutdown()
+})
+

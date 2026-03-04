@@ -1,0 +1,20 @@
+{
+  "monitoring": {
+    "refreshInterval": 5
+  },
+  "ports": {
+    "backend": 8002,
+    "frontend": 3000
+  },
+  "system": {
+    "environment": "production",
+    "mode": "pm2"
+  },
+  "logging": {
+    "level": "INFO"
+  },
+  "startup": {
+    "verboseOutput": false,
+    "skipBuild": true
+  }
+}
