@@ -14,18 +14,7 @@
 - **智能端口分配**: 读取用户配置的保留端口和端口范围，避免冲突
 - **安全增强 (Phase 3)**: RBAC 角色权限控制、JWT 认证硬化、审计日志、会话管理
 
-## ⚡ 快速解决 PM2 权限问题
 
-如果你遇到 PM2 自动修复失败的问题，请查看：
-- 📖 [如何解决PM2权限问题](docs/troubleshooting/如何解决PM2权限问题.md) - 快速解决方案
-- 🔧 [PM2自动修复说明](docs/troubleshooting/PM2自动修复说明.md) - 技术细节
-
-**最简单的方法：** 右键点击项目根目录下的 `scripts\startup\start-backend-admin.ps1` 文件，选择 "使用 PowerShell 运行"
-
-## ⚡ Windows 双击启动
-
-- `Start-Portal.bat`：一键启动生产服务（调用 `start-production.ps1`）
-- `Setup-Portal.bat`：首次部署初始化（环境检查 + 防火墙 + PM2 开机自启）
 
 ## 🚀 核心功能
 
@@ -78,33 +67,32 @@
 智能多Web应用门户系统/
 ├── main-portal/          # Vue 3 前端门户
 │   ├── src/
-│   │   ├── views/        # 页面组件
+│   │   ├── components/   # 各类功能组件
+│   │   ├── views/        # 页面视图组件
 │   │   ├── stores/       # Pinia 状态管理
 │   │   ├── composables/  # 组合式函数
-│   │   ├── services/     # API 服务
+│   │   ├── services/     # API 服务封装
 │   │   └── types/        # TypeScript 类型定义
 │   └── package.json
-├── detection-api/        # Node.js 后端API
+├── detection-api/        # Node.js 后端服务 (Clean Architecture)
 │   ├── src/
-│   │   ├── core/         # 核心服务
-│   │   │   ├── pipeline/ # 检测管道架构 (v2.0)
-│   │   │   │   ├── stages/           # 管道阶段
-│   │   │   │   │   ├── ScannerStage.ts      # 扫描阶段
-│   │   │   │   │   ├── AnalyzerStage.ts     # 分析阶段
-│   │   │   │   │   ├── AggregatorStage.ts   # 聚合阶段
-│   │   │   │   │   └── PortAllocatorStage.ts # 端口分配阶段
-│   │   │   │   ├── ScanConfig.ts     # 扫描配置
-│   │   │   │   ├── ScanContext.ts    # 扫描上下文
-│   │   │   │   └── DetectionPipeline.ts # 管道协调器
-│   │   │   ├── DetectionService.ts   # 检测服务
-│   │   │   └── ApplicationService.ts # 应用服务
-│   │   ├── routes/       # API 路由
-│   │   ├── services/     # 业务逻辑
-│   │   └── utils/        # 工具函数
+│   │   ├── api/          # 统一 API 路由定义 (UnifiedApiRouter)
+│   │   ├── controllers/  # 控制器层 (业务流转)
+│   │   ├── middleware/   # API 中间件 (认证、日志等)
+│   │   ├── core/         # 核心业务服务引擎
+│   │   │   ├── ServiceContainer.ts   # 服务依赖注入容器
+│   │   │   ├── pipeline/             # 检测管道架构
+│   │   │   │   ├── stages/           # Scanner/Analyzer/Aggregator/PortAllocator
+│   │   │   │   └── DetectionPipeline.ts
+│   │   │   └── DetectionService.ts   # 应用扫描核心服务
+│   │   ├── routes/       # 传统系统路由 (保持向下兼容)
+│   │   ├── services/     # 基础底层服务及业务逻辑
+│   │   └── utils/        # 通用工具函数
 │   └── package.json
-├── configs/              # 配置文件
-├── scripts/              # 脚本工具
-├── docs/                 # 文档
+├── configs/              # 配置文件模板 (Nginx/PM2等)
+├── scripts/              # 快速部署、备份、启停脚本
+├── docs/                 # 系统架构、排错文档
+│   └── troubleshooting/  # PM2 及常见故障排查手册
 └── README.md
 ```
 
@@ -219,6 +207,15 @@
    npm run build
    # 将 dist/ 目录部署到 Nginx
    ```
+
+### ⚡ Windows 快速启停指令
+
+对于 Windows 用户，系统根目录提供了一键脚本：
+- `Start-Portal.bat`：一键启动生产服务（底层调用 `start-production.ps1`，智能修复执行权限）
+- `Setup-Portal.bat`：首次部署初始化（包含环境检查 + 防火墙规则 + PM2 开机自启配置）
+
+#### PM2 权限问题预案
+在 Windows 使用 PM2 运行后台进程时，常遇到权限报错。若自动恢复失败，您可以参考我们整理的[快速解决方案](docs/troubleshooting/如何解决PM2权限问题.md)，或直接右键点击 `scripts\startup\start-backend-admin.ps1` 选择 "使用 PowerShell 运行"。
 
 ## 🔧 配置说明
 
