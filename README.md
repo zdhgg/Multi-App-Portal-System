@@ -1,8 +1,7 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/github/package-json/v/zdhgg/Multi-App-Portal-System?filename=detection-api%2Fpackage.json)
-![License](https://img.shields.io/github/license/zdhgg/Multi-App-Portal-System)
-[![GitHub stars](https://img.shields.io/github/stars/zdhgg/Multi-App-Portal-System?style=social)](https://github.com/zdhgg/Multi-App-Portal-System)
+![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个智能化的Web应用检测、管理和统一门户系统，能够自动识别工作区内的各种技术栈应用，并提供统一的管理界面。
 
