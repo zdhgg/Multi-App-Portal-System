@@ -191,6 +191,50 @@ interface OpenFolderSpawnResult {
   signal: NodeJS.Signals | null
 }
 
+interface OpenFolderCommandSpec {
+  program: string
+  args: string[]
+}
+
+function buildOpenFolderCommands(platform: NodeJS.Platform, targetPath: string): OpenFolderCommandSpec[] {
+  switch (platform) {
+    case 'win32':
+      return [
+        { program: 'explorer.exe', args: [targetPath] },
+        { program: 'cmd.exe', args: ['/d', '/s', '/c', 'start', '', targetPath] }
+      ]
+    case 'darwin':
+      return [{ program: 'open', args: [targetPath] }]
+    case 'linux':
+      return [{ program: 'xdg-open', args: [targetPath] }]
+    default:
+      return []
+  }
+}
+
+async function openFolderWithFallback(commands: OpenFolderCommandSpec[]): Promise<{
+  command: OpenFolderCommandSpec
+  result: OpenFolderSpawnResult
+}> {
+  let lastError: Error | null = null
+
+  for (const command of commands) {
+    try {
+      const result = await spawnOpenFolderCommand(command.program, command.args)
+      return { command, result }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      logger.warn('Open folder command failed, trying next fallback if available', {
+        program: command.program,
+        args: command.args,
+        error: lastError.message
+      })
+    }
+  }
+
+  throw lastError ?? new Error('No open-folder command succeeded')
+}
+
 /**
  * 以“可感知失败”的方式启动系统文件管理器。
  * 仅在命令成功启动，或快速以 0 退出时判定成功。
@@ -319,6 +363,7 @@ router.post('/open-folder', async (req: Request, res: Response) => {
     // Phase 3: 使用 spawn 替代 exec（避免 shell 注入）
     const platform = process.platform
     let program: string
+    const commands = buildOpenFolderCommands(platform, normalizedPath)
     let args: string[]
 
     switch (platform) {
@@ -345,13 +390,13 @@ router.post('/open-folder', async (req: Request, res: Response) => {
     }
 
     // 仅在命令被成功触发后才返回 success，避免“假成功”
-    const spawnResult = await spawnOpenFolderCommand(program, args)
+    const { command, result: spawnResult } = await openFolderWithFallback(commands)
     spawnResult.child.unref()
 
     logger.info('文件夹打开命令已执行', {
       path: normalizedPath,
-      program,
-      args,
+      program: command.program,
+      args: command.args,
       pid: spawnResult.child.pid,
       exitedEarly: spawnResult.exitedEarly,
       userId: (req as any).auth?.userId
@@ -363,8 +408,8 @@ router.post('/open-folder', async (req: Request, res: Response) => {
       data: {
         path: normalizedPath,
         platform,
-        program,
-        args,
+        program: command.program,
+        args: command.args,
         pid: spawnResult.child.pid,
         exitedEarly: spawnResult.exitedEarly
       }

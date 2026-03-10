@@ -1282,8 +1282,15 @@ export class PortConfigController {
         return res.apiError('端口管理器未初始化', 500)
       }
 
-      // 调用端口管理器的释放方法
-      await this.portManager.releasePort(port)
+      // 调用端口管理器的强制释放方法，并校验端口是否真正释放
+      const released = typeof this.portManager.forceReleasePort === 'function'
+        ? await this.portManager.forceReleasePort(port)
+        : (await this.portManager.releasePort(port), true)
+
+      if (!released) {
+        logger.warn(`端口 ${port} 强制释放未完成，端口仍被占用`)
+        return res.apiError(`端口 ${port} 仍被占用，释放未完成`, 409)
+      }
 
       logger.info(`端口 ${port} 已强制释放`)
       res.apiSuccess(null, `端口 ${port} 已强制释放`)

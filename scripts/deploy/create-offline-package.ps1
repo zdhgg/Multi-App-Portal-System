@@ -213,7 +213,7 @@ $files = @(
     "detection-api\node_modules",
     "detection-api\src\server.ts",
     "main-portal\dist\index.html",
-    "ecosystem-prod-tsx.config.js",
+    "ecosystem-prod-loader.config.js",
     "start-production.ps1"
 )
 

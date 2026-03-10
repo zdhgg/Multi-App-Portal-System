@@ -1,3 +1,5 @@
+import { isDebugToolsEnabled } from './debugControl'
+
 /**
  * 登录调试工具
  * 用于监控和调试登录请求，帮助发现重复请求问题
@@ -215,7 +217,7 @@ class LoginDebugger {
 export const loginDebugger = new LoginDebugger()
 
 // 暴露到window对象（仅开发环境）
-if (import.meta.env.DEV) {
+if (isDebugToolsEnabled()) {
   ;(window as any).loginDebugger = loginDebugger
 }
 

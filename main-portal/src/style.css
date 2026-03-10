@@ -265,6 +265,16 @@ body {
   left: auto !important;
   transform: none !important;
   margin: 0 !important;
+  /* 强制响应式宽度和高度限制 */
+  max-width: 95vw !important;
+  max-height: 95vh !important;
+  width: auto !important;
+}
+
+/* 确保对话框内容区域可滚动 */
+.el-dialog__body {
+  max-height: calc(95vh - 120px) !important;
+  overflow-y: auto !important;
 }
 
 /* 确保隐藏的遮罩层真正隐藏 */
@@ -310,4 +320,34 @@ body {
 
 [class*="el-overlay"] {
   z-index: 99998 !important;
+}
+
+/* 响应式对话框 - 在小屏幕上自动调整 */
+@media screen and (max-width: 768px) {
+  .el-dialog {
+    max-width: 98vw !important;
+    margin: 10px !important;
+  }
+  
+  .el-dialog__body {
+    max-height: calc(95vh - 100px) !important;
+  }
+}
+
+/* 超大对话框的特殊处理 - 覆盖所有内联宽度样式 */
+.el-dialog[style*="width"] {
+  width: min(var(--el-dialog-width, 50%), 95vw) !important;
+}
+
+/* 针对常见宽度的精确覆盖 */
+.el-dialog[style*="width: 860px"],
+.el-dialog[style*="width: 800px"],
+.el-dialog[style*="width: 700px"],
+.el-dialog[style*="width: 680px"] {
+  width: min(800px, 95vw) !important;
+}
+
+.el-dialog[style*="width: 1000px"],
+.el-dialog[style*="width: 1200px"] {
+  width: min(1000px, 95vw) !important;
 }

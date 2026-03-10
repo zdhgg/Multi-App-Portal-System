@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import { getStoredAccessToken } from '@/utils/authStorage'
 
 /**
  * 端口配置接口
@@ -100,7 +101,7 @@ export const usePortConfigStore = defineStore('portConfig', () => {
     url: string, 
     options: RequestInit = {}
   ): Promise<T> => {
-    const token = localStorage.getItem('auth_token')
+    const token = getStoredAccessToken()
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

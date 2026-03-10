@@ -62,6 +62,43 @@ const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d'
 const JWT_ISSUER = 'intelligent-portal-system'
 const JWT_AUDIENCE = 'portal-users'
 
+const parseDurationToSeconds = (value: string | number, fallbackSeconds: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value))
+  }
+
+  const normalized = String(value).trim()
+  if (!normalized) {
+    return fallbackSeconds
+  }
+
+  if (/^\d+$/.test(normalized)) {
+    return Math.max(0, parseInt(normalized, 10))
+  }
+
+  const match = normalized.match(/^(\d+)\s*(ms|s|m|h|d|w|y)$/i)
+  if (!match) {
+    return fallbackSeconds
+  }
+
+  const amount = parseInt(match[1], 10)
+  const unit = match[2].toLowerCase()
+  const unitFactors: Record<string, number> = {
+    ms: 1 / 1000,
+    s: 1,
+    m: 60,
+    h: 60 * 60,
+    d: 24 * 60 * 60,
+    w: 7 * 24 * 60 * 60,
+    y: 365 * 24 * 60 * 60
+  }
+
+  return Math.max(0, Math.floor(amount * (unitFactors[unit] || 1)))
+}
+
+export const ACCESS_TOKEN_EXPIRES_IN_SECONDS = parseDurationToSeconds(JWT_EXPIRES_IN, 24 * 60 * 60)
+export const REFRESH_TOKEN_EXPIRES_IN_SECONDS = parseDurationToSeconds(JWT_REFRESH_EXPIRES_IN, 7 * 24 * 60 * 60)
+
 export interface JWTPayload {
   sub: string        // 用户ID（JWT 标准字段）
   username: string

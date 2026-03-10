@@ -44,6 +44,7 @@ export interface PortConflictPayload {
 export type WebSocketEventHandler = (payload: any) => void
 
 import { resolvePortalWebSocketUrl } from '@/utils/networkUtils'
+import { getStoredAccessToken } from '@/utils/authStorage'
 const WS_TOKEN_PROTOCOL_PREFIX = 'portal-token.'
 
 export class WebSocketService {
@@ -72,7 +73,7 @@ export class WebSocketService {
     this.isConnecting = true
 
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = getStoredAccessToken()
       const protocols = token ? [`${WS_TOKEN_PROTOCOL_PREFIX}${token}`] : undefined
       this.ws = protocols ? new WebSocket(this.wsUrl, protocols) : new WebSocket(this.wsUrl)
       
@@ -295,12 +296,3 @@ export class WebSocketService {
 
 // 创建全局WebSocket服务实例
 export const websocketService = new WebSocketService()
-
-// 自动连接
-websocketService.connect().then(connected => {
-  if (connected) {
-    console.log('🔌 WebSocket服务已连接')
-  } else {
-    console.warn('⚠️ WebSocket服务连接失败')
-  }
-})

@@ -3,6 +3,8 @@
  * 用于监控实际的HTTP请求，区分真正的重复请求和调用链记录
  */
 
+import { isDebugToolsEnabled } from './debugControl'
+
 interface NetworkRequest {
   url: string
   method: string
@@ -217,7 +219,7 @@ class NetworkDebugger {
 export const networkDebugger = new NetworkDebugger()
 
 // 暴露到window对象（仅开发环境）
-if (import.meta.env.DEV) {
+if (isDebugToolsEnabled()) {
   ;(window as any).networkDebugger = networkDebugger
 }
 

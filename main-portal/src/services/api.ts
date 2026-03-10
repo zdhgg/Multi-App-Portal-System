@@ -1,5 +1,6 @@
 import { ElMessage } from 'element-plus'
 import type { User } from '@/stores/auth'
+import { getStoredAccessToken } from '@/utils/authStorage'
 
 // API响应基础接口
 export interface ApiResponse<T = any> {
@@ -99,7 +100,7 @@ export class ApiService {
     const token = typeof storeToken === 'object' && storeToken !== null && 'value' in storeToken
       ? storeToken.value
       : storeToken
-    return token || localStorage.getItem('auth_token')
+    return token || getStoredAccessToken()
   }
 
   // 检查是否需要刷新token
@@ -299,8 +300,8 @@ export class ApiService {
 
     } catch (error) {
       if (error instanceof ApiError) {
-        // 处理认证错误
-        if (error.status === 401 || error.status === 403) {
+        // 仅认证请求触发全局认证处理，避免公共接口/访客态产生误报
+        if (requireAuth && (error.status === 401 || error.status === 403)) {
           return this.handleAuthError(error)
         }
 
@@ -459,4 +460,3 @@ export const apiService = new ApiService()
 
 // 导出类型
 // Types are already exported inline with their definitions
-

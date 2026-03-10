@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="port-manager-compact">
     <!-- 扫描功能禁用提示（简化） -->
     <el-alert 
@@ -54,30 +54,46 @@
         </el-table-column>
         <el-table-column prop="status" label="状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
-              {{ getStatusText(row.status) }}
-            </el-tag>
+            <div class="status-wrapper">
+              <span v-if="row.status === 'listening' || row.status === 'occupied'" class="pulse-dot"></span>
+              <el-tag :type="getStatusType(row.status)" size="small">
+                {{ getStatusText(row.status) }}
+              </el-tag>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="80" align="center">
           <template #default="{ row }">
-            <el-popconfirm
-              title="确定要释放此端口吗？"
-              confirm-button-text="确定"
-              cancel-button-text="取消"
-              @confirm="forceReleasePort(row.port)"
-            >
-              <template #reference>
-                <el-button 
-                  type="danger" 
-                  size="small" 
-                  text
-                  :loading="loading.ports[row.port]"
-                >
-                  释放
-                </el-button>
-              </template>
-            </el-popconfirm>
+            <template v-if="row.portType === 'system' || row.portType === 'portal'">
+              <el-button 
+                type="info" 
+                size="small" 
+                text
+                disabled
+                title="核心驻留进程，禁止手动释放"
+              >
+                锁定
+              </el-button>
+            </template>
+            <template v-else>
+              <el-popconfirm
+                :title="getActionConfirmText(row)"
+                confirm-button-text="确定"
+                cancel-button-text="取消"
+                @confirm="forceReleasePort(row)"
+              >
+                <template #reference>
+                  <el-button 
+                    type="danger" 
+                    size="small" 
+                    text
+                    :loading="loading.ports[row.port]"
+                  >
+                    {{ getActionLabel(row) }}
+                  </el-button>
+                </template>
+              </el-popconfirm>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -90,7 +106,9 @@ import { computed, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { portRealtimeWebSocket, type PortStatistics } from '@/services/portManagementApi'
+import { appsApiService } from '@/services/appsApi'
 import { usePortMonitoringStore } from '@/stores/portMonitoring'
+import { getStoredAccessToken } from '@/utils/authStorage'
 
 const portStore = usePortMonitoringStore()
 
@@ -100,9 +118,30 @@ const loading = reactive({
   ports: {} as Record<number, boolean>
 })
 
-// 使用 Store 的占用端口列表（统一数据源）
-const occupiedPorts = computed(() => portStore.occupiedPortsList)
+// 使用 Store 的占用端口列表（通过 groupBy 打乱重组为带层级的结构，若需要 TreeData 显示）
+// 目前为了最快落地，并且兼容表格，按照应用进行聚类排序，让相似的靠在一起
+const occupiedPorts = computed(() => {
+  const list = [...portStore.occupiedPortsList];
+  return list.sort((a, b) => {
+    const aName = a.appName || getProcessDisplayName(a.process);
+    const bName = b.appName || getProcessDisplayName(b.process);
+    if (aName !== bName) return aName.localeCompare(bName);
+    return a.port - b.port;
+  });
+})
 
+const isManagedAppPort = (row: { appId?: string }) => Boolean(row.appId && row.appId !== 'system')
+
+const getActionLabel = (row: { appId?: string }) => {
+  return isManagedAppPort(row) ? '停止' : '释放'
+}
+
+const getActionConfirmText = (row: { appId?: string; appName?: string; port: number }) => {
+  if (isManagedAppPort(row)) {
+    return row.appName ? `确定要停止应用 ${row.appName} 吗？` : `确定要停止占用端口 ${row.port} 的应用吗？`
+  }
+  return `确定要释放端口 ${row.port} 吗？`
+}
 const scanFeature = reactive({
   disabled: false,
   reason: ''
@@ -114,10 +153,6 @@ const refreshPortStatus = async (showMessage = true) => {
   try {
     // 使用 Store 的统一刷新方法
     await portStore.refreshAll(true)
-    
-    if (showMessage) {
-      ElMessage.success('端口状态已刷新')
-    }
   } catch (error) {
     console.error('刷新端口状态失败:', error)
     ElMessage.error('刷新失败')
@@ -127,27 +162,37 @@ const refreshPortStatus = async (showMessage = true) => {
 }
 
 // 强制释放端口
-const forceReleasePort = async (port: number) => {
+const forceReleasePort = async (row: { port: number; appId?: string; appName?: string }) => {
+  const { port, appId, appName } = row
   loading.ports[port] = true
   try {
-    const token = localStorage.getItem('auth_token')
-    const response = await fetch(`/api/v2/config/ports/${port}/force-release`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      }
-    })
-    const result = await response.json()
+    if (appId && appId !== 'system') {
+      const result = await appsApiService.stopApp(appId, { showErrorMessage: false })
 
-    if (result.success) {
-      ElMessage.success(`端口 ${port} 已释放`)
-      await refreshPortStatus(false)
+      if (result.success) {
+        await refreshPortStatus(false)
+      } else {
+        ElMessage.error(result.message || (typeof result.error === 'string' ? result.error : (result as any).error?.message) || `停止应用失败，端口 ${port} 未释放`)
+      }
     } else {
-      ElMessage.error(`释放端口 ${port} 失败`)
+      const token = getStoredAccessToken()
+      const response = await fetch(`/api/v2/config/ports/${port}/force-release`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      })
+      const result = await response.json()
+
+      if (result.success) {
+        await refreshPortStatus(false)
+      } else {
+        ElMessage.error(result.message || result.error?.message || `释放端口 ${port} 失败`)
+      }
     }
   } catch (error) {
-    ElMessage.error(`释放端口 ${port} 失败`)
+    ElMessage.error(appId && appId !== 'system' ? `停止应用失败，端口 ${port} 未释放` : `释放端口 ${port} 失败`)
   } finally {
     loading.ports[port] = false
   }
@@ -314,5 +359,32 @@ onUnmounted(() => {
 
 :deep(.el-table td) {
   padding: 8px 0;
+}
+
+.status-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pulse-dot {
+  width: 6px;
+  height: 6px;
+  background-color: #67c23a;
+  border-radius: 50%;
+  display: inline-block;
+  animation: pulse-animation 2s infinite;
+}
+
+@keyframes pulse-animation {
+  0% {
+    box-shadow: 0 0 0 0 rgba(103, 194, 58, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 4px rgba(103, 194, 58, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(103, 194, 58, 0);
+  }
 }
 </style>

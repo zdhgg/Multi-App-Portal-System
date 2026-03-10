@@ -1,5 +1,5 @@
 import { apiService } from './api'
-import type { ApiResponse, PaginatedResponse } from './api'
+import type { ApiResponse, PaginatedResponse, RequestConfig } from './api'
 
 const BASE_PATH = '/v2/applications'
 
@@ -372,8 +372,8 @@ export class AppsApiService {
   /**
    * 停止应用
    */
-  async stopApp(id: string): Promise<ApiResponse<App>> {
-    return apiService.put<ApiResponse<App>>(`${BASE_PATH}/${id}/stop`)
+  async stopApp(id: string, config: RequestConfig = {}): Promise<ApiResponse<App>> {
+    return apiService.put<ApiResponse<App>>(`${BASE_PATH}/${id}/stop`, undefined, config)
   }
 
   /**

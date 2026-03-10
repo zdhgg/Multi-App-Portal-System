@@ -5,6 +5,8 @@ import { publicApiService } from '../services/publicApi'
 
 vi.mock('../services/publicApi', () => ({
   publicApiService: {
+    canCurrentUserAccessPublicApi: vi.fn(),
+    isGuestAccessDenied: vi.fn(),
     getPinnedApps: vi.fn(),
     getApps: vi.fn(),
     getApp: vi.fn(),
@@ -20,6 +22,8 @@ describe('Portal Store - pinned loading behavior', () => {
     setActivePinia(createPinia())
     portalStore = usePortalStore()
     vi.clearAllMocks()
+    vi.mocked(publicApiService.canCurrentUserAccessPublicApi).mockReturnValue(true)
+    vi.mocked(publicApiService.isGuestAccessDenied).mockReturnValue(false)
   })
 
   it('uses pinned apps when pinned list is not empty', async () => {
@@ -58,5 +62,16 @@ describe('Portal Store - pinned loading behavior', () => {
 
     expect(publicApiService.getApps).toHaveBeenCalledTimes(1)
     expect(portalStore.apps).toEqual(allApps as any)
+  })
+
+  it('skips public API requests when guest access is disabled', async () => {
+    vi.mocked(publicApiService.canCurrentUserAccessPublicApi).mockReturnValue(false)
+
+    await portalStore.loadApps()
+
+    expect(publicApiService.getPinnedApps).not.toHaveBeenCalled()
+    expect(publicApiService.getApps).not.toHaveBeenCalled()
+    expect(portalStore.apps).toEqual([])
+    expect(portalStore.guestAccessRestricted).toBe(true)
   })
 })

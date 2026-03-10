@@ -1,6 +1,8 @@
 import { ref, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { resolvePortalWebSocketUrl } from '@/utils/networkUtils'
+import { debugLog, debugWarn } from '@/utils/debugControl'
+import { getStoredAccessToken } from '@/utils/authStorage'
 
 const WS_TOKEN_PROTOCOL_PREFIX = 'portal-token.'
 
@@ -9,6 +11,8 @@ interface WebSocketMessage {
   payload: any
   timestamp?: string
 }
+
+type WebSocketEventHandler = (payload: any, message?: WebSocketMessage) => void
 
 interface WebSocketOptions {
   onConnect?: () => void
@@ -46,6 +50,31 @@ export function useWebSocket(url?: string) {
   let options: WebSocketOptions = {}
   let reconnectTimer: number | null = null
   let authFailureNotified = false
+  const listeners = new Map<string, Set<WebSocketEventHandler>>()
+
+  const emit = (type: string, payload: any, message?: WebSocketMessage) => {
+    const eventListeners = listeners.get(type)
+    if (eventListeners) {
+      eventListeners.forEach(listener => {
+        try {
+          listener(payload, message)
+        } catch (listenerError) {
+          console.error(`WebSocket事件监听器执行失败 (${type}):`, listenerError)
+        }
+      })
+    }
+
+    const wildcardListeners = listeners.get('*')
+    if (wildcardListeners) {
+      wildcardListeners.forEach(listener => {
+        try {
+          listener(payload, message)
+        } catch (listenerError) {
+          console.error('WebSocket通配监听器执行失败:', listenerError)
+        }
+      })
+    }
+  }
 
   const isAuthenticationClose = (event: CloseEvent): boolean => {
     if (event.code !== 1008) return false
@@ -88,7 +117,7 @@ export function useWebSocket(url?: string) {
   // 连接WebSocket
   const connect = (wsOptions: WebSocketOptions = {}) => {
     if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
-      console.warn('WebSocket已连接或正在连接')
+      debugWarn('WebSocket已连接或正在连接')
       return
     }
 
@@ -108,7 +137,7 @@ export function useWebSocket(url?: string) {
     try {
       // 构建WebSocket握手参数（Token通过子协议传递，避免出现在URL中）
       let finalWsUrl = wsUrl
-      const token = localStorage.getItem('auth_token')
+      const token = getStoredAccessToken()
       let protocols: string[] | undefined
 
       if (token) {
@@ -134,7 +163,7 @@ export function useWebSocket(url?: string) {
       ;(window as any).__portalWebSocket = ws
 
       ws.onopen = () => {
-        console.log('WebSocket连接成功')
+        debugLog('WebSocket连接成功')
         isConnected.value = true
         isConnecting.value = false
         reconnectAttempts.value = 0
@@ -151,12 +180,13 @@ export function useWebSocket(url?: string) {
           const message: WebSocketMessage = JSON.parse(event.data)
           lastMessage.value = message
           
-          console.log('收到WebSocket消息:', message)
+          debugLog('收到WebSocket消息:', message)
+          emit(message.type, message.payload, message)
           options.onMessage?.(message)
         } catch (err) {
           // 如果不是JSON，尝试处理为纯文本消息
           const textData = event.data.toString()
-          console.log('收到非JSON WebSocket消息:', textData)
+          debugLog('收到非JSON WebSocket消息:', textData)
           
           // 尝试处理特定格式的消息
           if (textData.startsWith('monitoring:')) {
@@ -169,6 +199,7 @@ export function useWebSocket(url?: string) {
               }
             }
             lastMessage.value = message
+            emit(message.type, message.payload, message)
             options.onMessage?.(message)
           } else {
             console.error('无法解析WebSocket消息:', err, '原始数据:', textData)
@@ -177,7 +208,7 @@ export function useWebSocket(url?: string) {
       }
 
       ws.onclose = (event) => {
-        console.log('WebSocket连接关闭:', event.code, event.reason)
+        debugLog('WebSocket连接关闭:', event.code, event.reason)
         isConnected.value = false
         isConnecting.value = false
 
@@ -206,7 +237,7 @@ export function useWebSocket(url?: string) {
           const delay = calculateReconnectDelay(reconnectAttempts.value)
           nextReconnectDelay.value = delay
 
-          console.log(`尝试重连 (${reconnectAttempts.value}/${maxAttempts})，延迟 ${delay}ms`)
+          debugLog(`尝试重连 (${reconnectAttempts.value}/${maxAttempts})，延迟 ${delay}ms`)
 
           // 通知重连事件
           options.onReconnecting?.(reconnectAttempts.value, delay)
@@ -263,10 +294,35 @@ export function useWebSocket(url?: string) {
     nextReconnectDelay.value = 0
   }
 
+  const on = (type: string, handler: WebSocketEventHandler) => {
+    if (!listeners.has(type)) {
+      listeners.set(type, new Set())
+    }
+
+    listeners.get(type)!.add(handler)
+  }
+
+  const off = (type: string, handler?: WebSocketEventHandler) => {
+    const eventListeners = listeners.get(type)
+    if (!eventListeners) {
+      return
+    }
+
+    if (handler) {
+      eventListeners.delete(handler)
+      if (eventListeners.size === 0) {
+        listeners.delete(type)
+      }
+      return
+    }
+
+    listeners.delete(type)
+  }
+
   // 发送消息
   const send = (message: WebSocketMessage | string) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      console.warn('WebSocket未连接，无法发送消息')
+      debugWarn('WebSocket未连接，无法发送消息')
       return false
     }
 
@@ -279,7 +335,7 @@ export function useWebSocket(url?: string) {
           })
       
       ws.send(messageStr)
-      console.log('发送WebSocket消息:', messageStr)
+      debugLog('发送WebSocket消息:', messageStr)
       return true
     } catch (err) {
       console.error('发送WebSocket消息失败:', err)
@@ -336,6 +392,7 @@ export function useWebSocket(url?: string) {
 
   // 组件卸载时自动断开连接
   onUnmounted(() => {
+    listeners.clear()
     disconnect()
   })
 
@@ -351,6 +408,8 @@ export function useWebSocket(url?: string) {
     // 方法
     connect,
     disconnect,
+    on,
+    off,
     send,
     sendMessage,
     subscribePortal,

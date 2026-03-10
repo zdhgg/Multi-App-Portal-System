@@ -4,7 +4,8 @@
  * 防止短时间内重复请求，支持请求合并
  */
 
-import axios, { AxiosRequestConfig, AxiosResponse } from 'axios'
+import axios from 'axios'
+import type { AxiosRequestConfig } from 'axios'
 
 interface PendingRequest {
   promise: Promise<any>

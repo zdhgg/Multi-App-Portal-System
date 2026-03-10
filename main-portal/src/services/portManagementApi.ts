@@ -2,6 +2,8 @@ import { apiService } from './api'
 import type { ApiResponse } from './api'
 import { ElMessage } from 'element-plus'
 import { resolvePortalWebSocketUrl } from '@/utils/networkUtils'
+import { debugInfo, debugLog } from '@/utils/debugControl'
+import { getStoredAccessToken, hasStoredAccessToken } from '@/utils/authStorage'
 const WS_TOKEN_PROTOCOL_PREFIX = 'portal-token.'
 
 // 端口扫描结果接口（增强版）
@@ -381,7 +383,7 @@ export class PortManagementApiService {
     const response = await apiService.post<ApiResponse<any>>('/v2/applications/ports/scan/range', scanRequest).catch(async (error) => {
       // 特殊处理 410 Gone - 表示功能被禁用
       if (error.status === 410) {
-        console.info('ℹ️ 端口扫描功能已禁用 (410 Gone)', { 
+        debugInfo('ℹ️ 端口扫描功能已禁用 (410 Gone)', { 
           endpoint: '/v2/applications/ports/scan/range',
           reason: '管理员已禁用此功能或服务不支持'
         })
@@ -400,7 +402,7 @@ export class PortManagementApiService {
       } catch (v1Error) {
         // v1 API的 410 处理
         if ((v1Error as any).status === 410) {
-          console.info('ℹ️ 端口扫描功能已禁用 (410 Gone)', { 
+          debugInfo('ℹ️ 端口扫描功能已禁用 (410 Gone)', { 
             endpoint: '/api/v2/config/ports/scan/range',
             reason: '管理员已禁用此功能或服务不支持'
           })
@@ -769,7 +771,7 @@ export class PortManagementApiService {
           resolution: conflict.resolution || '请检查端口使用情况'
         }))
         
-        console.log('冲突检测完成', { conflictCount: conflicts.length });
+        debugLog('冲突检测完成', { conflictCount: conflicts.length });
         
         return {
           ...response,
@@ -778,11 +780,11 @@ export class PortManagementApiService {
       }
       
       // 如果响应格式不正确，返回空数组
-      console.log('冲突检测API返回空数据，使用默认值');
+      debugLog('冲突检测API返回空数据，使用默认值');
       return { success: true, data: [] }
     } catch (error) {
       // 如果专用冲突检测API不可用，静默处理
-      console.log('冲突检测API暂时不可用，返回空冲突列表');
+      debugLog('冲突检测API暂时不可用，返回空冲突列表');
       return { success: true, data: [] }
     }
   }
@@ -876,7 +878,7 @@ export class PortManagementApiService {
           closed: rawData.available || ((rawData.total || 3000) - (rawData.allocated || 0))
         };
         
-        console.log('🔧 端口统计数据已修复处理', { 
+        debugLog('🔧 端口统计数据已修复处理', { 
           responseStructure: Object.keys(response.data),
           rawDataFrom: response.data.data ? 'response.data.data' : 'response.data',
           rawData, 
@@ -938,12 +940,13 @@ export class PortManagementApiService {
    */
   async releasePort(port: number, force: boolean = false): Promise<ApiResponse<void>> {
     try {
-      // 调用后端端口释放API（如果存在）
-      return await apiService.post<ApiResponse<void>>(`/ports/${port}/release`, { force })
+      return await apiService.post<ApiResponse<void>>(`/v2/config/ports/${port}/force-release`, { force })
     } catch (error) {
-      // 如果没有专门的释放API，返回成功（在任务1.4中会实现）
-      console.warn(`Port release API not available for port ${port}`)
-      return { success: true, message: `Port ${port} release scheduled` }
+      console.error(`Failed to release port ${port}:`, error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '释放端口失败'
+      }
     }
   }
 
@@ -1103,7 +1106,7 @@ export class PortManagementApiService {
           
           // 如果返回的是数字，可能表示活跃端口数量，需要根据实际情况处理
           if (typeof rawActivePorts === 'number') {
-            console.info(`BackgroundScanService报告 ${rawActivePorts} 个活跃端口，但未提供具体端口列表`)
+            debugInfo(`BackgroundScanService报告 ${rawActivePorts} 个活跃端口，但未提供具体端口列表`)
           }
         }
         
@@ -1126,7 +1129,7 @@ export class PortManagementApiService {
             }))
           : [] // 如果不是数组，返回空数组
         
-        console.log('📋 BackgroundScanService返回活跃端口:', activePorts.length, '个')
+        debugLog('📋 BackgroundScanService返回活跃端口:', activePorts.length, '个')
         
         return {
           success: true,
@@ -1280,7 +1283,7 @@ export class PortManagementApiService {
           this.setCache(cacheKey, normalizedResponse, 2 * 60 * 1000) // 缓存2分钟
         }
 
-        console.log('✅ 成功获取应用端口绑定列表（已规范化）', { 
+        debugLog('✅ 成功获取应用端口绑定列表（已规范化）', { 
           total: normalizedBindings.length,
           page: normalizedPagination.currentPage 
         })
@@ -1311,7 +1314,7 @@ export class PortManagementApiService {
       const response = await apiService.get<ApiResponse<AppPortBinding>>(`/v2/config/ports/app-bindings/${id}`)
       
       if (response.success) {
-        console.log('✅ 成功获取应用端口绑定', { id, appName: response.data?.appName })
+        debugLog('✅ 成功获取应用端口绑定', { id, appName: response.data?.appName })
       } else {
         console.warn('⚠️ 获取应用端口绑定失败:', response.error || response.message)
       }
@@ -1334,7 +1337,7 @@ export class PortManagementApiService {
       const response = await apiService.post<ApiResponse<AppPortBinding>>('/v2/config/ports/app-bindings', request)
       
       if (response.success) {
-        console.log('✅ 成功创建应用端口绑定', { 
+        debugLog('✅ 成功创建应用端口绑定', { 
           appId: request.appId, 
           appName: request.appName,
           bindingId: response.data?.id 
@@ -1361,7 +1364,7 @@ export class PortManagementApiService {
       const response = await apiService.put<ApiResponse<AppPortBinding>>(`/v2/config/ports/app-bindings/${id}`, request)
       
       if (response.success) {
-        console.log('✅ 成功更新应用端口绑定', { id, updates: Object.keys(request) })
+        debugLog('✅ 成功更新应用端口绑定', { id, updates: Object.keys(request) })
       } else {
         console.warn('⚠️ 更新应用端口绑定失败:', response.error || response.message)
       }
@@ -1384,7 +1387,7 @@ export class PortManagementApiService {
       const response = await apiService.delete<ApiResponse<any>>(`/v2/config/ports/app-bindings/${id}`)
       
       if (response.success) {
-        console.log('✅ 成功删除应用端口绑定', { id })
+        debugLog('✅ 成功删除应用端口绑定', { id })
       } else {
         console.warn('⚠️ 删除应用端口绑定失败:', response.error || response.message)
       }
@@ -1408,7 +1411,7 @@ export class PortManagementApiService {
       const response = await apiService.post<AllocatePortsResponse>(`/v2/config/ports/app-bindings/${id}/allocate-ports`, request)
       
       if (response.success) {
-        console.log('✅ 成功分配端口', { 
+        debugLog('✅ 成功分配端口', { 
           bindingId: id, 
           allocatedPorts: response.data?.allocatedPorts?.length || 0,
           conflicts: response.data?.conflicts?.length || 0
@@ -1441,7 +1444,7 @@ export class PortManagementApiService {
       const response = await apiService.post<ApiResponse<any>>(`/v2/config/ports/app-bindings/${id}/release-ports`, request)
       
       if (response.success) {
-        console.log('✅ 成功释放端口', { 
+        debugLog('✅ 成功释放端口', { 
           bindingId: id, 
           releasedPorts: ports?.length || '所有端口'
         })
@@ -1468,7 +1471,7 @@ export class PortManagementApiService {
       const response = await apiService.post<BatchAllocatePortsResponse>('/v2/config/ports/app-bindings/batch-allocate', request)
       
       if (response.success) {
-        console.log('✅ 批量端口分配完成', { 
+        debugLog('✅ 批量端口分配完成', { 
           总数: bindingIds.length,
           成功: response.data?.successful?.length || 0,
           失败: response.data?.failed?.length || 0,
@@ -1500,7 +1503,7 @@ export class PortManagementApiService {
       const response = await apiService.get<ApiResponse<AppPortBindingStatistics>>('/v2/config/ports/app-bindings/statistics/overview')
       
       if (response.success) {
-        console.log('✅ 成功获取应用绑定统计信息', { 
+        debugLog('✅ 成功获取应用绑定统计信息', { 
           total: response.data?.total || 0,
           allocated: response.data?.allocated || 0,
           pending: response.data?.pending || 0
@@ -1544,7 +1547,7 @@ export class PortManagementApiService {
       const response = await apiService.get<ApiResponse<any>>(url)
       
       if (response.success) {
-        console.log('✅ 成功导出绑定配置', { 
+        debugLog('✅ 成功导出绑定配置', { 
           bindingIds: options.bindingIds?.length || '全部',
           format: options.format || 'json'
         })
@@ -1574,7 +1577,7 @@ export class PortManagementApiService {
       const response = await apiService.post<ApiResponse<any>>('/v2/config/ports/app-bindings/import', options)
       
       if (response.success) {
-        console.log('✅ 成功导入绑定配置', { 
+        debugLog('✅ 成功导入绑定配置', { 
           总数: options.bindings.length,
           覆盖模式: options.overwriteExisting ? '是' : '否',
           自动分配: options.autoAllocate ? '是' : '否'
@@ -1607,7 +1610,7 @@ export class PortManagementApiService {
       const response = await apiService.put<ApiResponse<void>>('/v2/config/ports/port-ranges', ranges)
       
       if (response.success) {
-        console.log('✅ 成功更新端口范围配置', { 
+        debugLog('✅ 成功更新端口范围配置', { 
           frontend: `${ranges.frontendRange.start}-${ranges.frontendRange.end}`,
           backend: `${ranges.backendRange.start}-${ranges.backendRange.end}`
         })
@@ -1683,7 +1686,7 @@ export class PortManagementApiService {
       })
       
       if (response.success) {
-        console.log('✅ 成功添加保留端口', { port, description })
+        debugLog('✅ 成功添加保留端口', { port, description })
       } else {
         console.warn('⚠️ 添加保留端口失败:', response.error || response.message)
       }
@@ -1706,7 +1709,7 @@ export class PortManagementApiService {
       const response = await apiService.delete<ApiResponse<void>>(`/v2/config/ports/reserved-ports/${port}`)
       
       if (response.success) {
-        console.log('✅ 成功删除保留端口', { port })
+        debugLog('✅ 成功删除保留端口', { port })
       } else {
         console.warn('⚠️ 删除保留端口失败:', response.error || response.message)
       }
@@ -1751,7 +1754,7 @@ export class PortManagementApiService {
         await this.addReservedPort(p.port, p.description)
       }
       
-      console.log('✅ 成功同步保留端口列表', { 
+      debugLog('✅ 成功同步保留端口列表', { 
         deleted: toDelete.length, 
         added: toAdd.length 
       })
@@ -1783,23 +1786,37 @@ export class PortRealtimeWebSocket {
   private listeners: Map<string, Set<Function>> = new Map()
   private authFailureNotified = false
 
-  constructor() {
-    this.connect()
+  constructor() {}
+
+  private hasActiveListeners(): boolean {
+    return Array.from(this.listeners.values()).some(listeners => listeners.size > 0)
+  }
+
+  private hasAuthToken(): boolean {
+    return hasStoredAccessToken()
   }
 
   /**
    * 连接WebSocket
    */
   private connect(): void {
+    if (!this.hasActiveListeners() || !this.hasAuthToken()) {
+      return
+    }
+
+    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
+      return
+    }
+
     try {
       // 获取WebSocket地址
       const wsUrl = resolvePortalWebSocketUrl()
-      const token = localStorage.getItem('auth_token')
+      const token = getStoredAccessToken()
       const protocols = token ? [`${WS_TOKEN_PROTOCOL_PREFIX}${token}`] : undefined
       this.ws = protocols ? new WebSocket(wsUrl, protocols) : new WebSocket(wsUrl)
 
       this.ws.onopen = () => {
-        console.log('✅ Port monitoring WebSocket connected')
+        debugLog('✅ Port monitoring WebSocket connected')
         this.reconnectAttempts = 0
         this.authFailureNotified = false
       }
@@ -1814,7 +1831,7 @@ export class PortRealtimeWebSocket {
       }
 
       this.ws.onclose = (event) => {
-        console.log('❌ Port monitoring WebSocket disconnected')
+        debugLog('❌ Port monitoring WebSocket disconnected')
 
         // 认证失败时停止重连，避免持续刷日志与无效请求
         if (this.isAuthenticationClose(event)) {
@@ -1870,13 +1887,17 @@ export class PortRealtimeWebSocket {
    * 尝试重连
    */
   private attemptReconnect(): void {
+    if (!this.hasActiveListeners() || !this.hasAuthToken()) {
+      return
+    }
+
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('WebSocket max reconnection attempts reached')
       return
     }
 
     this.reconnectAttempts++
-    console.log(`Attempting WebSocket reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts}...`)
+    debugLog(`Attempting WebSocket reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts}...`)
 
     setTimeout(() => {
       this.connect()
@@ -1897,6 +1918,7 @@ export class PortRealtimeWebSocket {
       this.listeners.set(type, new Set())
     }
     this.listeners.get(type)!.add(listener)
+    this.connect()
   }
 
   /**
@@ -1910,17 +1932,27 @@ export class PortRealtimeWebSocket {
         this.listeners.delete(type)
       }
     }
+
+    if (!this.hasActiveListeners()) {
+      this.close(false)
+    }
   }
 
   /**
    * 关闭WebSocket连接
    */
-  close(): void {
+  close(clearListeners = true): void {
     if (this.ws) {
       this.ws.close()
       this.ws = null
     }
-    this.listeners.clear()
+
+    if (clearListeners) {
+      this.listeners.clear()
+    }
+
+    this.reconnectAttempts = 0
+    this.authFailureNotified = false
   }
 
   /**
@@ -1936,3 +1968,5 @@ export const portManagementApiService = new PortManagementApiService()
 
 // 创建WebSocket实例
 export const portRealtimeWebSocket = new PortRealtimeWebSocket()
+
+

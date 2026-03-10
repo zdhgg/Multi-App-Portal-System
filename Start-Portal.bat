@@ -5,10 +5,13 @@ cd /d "%~dp0"
 set "PS_EXE=powershell.exe"
 where pwsh.exe >nul 2>nul
 if %ERRORLEVEL%==0 set "PS_EXE=pwsh.exe"
+set "PM2_PERMISSION_EXIT=91"
+set "PORTAL_PORT=8002"
 
 :menu
 cls
 call :detect_pm2_state
+call :detect_port_owner
 call :detect_health
 call :detect_autostart
 echo ============================================================
@@ -17,6 +20,7 @@ echo ============================================================
 echo.
 echo Current Status:
 echo   PM2 portal-api: %PM2_STATE% ^(PID: %PM2_PID%^)
+echo   Port %PORTAL_PORT%: %PORT_OWNER_LABEL%
 echo   Health: %HEALTH_STATE%
 echo   PM2 Auto-Start: %AUTOSTART_STATE%
 echo.
@@ -48,10 +52,23 @@ echo ============================================================
 echo Starting Portal...
 echo ============================================================
 echo.
+call :detect_pm2_state
+call :detect_port_owner
+if /i "!PORT_OWNER_STATE!"=="external" (
+  call :prompt_release_external_port
+  if errorlevel 1 (
+    pause
+    goto menu
+  )
+)
 "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-production.ps1"
 set "EXIT_CODE=%ERRORLEVEL%"
 echo.
 if not "%EXIT_CODE%"=="0" (
+  if "%EXIT_CODE%"=="%PM2_PERMISSION_EXIT%" (
+    call :handle_pm2_permission_issue
+    goto menu
+  )
   echo [ERROR] Startup failed with exit code %EXIT_CODE%.
   echo Check logs with: pm2 logs portal-api
 ) else (
@@ -66,13 +83,35 @@ echo ============================================================
 echo Restarting Portal...
 echo ============================================================
 echo.
+call :detect_pm2_state
+call :detect_port_owner
+if /i "!PORT_OWNER_STATE!"=="external" (
+  call :prompt_release_external_port
+  if errorlevel 1 (
+    pause
+    goto menu
+  )
+)
 pm2 restart portal-api >nul 2>nul
 set "EXIT_CODE=%ERRORLEVEL%"
 if not "%EXIT_CODE%"=="0" (
   echo [WARN] portal-api is not running. Trying start flow...
+  call :detect_pm2_state
+  call :detect_port_owner
+  if /i "!PORT_OWNER_STATE!"=="external" (
+    call :prompt_release_external_port
+    if errorlevel 1 (
+      pause
+      goto menu
+    )
+  )
   "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-production.ps1"
   set "EXIT_CODE=%ERRORLEVEL%"
   if not "%EXIT_CODE%"=="0" (
+    if "%EXIT_CODE%"=="%PM2_PERMISSION_EXIT%" (
+      call :handle_pm2_permission_issue
+      goto menu
+    )
     echo [ERROR] Restart/start failed with exit code %EXIT_CODE%.
     echo Check logs with: pm2 logs portal-api
     pause
@@ -103,10 +142,22 @@ pause
 goto menu
 
 :do_status
+call :detect_pm2_state
+call :detect_port_owner
+call :detect_health
+if /i "%PM2_STATE%"=="permission issue" (
+  call :handle_pm2_permission_issue
+  goto menu
+)
 echo.
 echo ============================================================
 echo Portal Status
 echo ============================================================
+echo.
+echo Summary:
+echo   PM2 portal-api: %PM2_STATE% ^(PID: %PM2_PID%^)
+echo   Port %PORTAL_PORT%: %PORT_OWNER_LABEL%
+echo   Health: %HEALTH_STATE%
 echo.
 pm2 status
 echo.
@@ -153,9 +204,22 @@ pm2 restart portal-api >nul 2>nul
 set "EXIT_CODE=%ERRORLEVEL%"
 if not "%EXIT_CODE%"=="0" (
   echo [WARN] portal-api is not running. Trying start flow...
+  call :detect_pm2_state
+  call :detect_port_owner
+  if /i "!PORT_OWNER_STATE!"=="external" (
+    call :prompt_release_external_port
+    if errorlevel 1 (
+      pause
+      goto menu
+    )
+  )
   "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-production.ps1"
   set "EXIT_CODE=%ERRORLEVEL%"
   if not "%EXIT_CODE%"=="0" (
+    if "%EXIT_CODE%"=="%PM2_PERMISSION_EXIT%" (
+      call :handle_pm2_permission_issue
+      goto menu
+    )
     echo [ERROR] Restart/start failed with exit code %EXIT_CODE%.
     echo Check logs with: pm2 logs portal-api
     pause
@@ -245,24 +309,80 @@ goto menu
 :detect_pm2_state
 set "PM2_STATE=unknown"
 set "PM2_PID=0"
-for /f "usebackq delims=" %%A in (`pm2 pid portal-api 2^>nul`) do (
+set "PM2_RAW="
+for /f "usebackq delims=" %%A in (`%PS_EXE% -NoProfile -ExecutionPolicy Bypass -Command "$result = cmd /c 'pm2 pid portal-api 2>&1'; $firstLine = ($result | Select-Object -First 1); if ($firstLine) { $firstLine = $firstLine.ToString().Trim() }; if ($firstLine -match 'EPERM|rpc.sock|operation not permitted') { Write-Output 'PM2_PERMISSION' } elseif ($firstLine -match '^[0-9]+$') { Write-Output $firstLine } else { Write-Output '0' }"`) do (
+  if not defined PM2_RAW set "PM2_RAW=%%A"
   if "!PM2_PID!"=="0" set "PM2_PID=%%A"
 )
-set "PM2_PID=!PM2_PID: =!"
-set /a PM2_PID_NUM=0
-set /a PM2_PID_NUM=!PM2_PID! 2>nul
-if errorlevel 1 set /a PM2_PID_NUM=0
-set "PM2_PID=!PM2_PID_NUM!"
-if !PM2_PID_NUM! GTR 0 (
-  set "PM2_STATE=online"
-) else (
-  set "PM2_STATE=offline"
+if /i "!PM2_RAW!"=="PM2_PERMISSION" (
+  set "PM2_STATE=permission issue"
+  set "PM2_PID=N/A"
+  exit /b 0
 )
+if "!PM2_PID!"=="0" (
+  set "PM2_STATE=offline"
+) else (
+  set "PM2_STATE=online"
+)
+exit /b 0
+exit /b 0
+
+:detect_port_owner
+set "PORT_OWNER_STATE=free"
+set "PORT_OWNER_PID=0"
+set "PORT_OWNER_NAME=unknown"
+set "PORT_OWNER_LABEL=available"
+for /f "tokens=5" %%A in ('netstat -ano ^| findstr /C:":%PORTAL_PORT%" ^| findstr /C:"LISTENING"') do (
+  if "!PORT_OWNER_PID!"=="0" set "PORT_OWNER_PID=%%A"
+)
+if "!PORT_OWNER_PID!"=="0" (
+  set "PORT_OWNER_LABEL=available"
+  exit /b 0
+)
+for /f "usebackq tokens=1 delims=," %%A in (`tasklist /fo csv /nh /fi "PID eq !PORT_OWNER_PID!"`) do (
+  if /i "%%~A"=="INFO: No tasks are running which match the specified criteria." (
+    set "PORT_OWNER_NAME=unknown"
+  ) else if "!PORT_OWNER_NAME!"=="unknown" (
+    set "PORT_OWNER_NAME=%%~A"
+  )
+)
+if /i "!PM2_STATE!"=="online" if "!PORT_OWNER_PID!"=="!PM2_PID!" (
+  set "PORT_OWNER_STATE=pm2"
+  set "PORT_OWNER_LABEL=owned by PM2 portal-api (PID !PORT_OWNER_PID!)"
+  exit /b 0
+)
+set "PORT_OWNER_STATE=external"
+set "PORT_OWNER_LABEL=occupied by non-PM2 !PORT_OWNER_NAME! (PID !PORT_OWNER_PID!)"
+exit /b 0
+
+:prompt_release_external_port
+if /i not "!PORT_OWNER_STATE!"=="external" exit /b 0
+echo [WARN] Port %PORTAL_PORT% is occupied by !PORT_OWNER_NAME! (PID !PORT_OWNER_PID!).
+choice /C YN /N /M "Stop this process and continue? (Y/N): "
+if errorlevel 2 (
+  echo [INFO] Startup cancelled. Free port %PORTAL_PORT% and try again.
+  exit /b 1
+)
+echo [INFO] Stopping PID !PORT_OWNER_PID!...
+taskkill /PID !PORT_OWNER_PID! /F >nul 2>nul
+if errorlevel 1 (
+  echo [ERROR] Failed to stop PID !PORT_OWNER_PID!.
+  echo Close it manually, then retry.
+  exit /b 1
+)
+timeout /t 1 /nobreak >nul
+call :detect_pm2_state
+call :detect_port_owner
+if /i "!PORT_OWNER_STATE!"=="external" (
+  echo [ERROR] Port %PORTAL_PORT% is still occupied by !PORT_OWNER_NAME! (PID !PORT_OWNER_PID!).
+  exit /b 1
+)
+echo [OK] Port %PORTAL_PORT% is now available.
 exit /b 0
 
 :detect_health
-if /i not "%PM2_STATE%"=="online" (
-  set "HEALTH_STATE=not-running"
+if /i "%PM2_STATE%"=="permission issue" (
+  set "HEALTH_STATE=pm2 permission issue"
   exit /b 0
 )
 
@@ -275,7 +395,13 @@ if errorlevel 1 (
 set "HEALTH_CODE=000"
 for /f "usebackq delims=" %%A in (`curl -s -o nul -w "%%{http_code}" http://localhost:8002/health 2^>nul`) do set "HEALTH_CODE=%%A"
 if "!HEALTH_CODE!"=="200" (
-  set "HEALTH_STATE=ok (200)"
+  if /i "!PORT_OWNER_STATE!"=="pm2" (
+    set "HEALTH_STATE=ok (200, pm2)"
+  ) else if /i "!PORT_OWNER_STATE!"=="external" (
+    set "HEALTH_STATE=ok (200, external PID !PORT_OWNER_PID!)"
+  ) else (
+    set "HEALTH_STATE=ok (200)"
+  )
 ) else if "!HEALTH_CODE!"=="000" (
   set "HEALTH_STATE=unreachable"
 ) else (
@@ -289,6 +415,39 @@ reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v PM2 >nul 2>nul
 if not errorlevel 1 (
   set "AUTOSTART_STATE=enabled"
 )
+exit /b 0
+
+:handle_pm2_permission_issue
+echo [ERROR] Detected a PM2 permission problem.
+echo.
+echo This is usually caused by a PM2 daemon permission issue,
+echo not by the project folder name itself.
+echo Recommended fix: run the admin repair script.
+echo.
+echo Script: scripts\startup\start-backend-admin.ps1
+echo.
+choice /C YN /N /M "Launch the admin repair/start script now? (Y/N): "
+if errorlevel 2 (
+  echo.
+  echo [INFO] Skipped launching the admin script.
+  echo Please run scripts\startup\start-backend-admin.ps1 later.
+  pause
+  exit /b 0
+)
+echo.
+echo [INFO] Launching admin repair/start script...
+echo [INFO] A new administrator PowerShell window may appear.
+"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\startup\start-backend-admin.ps1"
+set "ADMIN_EXIT_CODE=%ERRORLEVEL%"
+echo.
+if not "%ADMIN_EXIT_CODE%"=="0" (
+  echo [WARN] Admin script returned exit code %ADMIN_EXIT_CODE%.
+  echo Please check the new administrator PowerShell window.
+) else (
+  echo [OK] Admin script launched.
+  echo If a UAC prompt appears, click Yes.
+)
+pause
 exit /b 0
 
 :end

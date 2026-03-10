@@ -949,18 +949,19 @@ export class SimpleProcessManager implements ProcessManager {
       const healthyProcesses: string[] = []
       const unhealthyProcesses: string[] = []
 
-      for (const [appId, processInfo] of this.processes.entries()) {
-        const isHealthy = await this.checkProcessHealth(appId, processInfo)
+      for (const [processId, processInfo] of this.processes.entries()) {
+        const targetAppId = processInfo.parentAppId || processId
+        const isHealthy = await this.checkProcessHealth(targetAppId, processInfo)
 
         if (isHealthy) {
-          healthyProcesses.push(appId)
+          healthyProcesses.push(targetAppId)
         } else {
-          unhealthyProcesses.push(appId)
+          unhealthyProcesses.push(targetAppId)
           // Enhanced cleanup for unhealthy processes
-          await this.forceCleanupProcess(appId, processInfo)
+          await this.forceCleanupProcess(targetAppId, processInfo)
           // 更新数据库状态
-          await this.applicationRepository.updateState(appId, 'stopped')
-          logger.warn('Unhealthy process detected and cleaned up', { appId })
+          await this.applicationRepository.updateState(targetAppId, 'stopped')
+          logger.warn('Unhealthy process detected and cleaned up', { processId, appId: targetAppId })
         }
       }
 
@@ -1040,7 +1041,7 @@ export class SimpleProcessManager implements ProcessManager {
       
       // 查找占用端口的进程
       return new Promise((resolve) => {
-        const netstat = spawn('netstat', ['-ano'], { shell: true, windowsHide: true })
+        const netstat = spawn('netstat', ['-ano'], { windowsHide: true })
         let output = ''
         
         netstat.stdout.on('data', (data: Buffer) => {
@@ -1174,7 +1175,6 @@ export class SimpleProcessManager implements ProcessManager {
 
         const proc = spawn(command, args, { 
           stdio: 'pipe',
-          shell: isWindows,
           windowsHide: true  // 隐藏Windows下的CMD窗口
         })
         let output = ''
@@ -1800,7 +1800,20 @@ export class SimpleProcessManager implements ProcessManager {
     this.processes.set(processId, processInfo)
 
     // 等待进程稳定启动
-    await this.waitForProcessStable(childProcess, 3000)
+    try {
+      await this.waitForProcessStable(childProcess, 3000)
+    } catch (error) {
+      this.processes.delete(processId)
+
+      if (!childProcess.killed && childProcess.exitCode === null) {
+        try {
+          childProcess.kill('SIGTERM')
+        } catch {
+        }
+      }
+
+      throw error
+    }
 
     return childProcess
   }
@@ -1875,8 +1888,8 @@ export default defineConfig({
   ): Record<string, string> {
     const baseEnv = {
       ...process.env,
-      ...config.environmentVariables,
-      NODE_ENV: process.env.NODE_ENV || 'development'
+      NODE_ENV: process.env.NODE_ENV || 'development',
+      ...config.environmentVariables
     }
 
     // 根据进程类型设置特定的环境变量

@@ -451,22 +451,38 @@ export class PortManagementService extends EventEmitter {
 
     async forceReleasePort(port: number): Promise<boolean> {
         try {
-            // 1. Try to kill process if listening
-            const processInfo = await this.getProcessInfo(port);
-            if (processInfo.pid) {
-                try {
-                    if (process.platform === 'win32') {
-                        await execAsync(`taskkill /F /PID ${processInfo.pid}`);
-                    } else {
-                        await execAsync(`kill -9 ${processInfo.pid}`);
+            const wasListening = await this.checkPortListening(port);
+
+            if (wasListening) {
+                const processInfo = await this.getProcessInfo(port);
+                if (processInfo.pid) {
+                    try {
+                        if (process.platform === 'win32') {
+                            await execAsync(`taskkill /F /PID ${processInfo.pid}`);
+                        } else {
+                            await execAsync(`kill -9 ${processInfo.pid}`);
+                        }
+                        logger.info(`Killed process ${processInfo.pid} on port ${port}`);
+                    } catch (e) {
+                        logger.warn(`Failed to kill process on port ${port}`, e);
                     }
-                    logger.info(`Killed process ${processInfo.pid} on port ${port}`);
-                } catch (e) {
-                    logger.warn(`Failed to kill process on port ${port}`, e);
                 }
             }
 
-            // 2. Release from DB
+            for (let attempt = 0; attempt < 5; attempt++) {
+                if (!(await this.checkPortListening(port))) {
+                    break;
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 300));
+            }
+
+            const stillListening = await this.checkPortListening(port);
+            if (stillListening) {
+                logger.warn(`Port ${port} is still listening after force release attempt`);
+                return false;
+            }
+
             await this.releasePort(port);
             return true;
         } catch (error) {

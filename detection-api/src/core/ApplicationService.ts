@@ -437,7 +437,7 @@ export class ApplicationService implements IApplicationService {
    * Real-time port availability check using system commands
    */
   private async checkPortRealTime(port: number): Promise<{ isInUse: boolean; pid?: number }> {
-    const { spawn } = require('child_process')
+    const { spawn } = await import('child_process')
     
     return new Promise((resolve) => {
       // Use netstat to check if port is in use

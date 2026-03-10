@@ -952,6 +952,7 @@ import { appsApiService } from '@/services/appsApi'
 import type { ImportCandidate, BatchImportResult } from '@/services/appsApi'
 import { filesystemApiService } from '@/services'
 import { getPortTypeColor, getPortTypeIcon } from '@/types/app'
+import { getStoredAccessToken } from '@/utils/authStorage'
 
 // 路由相关
 const router = useRouter()
@@ -1162,7 +1163,7 @@ const fetchPortAllocationSummary = async (scanId: string) => {
   try {
     const response = await fetch(`/api/v2/detection/sessions/${scanId}/port-allocation`, {
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        'Authorization': `Bearer ${getStoredAccessToken() || ''}`
       }
     })
     
@@ -1747,7 +1748,7 @@ const performRealDetection = async (): Promise<void> => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          'Authorization': `Bearer ${getStoredAccessToken() || ''}`
         },
         body: JSON.stringify({
           paths: pathsToScan.map(p => p.replace(/\\/g, '/')),
@@ -1781,7 +1782,7 @@ const performRealDetection = async (): Promise<void> => {
 
         const statusResponse = await fetch(`/api/v2/detection/batch/${batchId}`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+            'Authorization': `Bearer ${getStoredAccessToken() || ''}`
           }
         })
 
@@ -1802,7 +1803,7 @@ const performRealDetection = async (): Promise<void> => {
             try {
               const projectsResponse = await fetch(`/api/v2/detection/sessions/${sessionId}/enhanced-projects`, {
                 headers: {
-                  'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                  'Authorization': `Bearer ${getStoredAccessToken() || ''}`
                 }
               })
 
@@ -1851,7 +1852,7 @@ const performRealDetection = async (): Promise<void> => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+            'Authorization': `Bearer ${getStoredAccessToken() || ''}`
           },
           body: JSON.stringify(requestBody)
         })
@@ -1876,7 +1877,7 @@ const performRealDetection = async (): Promise<void> => {
 
           const statusResponse = await fetch(`/api/v2/detection/sessions/${scanId}`, {
             headers: {
-              'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+              'Authorization': `Bearer ${getStoredAccessToken() || ''}`
             }
           })
 
@@ -1895,7 +1896,7 @@ const performRealDetection = async (): Promise<void> => {
             // 获取增强聚合项目（支持全栈检测）
             const projectsResponse = await fetch(`/api/v2/detection/sessions/${scanId}/enhanced-projects`, {
               headers: {
-                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                'Authorization': `Bearer ${getStoredAccessToken() || ''}`
               }
             })
 

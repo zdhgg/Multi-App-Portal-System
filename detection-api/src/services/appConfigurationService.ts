@@ -31,7 +31,8 @@ export interface DynamicPortConfiguration {
 
 export interface ConfigurationBackup {
   filePath: string
-  originalContent: string
+  originalContent: string | null
+  existed: boolean
   timestamp: Date
 }
 
@@ -757,6 +758,9 @@ export class AppConfigurationService {
   ])
 
   private configBackups: Map<string, ConfigurationBackup[]> = new Map()
+  private readonly subProjectEnvFiles = ['.env', '.env.local', '.env.development'] as const
+  private readonly frontendDirCandidates = ['frontend', 'client'] as const
+  private readonly backendDirCandidates = ['backend', 'server'] as const
 
   /**
    * 为应用配置端口
@@ -826,24 +830,132 @@ export class AppConfigurationService {
   private async backupConfigurations(app: any, config: TechStackConfig): Promise<void> {
     const backups: ConfigurationBackup[] = []
     const appDir = app.directory
+    const filesToBackup = new Set<string>()
 
     // 备份环境变量文件
     for (const envFile of config.envFiles) {
-      const filePath = path.join(appDir, envFile)
-      try {
-        const content = await fs.readFile(filePath, 'utf-8')
-        backups.push({
-          filePath,
-          originalContent: content,
-          timestamp: new Date()
-        })
-      } catch (error) {
-        // 文件不存在，跳过
+      filesToBackup.add(path.join(appDir, envFile))
+    }
+
+    if (app.fullStack?.isFullStack) {
+      const frontendPath = await this.resolveFullStackProjectPath(app, 'frontend')
+      const backendPath = await this.resolveFullStackProjectPath(app, 'backend')
+
+      for (const envFile of this.subProjectEnvFiles) {
+        if (frontendPath) {
+          filesToBackup.add(path.join(frontendPath, envFile))
+        }
+
+        if (backendPath) {
+          filesToBackup.add(path.join(backendPath, envFile))
+        }
       }
+    }
+
+    for (const filePath of filesToBackup) {
+      await this.backupConfigurationFile(backups, filePath)
     }
 
     this.configBackups.set(app.id, backups)
     logger.debug('配置文件备份完成', { appId: app.id, backupCount: backups.length })
+  }
+
+  private async backupConfigurationFile(backups: ConfigurationBackup[], filePath: string): Promise<void> {
+    try {
+      const content = await fs.readFile(filePath, 'utf-8')
+      backups.push({
+        filePath,
+        originalContent: content,
+        existed: true,
+        timestamp: new Date()
+      })
+    } catch (error) {
+      if ((error as { code?: string }).code === 'ENOENT') {
+        backups.push({
+          filePath,
+          originalContent: null,
+          existed: false,
+          timestamp: new Date()
+        })
+        return
+      }
+
+      throw error
+    }
+  }
+
+  private async pathExists(targetPath: string): Promise<boolean> {
+    try {
+      const stats = await fs.stat(targetPath)
+      return stats.isDirectory()
+    } catch {
+      return false
+    }
+  }
+
+  private async resolveFullStackProjectPath(
+    app: any,
+    type: 'frontend' | 'backend'
+  ): Promise<string | undefined> {
+    const fullStackConfig = app.fullStack
+    const processConfig = type === 'frontend'
+      ? fullStackConfig?.frontendConfig
+      : fullStackConfig?.backendConfig
+    const legacyDir = type === 'frontend'
+      ? fullStackConfig?.frontendDir
+      : fullStackConfig?.backendDir
+    const directoryCandidates = type === 'frontend'
+      ? this.frontendDirCandidates
+      : this.backendDirCandidates
+    const candidatePaths = new Set<string>()
+
+    if (typeof processConfig?.workingDirectory === 'string' && processConfig.workingDirectory.trim()) {
+      candidatePaths.add(path.resolve(app.directory, processConfig.workingDirectory))
+    }
+
+    if (typeof legacyDir === 'string' && legacyDir.trim()) {
+      candidatePaths.add(path.resolve(app.directory, legacyDir))
+    }
+
+    for (const candidate of directoryCandidates) {
+      candidatePaths.add(path.join(app.directory, candidate))
+    }
+
+    for (const candidatePath of candidatePaths) {
+      if (await this.pathExists(candidatePath)) {
+        return candidatePath
+      }
+    }
+
+    logger.warn('未找到全栈子项目目录', {
+      appId: app.id,
+      type,
+      candidates: Array.from(candidatePaths)
+    })
+    return undefined
+  }
+
+  private buildAbsoluteApiUrl(port: number): string {
+    const host = process.env.HOST || '0.0.0.0'
+    return host === "0.0.0.0" ? `http://localhost:${port}` : `http://${host}:${port}`
+  }
+
+  private buildFrontendUrl(port: number): string {
+    return `http://localhost:${port}`
+  }
+
+  private buildFrontendCorsOrigins(port: number): string {
+    const origins = new Set<string>([
+      this.buildFrontendUrl(port),
+      `http://127.0.0.1:${port}`
+    ])
+    const host = (process.env.HOST || '').trim()
+
+    if (host && host !== '0.0.0.0' && host !== 'localhost' && host !== '127.0.0.1') {
+      origins.add(`http://${host}:${port}`)
+    }
+
+    return Array.from(origins).join(',')
   }
 
   /**
@@ -883,9 +995,9 @@ export class AppConfigurationService {
         if (ports.backend && config.portKeys.backend) {
           for (const key of config.portKeys.backend) {
             if (key.includes('URL') || key.includes('BASE')) {
-              // API URL 格式 - 支持动态Host
-              const host = process.env.HOST || '0.0.0.0'
-              const apiUrl = host === '0.0.0.0' ? `http://localhost:${ports.backend}` : `http://${host}:${ports.backend}`
+              const apiUrl = app.fullStack?.isFullStack && config.name === 'Vue.js'
+                ? '/api'
+                : this.buildAbsoluteApiUrl(ports.backend)
               const result = this.updateEnvVariable(content, key, apiUrl)
               content = result.content
               modified = modified || result.modified
@@ -937,15 +1049,16 @@ export class AppConfigurationService {
   private async configureFullStackApp(app: any, ports: DynamicPortConfiguration): Promise<void> {
     if (!app.fullStack) return
 
+    const frontendPath = await this.resolveFullStackProjectPath(app, 'frontend')
+    const backendPath = await this.resolveFullStackProjectPath(app, 'backend')
+
     // 处理前端配置
-    if (app.fullStack.frontendDir && ports.frontend) {
-      const frontendPath = path.join(app.directory, app.fullStack.frontendDir)
+    if (frontendPath && ports.frontend) {
       await this.configureSubProject(frontendPath, 'frontend', ports.frontend, ports.backend)
     }
 
     // 处理后端配置
-    if (app.fullStack.backendDir && ports.backend) {
-      const backendPath = path.join(app.directory, app.fullStack.backendDir)
+    if (backendPath && ports.backend) {
       await this.configureSubProject(backendPath, 'backend', ports.backend, ports.frontend)
     }
   }
@@ -959,9 +1072,7 @@ export class AppConfigurationService {
     primaryPort: number,
     secondaryPort?: number
   ): Promise<void> {
-    const envFiles = ['.env', '.env.local', '.env.development']
-
-    for (const envFile of envFiles) {
+    for (const envFile of this.subProjectEnvFiles) {
       const filePath = path.join(projectPath, envFile)
 
       try {
@@ -977,27 +1088,35 @@ export class AppConfigurationService {
           const portResult = this.updateEnvVariable(content, 'VITE_PORT', primaryPort.toString())
           content = portResult.content
 
+          const devPortResult = this.updateEnvVariable(content, 'VITE_DEV_PORT', primaryPort.toString())
+          content = devPortResult.content
+
           if (secondaryPort) {
-            // 支持动态Host配置
-            const host = process.env.HOST || '0.0.0.0'
-            const apiUrl = host === '0.0.0.0' ? `http://localhost:${secondaryPort}` : `http://${host}:${secondaryPort}`
-            const apiResult = this.updateEnvVariable(content, 'VITE_API_BASE_URL', apiUrl)
-            content = apiResult.content
+            const apiBaseResult = this.updateEnvVariable(content, 'VITE_API_BASE_URL', '/api')
+            content = apiBaseResult.content
+
+            const apiPortResult = this.updateEnvVariable(content, 'VITE_API_PORT', secondaryPort.toString())
+            content = apiPortResult.content
+
+            const sharedApiPortResult = this.updateEnvVariable(content, 'API_PORT', secondaryPort.toString())
+            content = sharedApiPortResult.content
           }
         } else {
           // 后端配置
           const portResult = this.updateEnvVariable(content, 'PORT', primaryPort.toString())
           content = portResult.content
 
+          const hostResult = this.updateEnvVariable(content, 'HOST', '0.0.0.0')
+          content = hostResult.content
+
           if (secondaryPort) {
-            // 支持动态Host配置
-            const host = process.env.HOST || '0.0.0.0'
-            const frontendUrl = host === '0.0.0.0' ? `http://localhost:${secondaryPort}` : `http://${host}:${secondaryPort}`
+            const frontendUrl = this.buildFrontendUrl(secondaryPort)
+            const corsOrigins = this.buildFrontendCorsOrigins(secondaryPort)
 
             const corsResult = this.updateEnvVariable(content, 'FRONTEND_URL', frontendUrl)
             content = corsResult.content
 
-            const corsOriginsResult = this.updateEnvVariable(content, 'CORS_ORIGINS', frontendUrl)
+            const corsOriginsResult = this.updateEnvVariable(content, 'CORS_ORIGINS', corsOrigins)
             content = corsOriginsResult.content
           }
         }
@@ -1063,7 +1182,18 @@ export class AppConfigurationService {
 
     try {
       for (const backup of backups) {
-        await fs.writeFile(backup.filePath, backup.originalContent, 'utf-8')
+        if (backup.existed && backup.originalContent !== null) {
+          await fs.writeFile(backup.filePath, backup.originalContent, 'utf-8')
+          continue
+        }
+
+        try {
+          await fs.unlink(backup.filePath)
+        } catch (error) {
+          if ((error as { code?: string }).code !== 'ENOENT') {
+            throw error
+          }
+        }
       }
 
       this.configBackups.delete(appId)

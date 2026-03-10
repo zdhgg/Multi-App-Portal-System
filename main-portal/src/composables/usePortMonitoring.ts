@@ -1,6 +1,7 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { resolvePortalWebSocketUrl } from '@/utils/networkUtils'
+import { getStoredAccessToken } from '@/utils/authStorage'
 const WS_TOKEN_PROTOCOL_PREFIX = 'portal-token.'
 
 export interface PortMonitoringData {
@@ -62,7 +63,7 @@ export function usePortMonitoring() {
 
     try {
       const wsUrl = resolvePortalWebSocketUrl()
-      const token = localStorage.getItem('auth_token')
+      const token = getStoredAccessToken()
       const protocols = token ? [`${WS_TOKEN_PROTOCOL_PREFIX}${token}`] : undefined
       ws = protocols ? new WebSocket(wsUrl, protocols) : new WebSocket(wsUrl)
 

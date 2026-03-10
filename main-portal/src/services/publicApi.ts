@@ -1,6 +1,7 @@
-import { apiService } from './api'
+import { apiService, ApiError } from './api'
 import type { ApiResponse } from './api'
 import type { AppPort } from '@/types/app'
+import { hasStoredAccessToken } from '@/utils/authStorage'
 
 // 公共API相关的类型定义
 export interface PublicApp {
@@ -105,10 +106,33 @@ export class PublicApiService {
     return ['1', 'true', 'on', 'yes'].includes(String(rawValue).trim().toLowerCase())
   }
 
+  isAnonymousAccessEnabled(): boolean {
+    return this.resolveAnonymousMode()
+  }
+
+  hasAuthenticatedSession(): boolean {
+    if (typeof window === 'undefined') {
+      return false
+    }
+
+    return hasStoredAccessToken()
+  }
+
+  canCurrentUserAccessPublicApi(): boolean {
+    return this.isAnonymousAccessEnabled() || this.hasAuthenticatedSession()
+  }
+
+  isGuestAccessDenied(error: unknown): boolean {
+    return error instanceof ApiError
+      && (error.status === 401 || error.status === 403)
+      && !this.hasAuthenticatedSession()
+  }
+
   private getPublicRequestConfig(extra: Record<string, any> = {}): Record<string, any> {
     const anonymousMode = this.resolveAnonymousMode()
     return {
-      requireAuth: !anonymousMode,
+      requireAuth: !anonymousMode && this.hasAuthenticatedSession(),
+      showErrorMessage: false,
       ...extra
     }
   }

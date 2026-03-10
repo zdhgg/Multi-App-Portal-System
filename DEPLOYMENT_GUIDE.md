@@ -126,19 +126,19 @@ pm2 describe portal-api
 
 ```
 project/
-├── detection-api/           # Backend API
-│   ├── src/                 # Source code
-│   ├── data/                # Database (portal.db)
-│   └── logs/                # Log files
-├── main-portal/             # Frontend
-│   └── dist/                # Built files
-├── start-production.ps1     # Start script
-├── check-environment.ps1    # Environment check
-├── scripts/
-│   └── utilities/
-│       └── configure-firewall.ps1   # Firewall setup
-├── configure-startup.ps1    # Auto-start setup
-└── ecosystem-prod-tsx.config.js  # PM2 config
+鈹溾攢鈹€ detection-api/           # Backend API
+鈹?  鈹溾攢鈹€ src/                 # Source code
+鈹?  鈹溾攢鈹€ data/                # Database (portal.db)
+鈹?  鈹斺攢鈹€ logs/                # Log files
+鈹溾攢鈹€ main-portal/             # Frontend
+鈹?  鈹斺攢鈹€ dist/                # Built files
+鈹溾攢鈹€ start-production.ps1     # Start script
+鈹溾攢鈹€ check-environment.ps1    # Environment check
+鈹溾攢鈹€ scripts/
+鈹?  鈹斺攢鈹€ utilities/
+鈹?      鈹斺攢鈹€ configure-firewall.ps1   # Firewall setup
+鈹溾攢鈹€ configure-startup.ps1    # Auto-start setup
+鈹斺攢鈹€ ecosystem-prod-loader.config.js  # PM2 config
 ```
 
 ---

@@ -8,7 +8,7 @@ const os = require('os');
 const dotenv = require('dotenv');
 
 const tsxPath = path.join(__dirname, 'node_modules', 'tsx', 'dist', 'cli.mjs');
-const serverPath = path.join(__dirname, 'src', 'server.ts');
+const serverPath = path.join(__dirname, 'src', 'bootstrap.ts');
 const envPath = path.join(__dirname, '.env');
 
 dotenv.config({ path: envPath });
@@ -18,7 +18,7 @@ const pm2Home = process.env.PM2_HOME || path.join(os.homedir(), '.pm2');
 
 const tsx = spawn(process.execPath, [tsxPath, serverPath], {
   cwd: __dirname,
-  stdio: 'inherit',
+  stdio: ['ignore', 'pipe', 'pipe'],
   windowsHide: true,  // 隐藏Windows下的CMD窗口
   env: {
     ...process.env,
@@ -29,6 +29,19 @@ const tsx = spawn(process.execPath, [tsxPath, serverPath], {
     PM2_ENABLED: '1',
     PM2_HOME: pm2Home
   }
+});
+
+tsx.stdout.on('data', (chunk) => {
+  process.stdout.write(chunk);
+});
+
+tsx.stderr.on('data', (chunk) => {
+  process.stderr.write(chunk);
+});
+
+tsx.on('error', (error) => {
+  console.error('[start-prod] Failed to launch child process:', error);
+  process.exit(1);
 });
 
 tsx.on('close', (code) => {

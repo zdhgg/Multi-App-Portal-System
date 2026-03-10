@@ -380,6 +380,7 @@ import {
   Setting
 } from '@element-plus/icons-vue'
 import { userSettingsApiService, filesystemApiService, type UserSettings, type PresetPath } from '@/services'
+import { getStoredAccessToken } from '@/utils/authStorage'
 
 export interface PathConfig {
   path: string
@@ -886,7 +887,7 @@ const checkPathAccessible = async (path: string): Promise<boolean> => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          'Authorization': `Bearer ${getStoredAccessToken() || ''}`
         },
         body: JSON.stringify({ path }),
         signal: controller.signal

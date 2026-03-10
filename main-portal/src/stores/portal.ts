@@ -31,6 +31,18 @@ export const usePortalStore = defineStore('portal', () => {
   const systemStatus = ref<SystemStatus | null>(null)
   const loading = ref(false)
   const lastUpdateTime = ref(new Date())
+  const guestAccessRestricted = ref(false)
+
+  const applyGuestRestrictedState = () => {
+    guestAccessRestricted.value = true
+    apps.value = []
+    systemStatus.value = null
+    lastUpdateTime.value = new Date()
+  }
+
+  const clearGuestRestrictedState = () => {
+    guestAccessRestricted.value = false
+  }
 
   // 计算属性
   const stats = computed(() => {
@@ -59,6 +71,13 @@ export const usePortalStore = defineStore('portal', () => {
   const loadApps = async () => {
     loading.value = true
     try {
+      if (!publicApiService.canCurrentUserAccessPublicApi()) {
+        applyGuestRestrictedState()
+        return { apps: [] }
+      }
+
+      clearGuestRestrictedState()
+
       // 改为获取固定到首页的应用
       const response = await publicApiService.getPinnedApps()
       
@@ -83,6 +102,11 @@ export const usePortalStore = defineStore('portal', () => {
         throw new Error(response.message || '获取固定应用列表失败')
       }
     } catch (error) {
+      if (publicApiService.isGuestAccessDenied(error)) {
+        applyGuestRestrictedState()
+        return { apps: [] }
+      }
+
       // 固定应用接口失败，尝试降级到完整列表接口
       console.warn('加载固定应用失败，降级到完整应用列表:', error)
       try {
@@ -95,6 +119,11 @@ export const usePortalStore = defineStore('portal', () => {
           return { apps: list }
         }
       } catch (e) {
+        if (publicApiService.isGuestAccessDenied(e)) {
+          applyGuestRestrictedState()
+          return { apps: [] }
+        }
+
         console.error('降级加载完整应用失败:', e)
         throw e
       }
@@ -106,15 +135,26 @@ export const usePortalStore = defineStore('portal', () => {
 
   const loadSystemStatus = async () => {
     try {
+      if (!publicApiService.canCurrentUserAccessPublicApi()) {
+        applyGuestRestrictedState()
+        return null
+      }
+
       const response = await publicApiService.getSystemHealth()
       
       if (response.success) {
+        clearGuestRestrictedState()
         systemStatus.value = response.data as SystemStatus | null
         return response.data
       } else {
         throw new Error(response.message || '获取系统状态失败')
       }
     } catch (error) {
+      if (publicApiService.isGuestAccessDenied(error)) {
+        applyGuestRestrictedState()
+        return null
+      }
+
       console.error('加载系统状态失败:', error)
       throw error
     }
@@ -122,17 +162,60 @@ export const usePortalStore = defineStore('portal', () => {
 
   const loadStats = async () => {
     try {
+      if (!publicApiService.canCurrentUserAccessPublicApi()) {
+        applyGuestRestrictedState()
+        return null
+      }
+
       const response = await publicApiService.getSystemStats()
       
       if (response.success) {
+        clearGuestRestrictedState()
         return response.data
       } else {
         throw new Error(response.message || '获取统计信息失败')
       }
     } catch (error) {
+      if (publicApiService.isGuestAccessDenied(error)) {
+        applyGuestRestrictedState()
+        return null
+      }
+
       console.error('加载统计信息失败:', error)
       throw error
     }
+  }
+
+  const updateAppIncremental = (appId: string, updates: Partial<App>) => {
+    const index = apps.value.findIndex(app => app.id === appId)
+    if (index === -1) {
+      return
+    }
+
+    apps.value[index] = { ...apps.value[index], ...updates }
+    lastUpdateTime.value = new Date()
+  }
+
+  const batchUpdateApps = (updates: Array<{ id: string; data: Partial<App> }>) => {
+    let hasUpdates = false
+
+    updates.forEach(({ id, data }) => {
+      const index = apps.value.findIndex(app => app.id === id)
+      if (index === -1) {
+        return
+      }
+
+      apps.value[index] = { ...apps.value[index], ...data }
+      hasUpdates = true
+    })
+
+    if (hasUpdates) {
+      lastUpdateTime.value = new Date()
+    }
+  }
+
+  const smartLoadApps = async () => {
+    return loadApps()
   }
 
   const refreshAppStatus = async (appId: string) => {
@@ -144,12 +227,8 @@ export const usePortalStore = defineStore('portal', () => {
       // ✅ 修复：直接使用应用ID而不是转换名称
       const response = await publicApiService.getApp(app.id)
 
-      if (response.success) {
-        const index = apps.value.findIndex(a => a.id === appId)
-        if (index !== -1) {
-          apps.value[index] = { ...apps.value[index], ...response.data }
-        }
-        lastUpdateTime.value = new Date()
+      if (response.success && response.data) {
+        updateAppIncremental(appId, response.data)
       }
     } catch (error) {
       console.error('刷新应用状态失败:', error)
@@ -158,21 +237,15 @@ export const usePortalStore = defineStore('portal', () => {
   }
 
   const updateAppStatus = (appData: any) => {
-    const index = apps.value.findIndex(app => app.id === appData.appId)
-    if (index !== -1) {
-      apps.value[index] = { ...apps.value[index], ...appData }
-      lastUpdateTime.value = new Date()
-    }
+    updateAppIncremental(appData.appId, appData)
   }
 
   const updateAppsStatus = (appsData: any[]) => {
-    appsData.forEach(appData => {
-      const index = apps.value.findIndex(app => app.id === appData.id)
-      if (index !== -1) {
-        apps.value[index] = { ...apps.value[index], ...appData }
-      }
-    })
-    lastUpdateTime.value = new Date()
+    const updates = appsData.map(appData => ({
+      id: appData.id,
+      data: appData
+    }))
+    batchUpdateApps(updates)
   }
 
   const getAppById = (id: string) => {
@@ -233,6 +306,7 @@ export const usePortalStore = defineStore('portal', () => {
     systemStatus.value = null
     loading.value = false
     lastUpdateTime.value = new Date()
+    guestAccessRestricted.value = false
   }
 
   return {
@@ -241,6 +315,7 @@ export const usePortalStore = defineStore('portal', () => {
     systemStatus,
     loading,
     lastUpdateTime,
+    guestAccessRestricted,
     
     // 计算属性
     stats,
@@ -250,11 +325,14 @@ export const usePortalStore = defineStore('portal', () => {
     
     // 动作
     loadApps,
+    smartLoadApps,
     loadSystemStatus,
     loadStats,
     refreshAppStatus,
     updateAppStatus,
     updateAppsStatus,
+    updateAppIncremental,
+    batchUpdateApps,
     getAppById,
     getAppByName,
     searchApps,

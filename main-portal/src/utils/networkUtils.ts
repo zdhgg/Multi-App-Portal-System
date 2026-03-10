@@ -3,6 +3,8 @@
  * 用于统一处理URL生成、Host检测等网络相关功能
  */
 
+import { isDebugToolsEnabled } from './debugControl'
+
 // 网络配置接口
 export interface NetworkConfig {
   protocol: 'http' | 'https'
@@ -327,7 +329,7 @@ export const formatNetworkInfo = () => {
 }
 
 // 开发环境调试工具
-if (import.meta.env.DEV) {
+if (isDebugToolsEnabled()) {
   // 暴露到window对象便于调试
   ;(window as any).networkUtils = {
     getCurrentHost,

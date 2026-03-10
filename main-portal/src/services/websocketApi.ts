@@ -1,5 +1,6 @@
 // WebSocket连接管理服务
 import { resolvePortalWebSocketUrl } from '@/utils/networkUtils'
+import { getStoredAccessToken } from '@/utils/authStorage'
 const WS_TOKEN_PROTOCOL_PREFIX = 'portal-token.'
 
 export class WebSocketManager {
@@ -14,7 +15,7 @@ export class WebSocketManager {
    */
   connect(url: string = resolvePortalWebSocketUrl()) {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = getStoredAccessToken()
       const protocols = token ? [`${WS_TOKEN_PROTOCOL_PREFIX}${token}`] : undefined
       this.ws = protocols ? new WebSocket(url, protocols) : new WebSocket(url)
       

@@ -13,8 +13,7 @@ import { useAuthStore } from '@/stores/auth'
 import { exposeAuthDebugTools, fixAuthIssues } from '@/utils/authDebug'
 import { exposeAuthTestTools } from '@/utils/authTestScenarios'
 import { exposeAuthFixTools } from '@/utils/authFix'
-import '@/utils/loginDebug' // 自动暴露登录调试工具
-import '@/utils/networkDebug' // 自动暴露网络调试工具
+import { isDebugToolsEnabled } from '@/utils/debugControl'
 
 async function initializeAndMountApp() {
   const app = createApp(App)
@@ -37,7 +36,9 @@ async function initializeAndMountApp() {
   initializeApiServices(authStore)
 
   // 在开发环境中暴露调试工具
-  if (import.meta.env.DEV) {
+  if (isDebugToolsEnabled()) {
+    await import('@/utils/networkDebug')
+
     exposeAuthDebugTools()
     exposeAuthTestTools()
     exposeAuthFixTools()

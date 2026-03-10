@@ -12,6 +12,7 @@
  */
 
 import { spawn, exec } from 'child_process'
+import { PortSnapshotManager } from '../utils/portSnapshot'
 import { promisify } from 'util'
 import type { NetworkService as INetworkService, PortConflict } from '../core/types'
 import { logger } from '../utils/logger'
@@ -42,13 +43,13 @@ export class NetworkService implements INetworkService {
   private getReservedPorts(): Set<number> {
     const portConfig = this.configManager.getPortConfig()
     const reservedPorts = new Set<number>([80, 443]) // 默认保留端口
-    
+
     if (portConfig?.reservedPorts) {
       for (const rp of portConfig.reservedPorts) {
         reservedPorts.add(rp.port)
       }
     }
-    
+
     return reservedPorts
   }
 
@@ -123,53 +124,64 @@ export class NetworkService implements INetworkService {
   }
 
   /**
-   * 杀死占用指定端口的进程
+   * 杀死占用指定端口的进程 (无损优雅退出版)
    */
   private async killProcessOnPort(port: number): Promise<void> {
     try {
-      // Windows系统使用netstat查找占用端口的进程
-      const { stdout } = await execAsync(`netstat -ano | findstr :${port}`)
+      // 优化：从强制刷新快照中查询，避免漏查
+      const snapshot = await PortSnapshotManager.getSnapshot(true);
+      const portInfo = snapshot.get(port);
 
-      if (!stdout) {
-        logger.debug('No process found on port', { port })
-        return
+      if (!portInfo || !portInfo.pid) {
+        logger.debug('No process found on port from snapshot', { port });
+        return;
       }
 
-      // 解析PID
-      const lines = stdout.trim().split('\n')
-      const pids = new Set<string>()
+      const pid = portInfo.pid;
+      const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/)
-        const pid = parts[parts.length - 1]
-        if (pid && pid !== '0' && !isNaN(parseInt(pid))) {
-          pids.add(pid)
+      // 阶段一：软关闭通知 (Soft Stop, 不带 /F)
+      try {
+        await execAsync(`taskkill /PID ${pid}`, { windowsHide: true });
+        logger.info('Sent termination signal to process', { port, pid });
+      } catch (err) {
+        // 大多由于权限或进程不响应软关闭导致，跳过警告，交由最后防线处理
+        logger.debug('Soft kill attempt failed or denied', { pid, error: (err as Error).message });
+      }
+
+      // 阶段二：静默观察期 (Grace Period, Max 2s)
+      let isDead = false;
+      for (let i = 0; i < 4; i++) {
+        await sleep(500);
+        const currentSnap = await PortSnapshotManager.getSnapshot(true);
+        const currentInfo = currentSnap.get(port);
+
+        // 如果端口状态发生变动，或者PID不一样了，说明原来的进程已经挂了退出
+        if (!currentInfo || currentInfo.pid !== pid) {
+          isDead = true;
+          logger.info('Process gracefully terminated', { port, pid });
+          break;
         }
       }
 
-      // 杀死所有占用该端口的进程
-      for (const pid of pids) {
+      // 阶段三：雷霆强杀 (Hard Kill / 兜底防线)
+      if (!isDead) {
+        logger.warn('Process unresponsive to soft kill, executing hard kill fallback', { port, pid });
         try {
-          await execAsync(`taskkill /F /PID ${pid}`)
-          logger.info('Killed process on port', { port, pid })
-        } catch (error) {
-          logger.warn('Failed to kill process', {
-            port,
-            pid,
-            error: error instanceof Error ? error.message : String(error)
-          })
+          await execAsync(`taskkill /F /PID ${pid}`, { windowsHide: true });
+          logger.info('Force killed process on port', { port, pid });
+          // 等待系统释放端口句柄
+          await sleep(500);
+        } catch (hardErr) {
+          logger.warn('Hard kill trigger failed', { port, pid, error: (hardErr as Error).message });
         }
       }
-
-      // 等待一小段时间确保端口释放
-      await new Promise(resolve => setTimeout(resolve, 500))
 
     } catch (error) {
-      // 如果netstat命令失败(可能是端口未被占用),不抛出错误
-      logger.debug('Error checking port process', {
+      logger.error('Error during graceful shutdown pipeline', {
         port,
         error: error instanceof Error ? error.message : String(error)
-      })
+      });
     }
   }
 
@@ -178,18 +190,18 @@ export class NetworkService implements INetworkService {
     if (this.allocatedPorts.has(port) || reservedPorts.has(port)) {
       return false
     }
-    
+
     // Check if port is actually free on the system
     return await this.checkSystemPort(port)
   }
 
   async checkConflicts(ports: readonly number[]): Promise<readonly PortConflict[]> {
     const conflicts: PortConflict[] = []
-    
+
     for (const port of ports) {
       // Enhanced conflict detection with PID information
       const portStatus = await this.getDetailedPortStatus(port)
-      
+
       if (!portStatus.isFree) {
         conflicts.push({
           port,
@@ -199,67 +211,44 @@ export class NetworkService implements INetworkService {
         })
       }
     }
-    
+
     return conflicts
   }
 
   /**
    * Get detailed port status with PID information
+   * Refactored: Fast O(1) query with TTL cache
    */
   private async getDetailedPortStatus(port: number): Promise<{
     isFree: boolean;
     owner?: string;
     pid?: number;
   }> {
-    // First try the existing system port check
-    const systemFree = await this.checkSystemPort(port)
-    
-    if (systemFree) {
-      return { isFree: true }
-    }
-
-    // If system check says it's not free, try to get PID information
     try {
-      const { spawn } = require('child_process')
-      
-      return new Promise((resolve) => {
-        const netstat = spawn('netstat', ['-ano'], { shell: true, windowsHide: true })
-        let output = ''
-        
-        netstat.stdout.on('data', (data: Buffer) => {
-          output += data.toString()
-        })
-        
-        netstat.on('close', () => {
-          const lines = output.split('\n')
-          for (const line of lines) {
-            if (line.includes(`:${port} `) && line.includes('LISTENING')) {
-              const parts = line.trim().split(/\s+/)
-              const pid = parseInt(parts[parts.length - 1])
-              resolve({ 
-                isFree: false, 
-                owner: 'system', 
-                pid: isNaN(pid) ? undefined : pid 
-              })
-              return
-            }
-          }
-          resolve({ isFree: false, owner: 'system' })
-        })
-        
-        netstat.on('error', () => {
-          resolve({ isFree: false, owner: 'system' })
-        })
-        
-        // Timeout after 3 seconds
-        setTimeout(() => {
-          netstat.kill()
-          resolve({ isFree: false, owner: 'system' })
-        }, 3000)
-      })
+      // 1. O(1) 短路查表 (Fast path)
+      const snapshot = await PortSnapshotManager.getSnapshot();
+      const portInfo = snapshot.get(port);
+
+      if (portInfo) {
+        // 如果在系统级发现了端口，立刻返回被占用
+        return {
+          isFree: false,
+          owner: 'system',
+          pid: portInfo.pid
+        };
+      }
+
+      // 2. 如果快照没查到，为了 100% 准确，进行轻量级应用层试探
+      const isReallyFree = await this.checkSystemPort(port);
+      return {
+        isFree: isReallyFree,
+        owner: isReallyFree ? undefined : 'system'
+      };
+
     } catch (error) {
-      logger.warn('Failed to get detailed port status', { port, error: (error as Error).message })
-      return { isFree: false, owner: 'system' }
+      logger.warn('Failed to get detailed port status', { port, error: (error as Error).message });
+      // 降维打击失败，优雅回落到系统层查询作为冗余
+      return { isFree: await this.checkSystemPort(port), owner: 'system' };
     }
   }
 
@@ -269,22 +258,22 @@ export class NetworkService implements INetworkService {
   private isPortAvailable(port: number, scope: PortAllocationScope = 'unified'): boolean {
     const portRange = this.getPortRange(scope)
     const reservedPorts = this.getReservedPorts()
-    
+
     // 基本检查
     if (this.allocatedPorts.has(port) || reservedPorts.has(port)) {
       return false
     }
-    
+
     // 检查端口范围
     if (port < portRange.start || port > portRange.end) {
       return false
     }
-    
+
     // 检查已添加应用的端口
     if (this.isPortUsedByExistingApp(port)) {
       return false
     }
-    
+
     return true
   }
 
@@ -296,25 +285,25 @@ export class NetworkService implements INetworkService {
     if (!this.db) {
       return false // 没有数据库连接时跳过检查
     }
-    
+
     try {
       const apps = this.db.prepare('SELECT id, name, network_config FROM applications').all() as any[]
-      
+
       for (const app of apps) {
         if (!app.network_config) continue
-        
+
         try {
           const networkConfig = JSON.parse(app.network_config)
-          
+
           // 检查主端口
           if (networkConfig.primaryPort === port) {
             logger.debug(`端口 ${port} 已被应用 ${app.name} (${app.id}) 使用为主端口`)
             return true
           }
-          
+
           // 检查次要端口
-          if (Array.isArray(networkConfig.secondaryPorts) && 
-              networkConfig.secondaryPorts.includes(port)) {
+          if (Array.isArray(networkConfig.secondaryPorts) &&
+            networkConfig.secondaryPorts.includes(port)) {
             logger.debug(`端口 ${port} 已被应用 ${app.name} (${app.id}) 使用为次要端口`)
             return true
           }
@@ -322,7 +311,7 @@ export class NetworkService implements INetworkService {
           logger.warn(`解析应用 ${app.id} 的网络配置失败`, parseError)
         }
       }
-      
+
       return false
     } catch (error) {
       logger.warn('检查已有应用端口时出错，跳过此检查', error)
@@ -331,39 +320,37 @@ export class NetworkService implements INetworkService {
   }
 
   /**
-   * Check if port is free on the system
+   * Check if port is free on the system (Connect Over Bind approach)
+   * 速度极客优化：放弃 bind，改为 createConnection 的 ECONNREFUSED 短路测试
    */
   private async checkSystemPort(port: number): Promise<boolean> {
     return new Promise(async (resolve) => {
-      const { createServer } = await import('net')
-      
-      // Try to bind to the port to check if it's free
-      const server = createServer()
-      
-      server.listen(port, '0.0.0.0', () => {
-        server.close(() => {
-          resolve(true) // Port is free
-        })
-      })
-      
-      server.on('error', (err: any) => {
-        if (err.code === 'EADDRINUSE' || err.code === 'EACCES') {
-          resolve(false) // Port is in use
+      const { createConnection } = await import('net')
+
+      const socket = createConnection({ port, host: '127.0.0.1' }, () => {
+        // 如果能够 connect 成功，证明端口有人在听，立刻销毁并返回占用
+        socket.destroy();
+        resolve(false);
+      });
+
+      socket.on('error', (err: any) => {
+        // TCP 握手被强行拒绝，证明没人监听，端口空闲！(速度通常 < 1ms)
+        if (err.code === 'ECONNREFUSED') {
+          resolve(true);
         } else {
-          resolve(true) // Assume free on other errors
+          // 遇到如 EACCES 等权限或其他问题，保守认为被占用
+          resolve(false);
         }
-      })
-      
-      // Timeout after 1 second
+      });
+
+      // 并发安全锁：500ms(极限)内未反应则当做未响应的僵尸占用
       setTimeout(() => {
         try {
-          server.close()
-        } catch (e) {
-          // Ignore close errors
-        }
-        resolve(false) // Assume in use on timeout
-      }, 1000)
-    })
+          socket.destroy();
+        } catch (e) { }
+        resolve(false);
+      }, 500);
+    });
   }
 
   /**
@@ -375,47 +362,18 @@ export class NetworkService implements INetworkService {
       return false
     }
 
-    return new Promise((resolve) => {
-      // Find process using the port
-      const findCmd = `netstat -ano | findstr :${port}`
-      const child = spawn('cmd', ['/c', findCmd], { shell: true, windowsHide: true })
-      let pidToKill: string | null = null
-      
-      child.stdout?.on('data', (data: Buffer) => {
-        const lines = data.toString().split('\n')
-        for (const line of lines) {
-          const parts = line.trim().split(/\s+/)
-          if (parts.length >= 5) {
-            const localAddr = parts[1]
-            const pid = parts[4]
-            if (localAddr.includes(`:${port}`)) {
-              pidToKill = pid
-              break
-            }
-          }
-        }
-      })
-      
-      child.on('close', () => {
-        if (pidToKill && pidToKill !== '0') {
-          // Kill the process
-          const killCmd = `taskkill /PID ${pidToKill} /F`
-          const killChild = spawn('cmd', ['/c', killCmd], { shell: true, windowsHide: true })
-          
-          killChild.on('close', (code) => {
-            const success = code === 0
-            logger.info('Force port release attempt', { port, pid: pidToKill, success })
-            resolve(success)
-          })
-        } else {
-          resolve(false)
-        }
-      })
-      
-      child.on('error', () => {
-        resolve(false)
-      })
-    })
+    try {
+      // 将直接强拉 /F 改为走刚刚升级后的无损退出降级管线 (Graceful Termination)
+      await this.killProcessOnPort(port);
+
+      // 执行完毕后验证一下端口是否已经彻底空闲
+      const isFree = await this.isPortFree(port);
+      return isFree;
+
+    } catch (e) {
+      logger.error('Failed to force release port in Pipeline', { port, error: (e as Error).message });
+      return false;
+    }
   }
 
   /**

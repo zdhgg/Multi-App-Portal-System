@@ -605,6 +605,7 @@ import { formatPortsDisplay, getAllPorts } from '@/types/app'
 import { useAuthStore } from '@/stores/auth'
 import { usePortalStore } from '@/stores/portal'
 import { useWebSocket } from '@/composables/useWebSocket'
+import { debugInfo, debugLog } from '@/utils/debugControl'
 
 // 命令类型定义
 type StartCommand = 'native' | 'pm2-prod' | string
@@ -770,7 +771,7 @@ onMounted(() => {
   // 建立 WebSocket 连接以接收实时状态更新
   connect({
     onConnect: () => {
-      console.log('管理页面WebSocket连接成功')
+      debugLog('管理页面WebSocket连接成功')
     },
     onMessage: (message) => {
       // 处理应用状态更新消息
@@ -826,7 +827,7 @@ const loadApps = async () => {
         ...app,
         isRunning: app.status === 'online'
       })) as AppWithUIState[]
-      console.log('加载应用列表成功:', apps.value)
+      debugLog('加载应用列表成功:', apps.value)
       applyFilters()
     } else {
       throw new Error(response.message || '获取应用列表失败')
@@ -848,7 +849,7 @@ const updateAppStatus = (appData: any) => {
   if (index !== -1) {
     // 合并更新应用数据
     apps.value[index] = { ...apps.value[index], ...appData }
-    console.log('应用状态已更新:', apps.value[index].name, appData)
+    debugLog('应用状态已更新:', apps.value[index].name, appData)
     // 重新应用过滤
     applyFilters()
   }
@@ -867,7 +868,7 @@ const updateAppsStatus = (appsData: any[]) => {
       }
     }
   })
-  console.log('批量应用状态已更新，共', appsData.length, '个应用')
+  debugLog('批量应用状态已更新，共', appsData.length, '个应用')
   // 重新应用过滤
   applyFilters()
 }
@@ -892,7 +893,7 @@ const loadTechStacks = async () => {
     
     // 使用工具函数提取技术栈选项
     availableTechStacks.value = extractTechStackOptions(appsToAnalyze)
-    console.log('技术栈选项加载成功:', availableTechStacks.value)
+    debugLog('技术栈选项加载成功:', availableTechStacks.value)
       
   } catch (error) {
     console.error('加载技术栈选项失败:', error)
@@ -1147,7 +1148,7 @@ const getTechStackValue = (app: AppWithUIState): string => {
 const checkIfPM2Process = async (app: AppWithUIState): Promise<boolean> => {
   // 方法1：检查数据库中的 deploymentMode
   if (app.deploymentMode === 'production') {
-    console.log('检测到生产模式标记，判定为PM2进程', { appName: app.name })
+    debugLog('检测到生产模式标记，判定为PM2进程', { appName: app.name })
     return true
   }
   
@@ -1164,7 +1165,7 @@ const checkIfPM2Process = async (app: AppWithUIState): Promise<boolean> => {
     
     const isRunning = pm2Process?.status === 'online'
     if (isRunning) {
-      console.log('在PM2进程列表中找到运行中的进程', { 
+      debugLog('在PM2进程列表中找到运行中的进程', { 
         appName: app.name, 
         processName: pm2Process.name,
         status: pm2Process.status
@@ -1375,7 +1376,7 @@ const toggleApp = async (app: AppWithUIState) => {
     if (isPM2Process) {
       // ✅ 使用PM2停止API
       const processName = app.name.toLowerCase().replace(/\s+/g, '-')
-      console.log('使用PM2停止进程', { appName: app.name, processName })
+      debugLog('使用PM2停止进程', { appName: app.name, processName })
       
       await pm2ApiService.stopProcess(processName)
       
@@ -1389,7 +1390,7 @@ const toggleApp = async (app: AppWithUIState) => {
       })
     } else {
       // ✅ 使用普通停止API
-      console.log('使用普通模式停止应用', { appName: app.name })
+      debugLog('使用普通模式停止应用', { appName: app.name })
       
       const response = await appsApiService.stopApp(app.id)
       if (response.success) {
@@ -1473,7 +1474,7 @@ const handleConfigClose = () => {
 // 🔧 启动前配置应用端口
 const configureAppPortsBeforeStart = async (app: AppWithUIState) => {
   try {
-    console.log('🔧 开始配置应用端口', { appId: app.id, name: app.name })
+    debugLog('🔧 开始配置应用端口', { appId: app.id, name: app.name })
 
     // 准备端口配置
     const ports: any = {}
@@ -1523,17 +1524,17 @@ const configureAppPortsBeforeStart = async (app: AppWithUIState) => {
 
     // 配置端口
     if (Object.keys(ports).length > 0) {
-      console.log('🔧 配置端口', { appId: app.id, ports })
+      debugLog('🔧 配置端口', { appId: app.id, ports })
 
       const response = await appConfigurationApiService.configureAppPorts(app.id, ports)
       if (response.success) {
-        console.log('✅ 端口配置成功', response.data)
+        debugLog('✅ 端口配置成功', response.data)
         ElMessage.success(`应用 ${app.name} 端口配置成功`)
       } else {
         console.warn('⚠️ 端口配置失败，继续使用默认配置', response)
       }
     } else {
-      console.log('ℹ️ 未找到端口信息，跳过端口配置', { appId: app.id })
+      debugLog('ℹ️ 未找到端口信息，跳过端口配置', { appId: app.id })
     }
 
   } catch (error) {
@@ -1728,7 +1729,7 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
     console.error(`${action}应用失败:`, error)
 
     // 🔍 调试：打印完整的错误对象
-    console.log('🔍 Error object:', {
+    debugLog('🔍 Error object:', {
       error,
       errorName: error?.name,
       errorMessage: error?.message,
@@ -1744,7 +1745,7 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
 
     // 🎯 优先检测 PM2 权限错误（在其他错误处理之前）
     if (error?.status === 503 && error?.details?.errorType === 'PM2_PERMISSION_ERROR') {
-      console.log('🎯 检测到 PM2 权限错误，显示修复对话框')
+      debugLog('🎯 检测到 PM2 权限错误，显示修复对话框')
       pm2ErrorMessage.value = error.details.message || error.message || 'PM2 在 Windows 上遇到权限问题'
       currentPM2ErrorApp.value = app
       pm2FixDialogVisible.value = true
@@ -1753,7 +1754,7 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
 
     // 🎯 检测环境变量验证错误
     if (error?.code === 'ENV_VALIDATION_FAILED' || error?.details?.errorType === 'ENV_VALIDATION_ERROR') {
-      console.log('🎯 检测到环境配置验证错误')
+      debugLog('🎯 检测到环境配置验证错误')
       const issues = error?.details?.issues || []
       const suggestions = error?.details?.suggestions || []
       const autoFixable = error?.details?.autoFixable !== false
@@ -1842,8 +1843,8 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
 
     // 🎯 检测全栈应用部署警告
     if (error?.code === 'FULLSTACK_DEPLOYMENT_WARNING') {
-      console.log('🎯 检测到全栈应用部署警告')
-      console.log('🔍 调试信息:', error?.details?._debug)
+      debugLog('🎯 检测到全栈应用部署警告')
+      debugLog('🔍 调试信息:', error?.details?._debug)
       const details = error?.details || {}
       const warnings = details.warnings || []
       const recommendations = details.recommendations || []
@@ -2045,7 +2046,7 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
         )
       } else if (errorMessage.includes('PM2') || errorMessage.includes('pm2')) {
         // 其他 PM2 相关错误 - 也显示修复对话框
-        console.log('🎯 检测到其他 PM2 错误，显示修复对话框')
+        debugLog('🎯 检测到其他 PM2 错误，显示修复对话框')
         pm2ErrorMessage.value = errorMessage
         currentPM2ErrorApp.value = app
         pm2FixDialogVisible.value = true
@@ -2066,7 +2067,7 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
 
       if (fullErrorMessage.includes('PM2') || fullErrorMessage.includes('pm2')) {
         // PM2 相关错误 - 显示修复对话框
-        console.log('🎯 检测到 PM2 错误（无 code 字段），显示修复对话框')
+        debugLog('🎯 检测到 PM2 错误（无 code 字段），显示修复对话框')
         pm2ErrorMessage.value = detailsMessage || errorMessage
         currentPM2ErrorApp.value = app
         pm2FixDialogVisible.value = true
@@ -2159,19 +2160,19 @@ const handleDirectStartAfterFix = async () => {
 
 // 处理错误重试
 const handleErrorRetry = (errorId: string) => {
-  console.log('重试错误:', errorId)
+  debugLog('重试错误:', errorId)
   errorDialogVisible.value = false
 }
 
 // 处理错误忽略
 const handleErrorDismiss = (errorId: string) => {
-  console.log('忽略错误:', errorId)
+  debugLog('忽略错误:', errorId)
   errorDialogVisible.value = false
 }
 
 // 处理错误操作
 const handleErrorAction = (action: string, params?: any) => {
-  console.log('执行错误操作:', action, params)
+  debugLog('执行错误操作:', action, params)
 }
 
 // 删除应用
@@ -2691,7 +2692,7 @@ const analyzeBuildConfiguration = async (app: AppWithUIState, retryCount = 0) =>
 
     if (canRetry) {
       // 显示重试提示
-      console.log(`构建分析失败，${1000 * (retryCount + 1)}ms 后进行第 ${retryCount + 1} 次重试...`)
+      debugLog(`构建分析失败，${1000 * (retryCount + 1)}ms 后进行第 ${retryCount + 1} 次重试...`)
       ElMessage.warning(`分析失败，正在重试 (${retryCount + 1}/${MAX_RETRIES})...`)
       
       // 指数退避重试
@@ -4417,3 +4418,5 @@ const getCategoryLabel = (category: string) => {
   }
 }
 </style>
+
+

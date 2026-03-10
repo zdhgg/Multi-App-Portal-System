@@ -2,6 +2,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
+import { isVerboseRouteLoggingEnabled } from '@/utils/debugControl'
 import '@/types/router' // 导入路由类型声明
 
 const router = createRouter({
@@ -218,7 +219,7 @@ router.beforeEach(async (to: any, from: any, next: any) => {
   const authStore = useAuthStore()
   
   // 调试：检查路由守卫中的store状态（仅开发环境）
-  if (import.meta.env.DEV) {
+  if (isVerboseRouteLoggingEnabled()) {
     console.log('路由守卫store状态:', {
       isInitialized: authStore.isInitialized,
       isAuthenticated: authStore.isAuthenticated,
@@ -232,9 +233,13 @@ router.beforeEach(async (to: any, from: any, next: any) => {
   if (!authStore.isInitialized) {
     // 理论上不应进入此分支，因为 main.ts 中已等待初始化完成。
     // 如果进入，说明存在时序问题，此时应等待初始化完成。
-    console.warn('路由守卫发现认证状态尚未初始化，正在等待...')
+    if (isVerboseRouteLoggingEnabled()) {
+      console.warn('路由守卫发现认证状态尚未初始化，正在等待...')
+    }
     await authStore.initializeAuth() // 作为安全兜底
-    console.log('认证状态初始化完成，继续导航。')
+    if (isVerboseRouteLoggingEnabled()) {
+      console.log('认证状态初始化完成，继续导航。')
+    }
   }
 
   // 使用路由守卫工具进行权限检查

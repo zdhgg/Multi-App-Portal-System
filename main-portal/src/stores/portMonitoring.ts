@@ -10,6 +10,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, reactive } from 'vue'
 import { portManagementApiService } from '@/services/portManagementApi'
+import { debugLog } from '@/utils/debugControl'
 
 export interface PortStatus {
   port: number
@@ -160,7 +161,7 @@ export const usePortMonitoringStore = defineStore('portMonitoring', () => {
   const fetchStatistics = async (force = false): Promise<void> => {
     // 检查缓存
     if (!force && cache.isValid('stats')) {
-      console.log('📦 使用缓存的统计数据')
+      debugLog('📦 使用缓存的统计数据')
       return
     }
     
@@ -191,7 +192,7 @@ export const usePortMonitoringStore = defineStore('portMonitoring', () => {
         // 更新缓存时间戳
         cache.statsTimestamp = Date.now()
         
-        console.log('📊 统计数据已更新:', quickStats)
+        debugLog('📊 统计数据已更新:', quickStats)
       }
     } catch (error) {
       console.error('获取统计数据失败:', error)
@@ -233,13 +234,13 @@ export const usePortMonitoringStore = defineStore('portMonitoring', () => {
    */
   const fetchOccupiedPorts = async (force = false): Promise<void> => {
     if (!force && cache.isValid('ports')) {
-      console.log('📦 使用缓存的端口列表')
+      debugLog('📦 使用缓存的端口列表')
       return
     }
     
     try {
       // 尝试从后台扫描服务获取数据
-      const bgResult = await portManagementApiService.getBackgroundScanStatus()
+      const bgResult = await portManagementApiService.getBackgroundScanStatus(force)
       
       if (bgResult.success && bgResult.data?.activePorts) {
         const activePorts = bgResult.data.activePorts
@@ -255,7 +256,7 @@ export const usePortMonitoringStore = defineStore('portMonitoring', () => {
         }))
         
         cache.portsTimestamp = Date.now()
-        console.log('📋 端口列表已更新:', occupiedPortsList.value.length, '个端口')
+        debugLog('📋 端口列表已更新:', occupiedPortsList.value.length, '个端口')
       }
     } catch (error) {
       console.error('获取端口列表失败:', error)
@@ -270,7 +271,7 @@ export const usePortMonitoringStore = defineStore('portMonitoring', () => {
     const { force = false } = options
     
     if (isScanning.value && !force) {
-      console.log('⏸️ 扫描正在进行中，跳过')
+      debugLog('⏸️ 扫描正在进行中，跳过')
       return
     }
 
@@ -385,7 +386,7 @@ export const usePortMonitoringStore = defineStore('portMonitoring', () => {
         await updateStatistics()
         
         // 记录操作日志
-        console.log(`端口 ${port} 已强制释放`, {
+        debugLog(`端口 ${port} 已强制释放`, {
           reason: options.reason,
           timestamp: new Date(),
           user: 'current-user' // 实际实现中获取当前用户
@@ -477,3 +478,5 @@ export const usePortMonitoringStore = defineStore('portMonitoring', () => {
     clearErrors
   }
 })
+
+

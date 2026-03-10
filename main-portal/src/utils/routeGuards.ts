@@ -2,6 +2,8 @@
 import type { RouteLocationNormalized, NavigationGuardNext } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
+import { isVerboseRouteLoggingEnabled } from './debugControl'
+import { hasStoredAccessToken } from './authStorage'
 
 // 权限检查结果类型
 export interface PermissionCheckResult {
@@ -281,11 +283,13 @@ export class RouteGuardUtils {
     result: PermissionCheckResult
   ): void {
     // 调试：检查用户对象结构
-    console.log('路由守卫用户对象检查:', {
-      hasUser: !!authStore.user,
-      userType: typeof authStore.user,
-      userKeys: authStore.user ? Object.keys(authStore.user) : []
-    })
+    if (isVerboseRouteLoggingEnabled()) {
+      console.log('路由守卫用户对象检查:', {
+        hasUser: !!authStore.user,
+        userType: typeof authStore.user,
+        userKeys: authStore.user ? Object.keys(authStore.user) : []
+      })
+    }
 
     // 安全地获取用户信息，处理Proxy对象
     const getUserInfo = () => {
@@ -319,7 +323,9 @@ export class RouteGuardUtils {
           }
         }
       } catch (error) {
-        console.warn('获取用户信息失败:', error)
+        if (isVerboseRouteLoggingEnabled()) {
+          console.warn('获取用户信息失败:', error)
+        }
       }
       
       return { username: 'anonymous', role: 'guest' }
@@ -347,7 +353,7 @@ export class RouteGuardUtils {
         isAuthenticated: authStore.isAuthenticated,
         hasUser: !!authStore.user,
         userActive: authStore.user?.is_active,
-        hasToken: !!localStorage.getItem('auth_token'),
+        hasToken: hasStoredAccessToken(),
         storeInitialized: authStore.isInitialized,
         storeUser: authStore.user,
         storeAuthState: authStore.isAuthenticated
@@ -355,16 +361,20 @@ export class RouteGuardUtils {
     }
 
     if (result.allowed) {
-      console.log('Route access granted:', logData)
+      if (isVerboseRouteLoggingEnabled()) {
+        console.log('Route access granted:', logData)
+      }
     } else {
-      console.warn('Route access denied:', logData)
+      if (isVerboseRouteLoggingEnabled()) {
+        console.warn('Route access denied:', logData)
+      }
 
       // 对于匿名用户被拒绝访问允许访客的路由，记录特殊警告
       if (logData.user === 'anonymous' && to.meta?.allowGuests === true) {
         console.error('CRITICAL: Anonymous user denied access to guest-allowed route!', {
           ...logData,
           possibleCauses: [
-            'Cached disabled user data in localStorage',
+            'Cached disabled user data in browser storage',
             'Authentication state initialization timing issue',
             'Permission check logic error'
           ]

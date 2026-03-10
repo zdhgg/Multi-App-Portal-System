@@ -1,3 +1,4 @@
+
 <template>
   <el-dialog
     v-model="visible"
@@ -11,7 +12,6 @@
     @closed="handleDialogClosed"
   >
     <div class="login-content">
-      <!-- 登录表单 -->
       <el-form
         ref="loginFormRef"
         :model="loginForm"
@@ -31,13 +31,22 @@
         </div>
 
         <el-form-item prop="username">
-          <el-input
-            v-model="loginForm.username"
-            placeholder="用户名"
-            :prefix-icon="User"
-            clearable
-            autocomplete="username"
-          />
+          <div class="username-field">
+            <el-autocomplete
+              v-model="loginForm.username"
+              class="username-autocomplete"
+              :fetch-suggestions="queryUsernameSuggestions"
+              placeholder="用户名"
+              clearable
+              autocomplete="username"
+              :trigger-on-focus="recentUsernameSuggestions.length > 0"
+              @select="handleUsernameSelect"
+            >
+              <template #prefix>
+                <el-icon><User /></el-icon>
+              </template>
+            </el-autocomplete>
+          </div>
         </el-form-item>
 
         <el-form-item prop="password">
@@ -52,32 +61,33 @@
           />
         </el-form-item>
 
-        <el-form-item>
-          <div class="login-options">
-            <el-checkbox v-model="loginForm.rememberMe">
-              记住我
-            </el-checkbox>
+        <el-form-item class="preference-form-item">
+          <div class="login-preferences">
+            <div class="login-preferences__header">
+              <span class="login-preferences__title">登录偏好</span>
+              <span v-if="recentUsernameSuggestions.length > 0" class="login-preferences__meta">
+                最近用户名 {{ recentUsernameSuggestions.length }} 条
+              </span>
+            </div>
+            <div class="login-preferences__row">
+              <el-checkbox v-model="loginForm.rememberMe">
+                记住我
+              </el-checkbox>
+              <el-button
+                v-if="recentUsernameSuggestions.length > 0"
+                link
+                type="primary"
+                @click="handleClearUsernameHistory"
+              >
+                清空历史用户名
+              </el-button>
+            </div>
+            <p class="login-preferences__hint">
+              仅记录成功登录的用户名，并记住你上次的勾选选择。
+            </p>
           </div>
         </el-form-item>
-
-        <!-- 登录按钮移到footer中，避免重复触发 -->
       </el-form>
-
-      <!-- 提示信息 -->
-      <div class="login-tips">
-        <el-alert
-          v-if="showDefaultTip"
-          title="默认管理员账户"
-          type="info"
-          :closable="false"
-          show-icon
-        >
-          <template #default>
-            <p>用户名: <code>admin</code></p>
-            <p>密码: <code>admin123</code></p>
-          </template>
-        </el-alert>
-      </div>
     </div>
 
     <template #footer>
@@ -100,23 +110,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { User, Lock } from '@element-plus/icons-vue'
+import { Lock, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
-import { logLoginStart, logLoginSuccess, logLoginError } from '@/utils/loginDebug'
+import { logLoginError, logLoginStart, logLoginSuccess } from '@/utils/loginDebug'
+import {
+  clearRecentLoginUsernames,
+  readRecentLoginUserSuggestions,
+  saveRecentLoginUsername,
+  type RecentLoginUserSuggestion
+} from '@/utils/recentLoginUsers'
+import { readRememberMePreference, saveRememberMePreference } from '@/utils/rememberMePreference'
 
-// Props
 interface Props {
   modelValue: boolean
-  showDefaultTip?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  showDefaultTip: true
-})
+const props = defineProps<Props>()
 
-// Emits
 interface Emits {
   (e: 'update:modelValue', value: boolean): void
   (e: 'login-success'): void
@@ -124,25 +136,22 @@ interface Emits {
 }
 
 const emit = defineEmits<Emits>()
-
-// Store
 const authStore = useAuthStore()
 
-// 响应式数据
 const loginFormRef = ref<FormInstance>()
 const visible = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value)
 })
 
-// 登录表单
 const loginForm = reactive({
   username: '',
   password: '',
-  rememberMe: false
+  rememberMe: readRememberMePreference()
 })
 
-// 表单验证规则
+const recentUsernameSuggestions = ref<RecentLoginUserSuggestion[]>(readRecentLoginUserSuggestions())
+
 const loginRules: FormRules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
@@ -154,20 +163,52 @@ const loginRules: FormRules = {
   ]
 }
 
-// 计算属性
 const isFormValid = computed(() => {
-  return loginForm.username.trim().length >= 3 && 
-         loginForm.password.length >= 6
+  return loginForm.username.trim().length >= 3 && loginForm.password.length >= 6
 })
 
-// 防重复提交标志
 const isSubmitting = ref(false)
 
-// 方法
+
+const syncRememberMePreference = () => {
+  loginForm.rememberMe = readRememberMePreference()
+}
+
+const refreshRecentUsernameSuggestions = () => {
+  recentUsernameSuggestions.value = readRecentLoginUserSuggestions()
+}
+
+const queryUsernameSuggestions = (
+  queryString: string,
+  cb: (results: RecentLoginUserSuggestion[]) => void
+) => {
+  const normalizedQuery = queryString.trim().toLowerCase()
+
+  if (!normalizedQuery) {
+    cb(recentUsernameSuggestions.value)
+    return
+  }
+
+  cb(
+    recentUsernameSuggestions.value.filter(item =>
+      item.value.toLowerCase().includes(normalizedQuery)
+    )
+  )
+}
+
+const handleUsernameSelect = (item: RecentLoginUserSuggestion) => {
+  loginForm.username = item.value
+}
+
+const handleClearUsernameHistory = () => {
+  clearRecentLoginUsernames()
+  refreshRecentUsernameSuggestions()
+}
+
+
 const handleLogin = async () => {
   if (!loginFormRef.value) return
 
-  // 防重复提交检查
   if (isSubmitting.value || authStore.isLoading) {
     console.warn('登录请求正在处理中，忽略重复请求')
     return
@@ -176,7 +217,6 @@ const handleLogin = async () => {
   try {
     isSubmitting.value = true
 
-    // 验证表单
     const isValid = await loginFormRef.value.validate().catch(() => false)
     if (!isValid) return
 
@@ -186,18 +226,15 @@ const handleLogin = async () => {
       rememberMe: loginForm.rememberMe
     }
 
-    // 记录登录开始（UI层）
     logLoginStart(credentials, 'LoginDialog')
-
-    // 执行登录（不在authStore中重复记录）
-    const success = await authStore.login(credentials, false) // 传递skipLogging参数
+    const success = await authStore.login(credentials, false)
 
     if (success) {
+      saveRecentLoginUsername(credentials.username, credentials.rememberMe === true)
+      refreshRecentUsernameSuggestions()
       logLoginSuccess('LoginDialog')
       visible.value = false
       emit('login-success')
-
-      // 清空表单
       resetForm()
     }
   } catch (error: any) {
@@ -223,24 +260,29 @@ const resetForm = () => {
   if (loginFormRef.value) {
     loginFormRef.value.resetFields()
   }
-  
-  // 重置表单数据
+
   Object.assign(loginForm, {
     username: '',
     password: '',
-    rememberMe: false
+    rememberMe: readRememberMePreference()
   })
 }
 
-// 监听弹窗显示状态
+watch(
+  () => loginForm.rememberMe,
+  (rememberMe) => {
+    saveRememberMePreference(rememberMe)
+  }
+)
+
 watch(visible, (newValue) => {
   if (newValue) {
-    // 弹窗打开时，聚焦到用户名输入框
+    refreshRecentUsernameSuggestions()
+    syncRememberMePreference()
+
     setTimeout(() => {
-      const usernameInput = document.querySelector('.el-input__inner[placeholder="用户名"]') as HTMLInputElement
-      if (usernameInput) {
-        usernameInput.focus()
-      }
+      const usernameInput = document.querySelector('.el-input__inner[placeholder="用户名"]') as HTMLInputElement | null
+      usernameInput?.focus()
     }, 100)
   }
 })
@@ -280,25 +322,59 @@ watch(visible, (newValue) => {
   align-items: center;
 }
 
-.login-tips {
-  margin-top: 1.5rem;
+.preference-form-item :deep(.el-form-item__content) {
+  display: block;
 }
 
-.login-tips :deep(.el-alert__content) {
-  padding: 0;
+.login-preferences {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e4e7ed;
+  box-sizing: border-box;
 }
 
-.login-tips p {
-  margin: 0.25rem 0;
-  font-size: 0.9rem;
+.login-preferences__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
 }
 
-.login-tips code {
-  background: #f5f7fa;
-  color: #409eff;
-  padding: 0.2rem 0.4rem;
-  border-radius: 3px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+.login-preferences__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #303133;
+}
+
+.login-preferences__meta {
+  font-size: 0.8rem;
+  color: #909399;
+}
+
+.login-preferences__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.login-preferences__hint {
+  margin: 0.6rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #909399;
+}
+
+.username-field {
+  width: 100%;
+}
+
+.username-autocomplete {
+  width: 100%;
 }
 
 .dialog-footer {
@@ -307,19 +383,16 @@ watch(visible, (newValue) => {
   gap: 1rem;
 }
 
-/* 响应式设计 */
 @media (max-width: 768px) {
   .login-content {
     padding: 0 1rem;
   }
-  
+
   .login-header h3 {
     font-size: 1.3rem;
   }
 }
 
-/* 自定义样式覆盖 - 修复居中和层级问题 */
-/* 只对显示中的模态框应用样式，避免影响隐藏的元素 */
 :deep(.el-overlay.el-modal-dialog:not([style*="display: none"])) {
   position: fixed !important;
   top: 0 !important;
@@ -335,96 +408,5 @@ watch(visible, (newValue) => {
 :deep(.el-overlay-dialog) {
   position: relative !important;
   margin: 0 !important;
-}
-
-:deep(.el-dialog) {
-  border-radius: 12px;
-  position: relative !important;
-  top: auto !important;
-  left: auto !important;
-  transform: none !important;
-  margin: 0 !important;
-  width: 420px !important;
-}
-
-/* 确保隐藏的遮罩层真正隐藏 */
-:deep(.el-overlay[style*="display: none"]) {
-  display: none !important;
-  visibility: hidden !important;
-}
-
-/* 备用选择器，确保兼容性 */
-:deep(.el-overlay) {
-  z-index: 99998 !important;
-}
-
-:deep(.el-dialog__wrapper) {
-  z-index: 99999 !important;
-}
-
-:deep(.el-dialog__header) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 1.5rem;
-  border-radius: 12px 12px 0 0;
-}
-
-:deep(.el-dialog__title) {
-  color: white;
-  font-weight: 600;
-  font-size: 1.2rem;
-}
-
-:deep(.el-dialog__headerbtn .el-dialog__close) {
-  color: white;
-  font-size: 1.2rem;
-}
-
-:deep(.el-dialog__headerbtn:hover .el-dialog__close) {
-  color: #f0f0f0;
-}
-
-:deep(.el-dialog__body) {
-  padding: 2rem 2rem 1rem 2rem;
-}
-
-:deep(.el-dialog__footer) {
-  padding: 1rem 2rem 2rem 2rem;
-  border-top: 1px solid #ebeef5;
-}
-
-:deep(.el-form-item) {
-  margin-bottom: 1.5rem;
-}
-
-:deep(.el-input--large .el-input__inner) {
-  height: 48px;
-  line-height: 48px;
-}
-
-:deep(.el-button--large) {
-  height: 48px;
-  font-size: 1rem;
-}
-
-/* 加载状态样式 */
-:deep(.el-button.is-loading) {
-  position: relative;
-}
-
-/* 焦点样式 */
-:deep(.el-input.is-focus .el-input__inner) {
-  border-color: #409eff;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
-}
-
-/* 错误状态样式 */
-:deep(.el-form-item.is-error .el-input__inner) {
-  border-color: #f56c6c;
-}
-
-:deep(.el-form-item__error) {
-  font-size: 0.8rem;
-  margin-top: 0.5rem;
 }
 </style>

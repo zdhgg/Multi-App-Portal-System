@@ -46,10 +46,12 @@ import { Refresh, Delete, Setting } from '@element-plus/icons-vue'
 import PortManager from '@/components/PortManager.vue'
 import PortConfigDrawer from '@/components/port-management/PortConfigDrawer.vue'
 import { usePortMonitoringStore } from '@/stores/portMonitoring'
+import { getStoredAccessToken } from '@/utils/authStorage'
 
 const portStore = usePortMonitoringStore()
 const showConfigDrawer = ref(false)
 const portManagerRef = ref<InstanceType<typeof PortManager> | null>(null)
+let statisticsRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 const loading = reactive({
   refreshAll: false,
@@ -61,10 +63,6 @@ const refreshAll = async () => {
   loading.refreshAll = true
   try {
     await portStore.refreshAll(true)
-    if (portManagerRef.value?.refreshPortStatus) {
-      await portManagerRef.value.refreshPortStatus(false)
-    }
-    ElMessage.success('数据已刷新')
   } catch (error) {
     console.error('刷新失败:', error)
     ElMessage.error('刷新失败')
@@ -77,7 +75,7 @@ const refreshAll = async () => {
 const quickCleanup = async () => {
   loading.quickCleanup = true
   try {
-    const token = localStorage.getItem('auth_token')
+    const token = getStoredAccessToken()
     const response = await fetch('/api/v2/config/ports/cleanup/zombies', {
       method: 'POST',
       headers: {
@@ -113,12 +111,16 @@ onMounted(async () => {
   await portStore.fetchStatistics()
   
   // 定时更新（每30秒）
-  const timer = setInterval(() => {
+  statisticsRefreshTimer = setInterval(() => {
     portStore.fetchStatistics()
   }, 30000)
-  
-  // 组件卸载时清理
-  onUnmounted(() => clearInterval(timer))
+})
+
+onUnmounted(() => {
+  if (statisticsRefreshTimer) {
+    clearInterval(statisticsRefreshTimer)
+    statisticsRefreshTimer = null
+  }
 })
 </script>
 

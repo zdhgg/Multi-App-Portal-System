@@ -4,6 +4,13 @@ import { ElMessage } from 'element-plus'
 import { authApiService } from '@/services/authApi'
 import { logLoginStart, logLoginSuccess, logLoginError } from '@/utils/loginDebug'
 import { TokenRefreshManager } from './TokenRefreshManager'
+import {
+  clearStoredAuthData,
+  readStoredAuthData,
+  saveStoredAuthData,
+  updateStoredTokens,
+  updateStoredUserData
+} from '@/utils/authStorage'
 
 // 用户信息接口
 export interface User {
@@ -49,9 +56,6 @@ export interface ApiResponse<T = any> {
   message?: string
 }
 
-const TOKEN_KEY = 'auth_token'
-const REFRESH_TOKEN_KEY = 'refresh_token'
-const USER_KEY = 'user_info'
 
 export const useAuthStore = defineStore('auth', () => {
   // 状态
@@ -74,116 +78,120 @@ export const useAuthStore = defineStore('auth', () => {
   const userDisplayName = computed(() => user.value?.username || '访客')
 
 
-  // 保存认证信息到本地存储
-  const saveAuthData = (tokens: AuthTokens, userData: User) => {
-    accessToken.value = tokens.accessToken
-    refreshToken.value = tokens.refreshToken
-    user.value = userData
+// 保存认证信息到浏览器存储
+const saveAuthData = (tokens: AuthTokens, userData: User, rememberMe = false) => {
+  accessToken.value = tokens.accessToken
+  refreshToken.value = tokens.refreshToken
+  user.value = userData
+  tokenExpiresAt.value = new Date(Date.now() + tokens.expiresIn * 1000)
 
-    // 计算token过期时间
-    tokenExpiresAt.value = new Date(Date.now() + tokens.expiresIn * 1000)
+  saveStoredAuthData(
+    {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken
+    },
+    userData,
+    rememberMe
+  )
+}
 
-    // 保存到localStorage
-    localStorage.setItem(TOKEN_KEY, tokens.accessToken)
-    localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken)
-    localStorage.setItem(USER_KEY, JSON.stringify(userData))
-  }
+// 清除认证信息
+const clearAuthData = () => {
+  stopTokenRefreshTimer()
+  tokenRefreshManager.reset()
+  accessToken.value = null
+  refreshToken.value = null
+  user.value = null
+  tokenExpiresAt.value = null
 
-  // 清除认证信息
-  const clearAuthData = () => {
-    accessToken.value = null
-    refreshToken.value = null
-    user.value = null
-    tokenExpiresAt.value = null
+  clearStoredAuthData()
+}
 
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(REFRESH_TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
-  }
+// 从浏览器存储恢复认证信息
+const restoreAuthData = async (): Promise<boolean> => {
+  try {
+    const storedAuthData = readStoredAuthData<User>()
+    const token = storedAuthData.accessToken
+    const refreshTokenValue = storedAuthData.refreshToken
+    const userData = storedAuthData.userData
 
-  // 从本地存储恢复认证信息
-  const restoreAuthData = async (): Promise<boolean> => {
-    try {
-      const token = localStorage.getItem(TOKEN_KEY)
-      const refreshTokenValue = localStorage.getItem(REFRESH_TOKEN_KEY)
-      const userDataStr = localStorage.getItem(USER_KEY)
-
-      if (token && refreshTokenValue && userDataStr) {
-        const userData = JSON.parse(userDataStr)
-
-        // 检查恢复的用户数据是否有效
-        if (!userData.is_active) {
-          console.warn('恢复的用户账户已被禁用，清除认证数据')
-          clearAuthData()
-          return false
-        }
-
-        // 先设置store状态，确保UI立即反映认证状态
-        accessToken.value = token
-        refreshToken.value = refreshTokenValue
-        user.value = userData
-
-        // 兼容不同token格式的验证
-        try {
-          // 检查是否为JWT格式（三个部分用点分隔）
-          const tokenParts = token.split('.')
-          if (tokenParts.length === 3) {
-            // 标准JWT token验证
-            try {
-              const payload = JSON.parse(atob(tokenParts[1]))
-              const now = Math.floor(Date.now() / 1000)
-              
-              // 如果token已过期超过1小时，才清除状态
-              if (payload.exp && (now - payload.exp) > 3600) {
-                console.warn('JWT Token已过期超过1小时，清除认证数据')
-                clearAuthData()
-                return false
-              }
-            } catch (jwtError) {
-              console.warn('JWT Token格式无效，清除认证数据')
-              clearAuthData()
-              return false
-            }
-          } else if (token.startsWith('mock-jwt-token-')) {
-            // 检查是否为生产环境
-            if (import.meta.env.PROD) {
-              console.error('生产环境不允许使用Mock Token')
-              clearAuthData()
-              return false
-            }
-
-            // 开发环境：检查是否过旧（超过24小时）
-            const timestampMatch = token.match(/mock-jwt-token-\w+-(\d+)/)
-            if (timestampMatch) {
-              const tokenTimestamp = parseInt(timestampMatch[1])
-              const now = Date.now()
-              const tokenAge = now - tokenTimestamp
-
-              if (tokenAge > 24 * 60 * 60 * 1000) {
-                console.warn('Mock Token已过期，清除认证数据')
-                clearAuthData()
-                return false
-              }
-            }
-            console.warn('使用Mock Token（仅限开发环境）')
-          } else {
-            // 其他格式的token，暂时允许通过但记录警告
-            console.warn('未知token格式，允许通过:', token.substring(0, 20) + '...')
-          }
-        } catch (tokenError) {
-          console.warn('Token验证过程出错，清除认证数据:', tokenError)
-          clearAuthData()
-          return false
-        }
-
-        return true
+    if (token && refreshTokenValue && userData) {
+      if (!userData.is_active) {
+        console.warn('恢复的用户账户已被禁用，清除认证数据')
+        clearAuthData()
+        return false
       }
-    } catch (error) {
-      console.error('恢复认证数据失败:', error)
+
+      accessToken.value = token
+      refreshToken.value = refreshTokenValue
+      user.value = userData
+      tokenExpiresAt.value = null
+
+      try {
+        const tokenParts = token.split('.')
+        if (tokenParts.length === 3) {
+          try {
+            const payload = JSON.parse(atob(tokenParts[1]))
+            const now = Math.floor(Date.now() / 1000)
+
+            if (payload.exp) {
+              tokenExpiresAt.value = new Date(payload.exp * 1000)
+            }
+
+            if (payload.exp && (now - payload.exp) > 3600) {
+              console.warn('JWT Token已过期超过1小时，清除认证数据')
+              clearAuthData()
+              return false
+            }
+          } catch (jwtError) {
+            console.warn('JWT Token格式无效，清除认证数据')
+            clearAuthData()
+            return false
+          }
+        } else if (token.startsWith('mock-jwt-token-')) {
+          if (import.meta.env.PROD) {
+            console.error('生产环境不允许使用Mock Token')
+            clearAuthData()
+            return false
+          }
+
+          const timestampMatch = token.match(/mock-jwt-token-\w+-(\d+)/)
+          if (timestampMatch) {
+            const tokenTimestamp = parseInt(timestampMatch[1])
+            const now = Date.now()
+            const tokenAge = now - tokenTimestamp
+            tokenExpiresAt.value = new Date(tokenTimestamp + 24 * 60 * 60 * 1000)
+
+            if (tokenAge > 24 * 60 * 60 * 1000) {
+              console.warn('Mock Token已过期，清除认证数据')
+              clearAuthData()
+              return false
+            }
+          }
+          console.warn('使用Mock Token（仅限开发环境）')
+        } else {
+          console.warn('未知token格式，允许通过:', token.substring(0, 20) + '...')
+        }
+      } catch (tokenError) {
+        console.warn('Token验证过程出错，清除认证数据:', tokenError)
+        clearAuthData()
+        return false
+      }
+
+      startTokenRefreshTimer()
+      return true
+    }
+
+    if (token || refreshTokenValue || storedAuthData.userDataRaw) {
+      console.warn('检测到不完整的认证缓存，清除认证数据')
       clearAuthData()
     }
-    return false
+  } catch (error) {
+    console.error('恢复认证数据失败:', error)
+    clearAuthData()
   }
+  return false
+}
 
   // 用户登录
   const login = async (credentials: LoginCredentials, skipLogging: boolean = false): Promise<boolean> => {
@@ -204,7 +212,8 @@ export const useAuthStore = defineStore('auth', () => {
       const response = await authApiService.login(credentials)
 
       if (response.success && response.data) {
-        saveAuthData(response.data.tokens, response.data.user)
+        saveAuthData(response.data.tokens, response.data.user, credentials.rememberMe === true)
+        startTokenRefreshTimer()
         if (!skipLogging) {
           logLoginSuccess('authStore')
         }
@@ -262,6 +271,7 @@ export const useAuthStore = defineStore('auth', () => {
       
       if (response.success && response.data) {
         user.value = response.data
+        updateStoredUserData(response.data)
         return true
       } else {
         // 只有明确的认证错误才清除状态，其他错误保持状态
@@ -276,43 +286,46 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // 刷新访问token（使用 TokenRefreshManager 防止竞态）
-  const refreshAccessToken = async (): Promise<boolean> => {
-    if (!refreshToken.value) {
-      return false
-    }
-
-    return await tokenRefreshManager.refreshToken(
-      refreshToken.value,
-      // 成功回调
-      (tokens: AuthTokens) => {
-        accessToken.value = tokens.accessToken
-        tokenExpiresAt.value = new Date(Date.now() + tokens.expiresIn * 1000)
-        localStorage.setItem(TOKEN_KEY, tokens.accessToken)
-      },
-      // 失败回调
-      () => {
-        clearAuthData()
-      }
-    )
+// 刷新访问token（使用 TokenRefreshManager 防止竞态）
+const refreshAccessToken = async (): Promise<boolean> => {
+  if (!refreshToken.value) {
+    return false
   }
 
-  // 获取用户信息
-  const fetchUserProfile = async (): Promise<User | null> => {
-    try {
-      const response = await authApiService.getUserProfile()
-      
-      if (response.success && response.data) {
-        user.value = response.data
-        localStorage.setItem(USER_KEY, JSON.stringify(response.data))
-        return response.data
-      }
-      return null
-    } catch (error) {
-      console.error('获取用户信息失败:', error)
-      return null
+  return await tokenRefreshManager.refreshToken(
+    refreshToken.value,
+    (tokens: AuthTokens) => {
+      accessToken.value = tokens.accessToken
+      refreshToken.value = tokens.refreshToken
+      tokenExpiresAt.value = new Date(Date.now() + tokens.expiresIn * 1000)
+      updateStoredTokens({
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken
+      })
+      startTokenRefreshTimer()
+    },
+    () => {
+      clearAuthData()
     }
+  )
+}
+
+// 获取用户信息
+const fetchUserProfile = async (): Promise<User | null> => {
+  try {
+    const response = await authApiService.getUserProfile()
+
+    if (response.success && response.data) {
+      user.value = response.data
+      updateStoredUserData(response.data)
+      return response.data
+    }
+    return null
+  } catch (error) {
+    console.error('获取用户信息失败:', error)
+    return null
   }
+}
 
   // 修改密码
   const changePassword = async (

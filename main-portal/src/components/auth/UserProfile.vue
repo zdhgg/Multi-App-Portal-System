@@ -260,7 +260,7 @@ const showLoginDialog = () => {
 }
 
 const handleLoginSuccess = () => {
-  ElMessage.success('登录成功！')
+  // 登录成功提示由 authStore 统一处理，避免重复弹窗
 }
 
 const handleLoginCancel = () => {

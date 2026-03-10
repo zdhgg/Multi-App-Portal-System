@@ -310,12 +310,16 @@ const handleReleasePort = async () => {
   if (result === 'confirm') {
     releasing.value = true
     try {
-      await portManagementApiService.releasePort(portData.value.port)
+      const response = await portManagementApiService.releasePort(portData.value.port)
+      if (!response.success) {
+        throw new Error(response.error || response.message || '端口释放失败')
+      }
+
       ElMessage.success('端口释放成功')
       emit('port-released', portData.value.port)
       await loadPortData() // 刷新数据
     } catch (error) {
-      ElMessage.error('端口释放失败')
+      ElMessage.error(error instanceof Error ? error.message : '端口释放失败')
     } finally {
       releasing.value = false
     }

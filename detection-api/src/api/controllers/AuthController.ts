@@ -12,7 +12,7 @@ import { promises as fs } from 'fs'
 import { join } from 'path'
 import { logger } from '../../utils/logger'
 import { PasswordUtils } from '../../utils/passwordUtils'
-import { generateToken, generateRefreshToken, verifyToken } from '../../utils/jwt.js'
+import { ACCESS_TOKEN_EXPIRES_IN_SECONDS, generateToken, generateRefreshToken, verifyToken } from '../../utils/jwt.js'
 import { authSecurityEnhancer } from '../../core/security/AuthSecurityEnhancer.js'
 import { requireAuth, requireAdmin } from '../../middleware/authMiddleware.js'
 import { createLoginRateLimiter, getClientIp } from '../../middleware/rateLimit.js'
@@ -381,7 +381,7 @@ export class AuthController {
       const tokens = {
         accessToken,
         refreshToken,
-        expiresIn: rememberMe ? 7 * 24 * 60 * 60 : 60 * 60, // 7天或1小时
+        expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
         tokenType: 'Bearer'
       }
 
@@ -414,7 +414,7 @@ export class AuthController {
         userAgent: sessionInfo.userAgent
       })
 
-      logger.info('用户登录成功', { username, role: user.role, sessionId })
+      logger.info('用户登录成功', { username, role: user.role, sessionId, rememberMe })
 
       res.json({
         success: true,
@@ -672,7 +672,7 @@ export class AuthController {
         data: {
           accessToken: newAccessToken,
           refreshToken: newRefreshToken,
-          expiresIn: 60 * 60, // 1小时
+          expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
           tokenType: 'Bearer'
         }
       })

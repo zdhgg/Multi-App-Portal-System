@@ -51,7 +51,7 @@ $requiredPaths = @(
     @{ Path = "detection-api\node_modules"; Desc = "Backend dependencies" },
     @{ Path = "detection-api\src\server.ts"; Desc = "Backend source" },
     @{ Path = "main-portal\dist\index.html"; Desc = "Frontend build" },
-    @{ Path = "ecosystem-prod-tsx.config.js"; Desc = "PM2 config" },
+    @{ Path = "ecosystem-prod-loader.config.js"; Desc = "PM2 config" },
     @{ Path = "start-production.ps1"; Desc = "Start script" }
 )
 

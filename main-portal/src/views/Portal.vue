@@ -111,7 +111,7 @@
               show-icon
             >
               <template #default>
-                <span>需要管理员权限才能添加和管理应用</span>
+                <span>{{ guestNeedsLoginForPortalData ? '当前环境已关闭匿名公共数据访问，请先登录查看应用列表' : '需要管理员权限才能添加和管理应用' }}</span>
               </template>
             </el-alert>
           </div>
@@ -176,7 +176,7 @@
             最后更新: {{ formatTime(lastUpdateTime) }}
           </span>
           <span class="connection-status" :class="{ connected: wsConnected }">
-            {{ wsConnected ? '实时连接' : '连接断开' }}
+            {{ connectionStatusText }}
           </span>
         </div>
       </div>
@@ -192,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 // @ts-ignore - TypeScript 缓存问题，useRoute 在其他文件中可正常导入
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -202,9 +202,11 @@ import AppDetailDialog from '@/components/portal/AppDetailDialog.vue'
 import UserProfile from '@/components/auth/UserProfile.vue'
 import { usePortalStore } from '@/stores/portal'
 import { useAuthStore } from '@/stores/auth'
+import { publicApiService } from '@/services/publicApi'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { getAppAccessUrl, resolveAppProtocol } from '@/types/app'
 import { generateAppAccessUrl } from '@/utils/networkUtils'
+import { debugLog, debugWarn } from '@/utils/debugControl'
 
 const portalStore = usePortalStore()
 const authStore = useAuthStore()
@@ -229,6 +231,14 @@ const loading = reactive({
 const apps = computed(() => portalStore.apps)
 const stats = computed(() => portalStore.stats)
 const wsConnected = computed(() => isConnected.value)
+const guestNeedsLoginForPortalData = computed(() => authStore.isGuest && portalStore.guestAccessRestricted)
+const connectionStatusText = computed(() => {
+  if (authStore.isGuest) {
+    return guestNeedsLoginForPortalData.value ? '登录后可实时更新' : '访客模式'
+  }
+
+  return wsConnected.value ? '实时连接' : '连接断开'
+})
 
 const systemStatusClass = computed(() => {
   if (stats.value.running === 0) return 'status-error'
@@ -267,6 +277,10 @@ const filteredApps = computed(() => {
 
 // 空状态标题
 const getEmptyStateTitle = computed(() => {
+  if (guestNeedsLoginForPortalData.value) {
+    return '登录后可查看应用'
+  }
+
   if (searchQuery.value) {
     return '未找到匹配的应用'
   }
@@ -280,6 +294,10 @@ const getEmptyStateTitle = computed(() => {
 
 // 空状态描述
 const getEmptyStateDescription = computed(() => {
+  if (guestNeedsLoginForPortalData.value) {
+    return '当前门户已关闭匿名公共数据访问，请先登录后再查看应用列表'
+  }
+
   if (searchQuery.value) {
     return '尝试调整搜索条件或查看全部应用'
   }
@@ -293,6 +311,12 @@ const getEmptyStateDescription = computed(() => {
 
 // 方法
 const refreshApps = async () => {
+  if (authStore.isGuest && !publicApiService.canCurrentUserAccessPublicApi()) {
+    showGuestHint.value = true
+    ElMessage.info('当前环境需要登录后才能查看应用列表')
+    return
+  }
+
   loading.refresh = true
   try {
     await portalStore.loadApps()
@@ -328,15 +352,15 @@ const handleAppAccess = (app: any) => {
     if (app.deploymentMode === 'production') {
       // 生产模式 → 后端端口
       targetPort = app.backend_port
-      console.log('🎯 访问应用-生产模式:', { name: app.name, port: targetPort, mode: 'PM2' })
+      debugLog('🎯 访问应用-生产模式:', { name: app.name, port: targetPort, mode: 'PM2' })
     } else if (app.deploymentMode === 'development') {
       // 开发模式 → 前端端口
       targetPort = app.frontend_port
-      console.log('🎯 访问应用-开发模式:', { name: app.name, port: targetPort, mode: 'DEV' })
+      debugLog('🎯 访问应用-开发模式:', { name: app.name, port: targetPort, mode: 'DEV' })
     } else {
       // 运行中但模式未知 → 使用前端端口
       targetPort = app.frontend_port
-      console.log('🎯 访问应用-未知模式:', { name: app.name, port: targetPort })
+      debugLog('🎯 访问应用-未知模式:', { name: app.name, port: targetPort })
     }
   }
   
@@ -351,7 +375,7 @@ const handleAppAccess = (app: any) => {
       fallbackToLocalhost: true,
       validateUrl: true
     })
-    console.log('🌐 生成访问URL:', { port: targetPort, protocol: preferredProtocol, url })
+    debugLog('🌐 生成访问URL:', { port: targetPort, protocol: preferredProtocol, url })
   } else {
     // 降级：使用统一的URL获取逻辑
     url = getAppAccessUrl(app)
@@ -429,7 +453,7 @@ const handleQueryParams = () => {
 const setupWebSocket = () => {
   connect({
     onConnect: () => {
-      console.log('门户WebSocket连接成功')
+      debugLog('门户WebSocket连接成功')
     },
     onMessage: (message) => {
       if (message.type === 'portal_app_status') {
@@ -440,7 +464,7 @@ const setupWebSocket = () => {
         lastUpdateTime.value = new Date()
       } else if (message.type === 'app_status_changed') {
         // 🔔 处理PM2启动/停止的实时状态更新
-        console.log('收到应用状态变更通知:', message.payload)
+        debugLog('收到应用状态变更通知:', message.payload)
         
         // 🎯 立即更新应用状态（包括 deploymentMode）
         const payload = message.payload
@@ -479,12 +503,49 @@ const setupWebSocket = () => {
   }, 1000)
 }
 
+
+const reloadPortalForAuthChange = async (isAuthenticated: boolean) => {
+  if (loading.initial || !authStore.isInitialized) {
+    return
+  }
+
+  loading.refresh = true
+
+  try {
+    if (!isAuthenticated) {
+      disconnect()
+    }
+
+    await portalStore.loadApps()
+    lastUpdateTime.value = new Date()
+
+    if (isAuthenticated) {
+      setupWebSocket()
+    }
+  } catch (error) {
+    console.error('认证状态变更后刷新门户数据失败:', error)
+  } finally {
+    loading.refresh = false
+  }
+}
+
+watch(
+  () => authStore.isAuthenticated,
+  async (isAuthenticated, previousAuthenticated) => {
+    if (previousAuthenticated === undefined || previousAuthenticated === isAuthenticated) {
+      return
+    }
+
+    await reloadPortalForAuthChange(isAuthenticated)
+  }
+)
+
 // 生命周期
 onMounted(async () => {
   try {
     // **关键修复：等待认证状态初始化完成**
     if (!authStore.isInitialized) {
-      console.log('等待认证状态初始化完成...')
+      debugLog('等待认证状态初始化完成...')
       // 等待认证初始化完成
       let retryCount = 0
       while (!authStore.isInitialized && retryCount < 50) {
@@ -493,9 +554,9 @@ onMounted(async () => {
       }
       
       if (!authStore.isInitialized) {
-        console.warn('认证状态初始化超时，继续执行')
+        debugWarn('认证状态初始化超时，继续执行')
       } else {
-        console.log('认证状态初始化完成')
+        debugLog('认证状态初始化完成')
       }
     }
     
@@ -511,8 +572,10 @@ onMounted(async () => {
     // 加载应用数据
     await portalStore.loadApps()
     
-    // 建立WebSocket连接
-    setupWebSocket()
+    // 访客模式下不建立实时连接，避免无意义的认证错误
+    if (authStore.isAuthenticated) {
+      setupWebSocket()
+    }
     
     lastUpdateTime.value = new Date()
   } catch (error) {
