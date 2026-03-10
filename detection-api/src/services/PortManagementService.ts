@@ -182,7 +182,7 @@ export class PortManagementService extends EventEmitter {
     private async getProcessInfo(port: number): Promise<{ pid: number | null; name: string | null }> {
         try {
             if (process.platform === 'win32') {
-                const { stdout } = await execAsync(`netstat -ano | findstr :${port}`);
+                const { stdout } = await execAsync(`netstat -ano | findstr :${port}`, { windowsHide: true });
                 const lines = stdout.trim().split('\n');
                 for (const line of lines) {
                     if (line.includes('LISTENING')) {
@@ -192,7 +192,7 @@ export class PortManagementService extends EventEmitter {
                     }
                 }
             } else {
-                const { stdout } = await execAsync(`lsof -i :${port} -t`);
+                const { stdout } = await execAsync(`lsof -i :${port} -t`, { windowsHide: true });
                 const pid = parseInt(stdout.trim());
                 return { pid, name: null };
             }
@@ -253,13 +253,13 @@ export class PortManagementService extends EventEmitter {
     private async isPortAvailable(port: number): Promise<boolean> {
         // 1. 检查系统保留端口
         if (this.SYSTEM_PORTS.has(port)) return false;
-        
+
         // 2. 检查 unified_port_allocations 表中的临时分配
         if (await this.getAllocation(port)) return false;
-        
+
         // 3. 检查 applications 表中已添加应用的端口（主端口和次要端口）
         if (this.isPortUsedByExistingApp(port)) return false;
-        
+
         // 4. 检查端口是否正在被监听
         return !(await this.checkPortListening(port));
     }
@@ -272,21 +272,21 @@ export class PortManagementService extends EventEmitter {
         try {
             // 查询所有应用的网络配置
             const apps = this.db.prepare('SELECT id, name, network_config FROM applications').all() as any[];
-            
+
             for (const app of apps) {
                 if (!app.network_config) continue;
-                
+
                 try {
                     const networkConfig = JSON.parse(app.network_config);
-                    
+
                     // 检查主端口
                     if (networkConfig.primaryPort === port) {
                         logger.debug(`端口 ${port} 已被应用 ${app.name} (${app.id}) 使用为主端口`);
                         return true;
                     }
-                    
+
                     // 检查次要端口
-                    if (Array.isArray(networkConfig.secondaryPorts) && 
+                    if (Array.isArray(networkConfig.secondaryPorts) &&
                         networkConfig.secondaryPorts.includes(port)) {
                         logger.debug(`端口 ${port} 已被应用 ${app.name} (${app.id}) 使用为次要端口`);
                         return true;
@@ -295,7 +295,7 @@ export class PortManagementService extends EventEmitter {
                     logger.warn(`解析应用 ${app.id} 的网络配置失败`, parseError);
                 }
             }
-            
+
             return false;
         } catch (error) {
             logger.warn('检查已有应用端口时出错，跳过此检查', error);
@@ -458,9 +458,9 @@ export class PortManagementService extends EventEmitter {
                 if (processInfo.pid) {
                     try {
                         if (process.platform === 'win32') {
-                            await execAsync(`taskkill /F /PID ${processInfo.pid}`);
+                            await execAsync(`taskkill /F /PID ${processInfo.pid}`, { windowsHide: true });
                         } else {
-                            await execAsync(`kill -9 ${processInfo.pid}`);
+                            await execAsync(`kill -9 ${processInfo.pid}`, { windowsHide: true });
                         }
                         logger.info(`Killed process ${processInfo.pid} on port ${port}`);
                     } catch (e) {
@@ -644,29 +644,29 @@ export class PortManagementService extends EventEmitter {
         errors: Array<{ port: number; error: string }>;
     }> {
         logger.info('开始清理僵尸端口分配...');
-        
+
         const cleanedPorts: number[] = [];
         const errors: Array<{ port: number; error: string }> = [];
-        
+
         try {
             // 1. 获取所有已分配的端口
             const allocations = this.getAllAllocations();
             logger.info(`发现 ${allocations.length} 个端口分配记录`);
-            
+
             // 2. 检查每个分配的端口是否真正在监听
             for (const alloc of allocations) {
                 try {
                     const port = alloc.port;
                     const isListening = await this.checkPortListening(port);
-                    
+
                     if (!isListening) {
                         // 端口未被占用，是僵尸分配，需要清理
                         logger.info(`端口 ${port} 是僵尸分配（无进程监听），准备清理`);
-                        
+
                         // 从数据库删除分配记录
                         this.db.prepare('DELETE FROM unified_port_allocations WHERE port = ?').run(port);
                         cleanedPorts.push(port);
-                        
+
                         this.emit('zombiePortCleaned', { port, appId: alloc.app_id });
                     }
                 } catch (error) {
@@ -675,23 +675,23 @@ export class PortManagementService extends EventEmitter {
                     errors.push({ port: alloc.port, error: errorMsg });
                 }
             }
-            
+
             // 3. 清理过期的分配记录
             const now = new Date().toISOString();
             const expiredResult = this.db.prepare(`
                 DELETE FROM unified_port_allocations 
                 WHERE expires_at < ? AND status = 'expired'
             `).run(now);
-            
+
             if (expiredResult.changes > 0) {
                 logger.info(`清理了 ${expiredResult.changes} 条过期分配记录`);
             }
-            
+
             logger.info(`僵尸端口清理完成: 清理了 ${cleanedPorts.length} 个端口`, {
                 cleanedPorts,
                 errors: errors.length
             });
-            
+
             return {
                 cleanedCount: cleanedPorts.length,
                 cleanedPorts,
@@ -720,12 +720,12 @@ export class PortManagementService extends EventEmitter {
             allocatedAt: string;
             reason: string;
         }> = [];
-        
+
         const allocations = this.getAllAllocations();
-        
+
         for (const alloc of allocations) {
             const isListening = await this.checkPortListening(alloc.port);
-            
+
             if (!isListening) {
                 zombies.push({
                     port: alloc.port,
@@ -736,7 +736,7 @@ export class PortManagementService extends EventEmitter {
                 });
             }
         }
-        
+
         return zombies;
     }
 }

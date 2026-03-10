@@ -133,7 +133,7 @@ export class PortConfigController {
 
     try {
       if (process.platform === 'win32') {
-        const { stdout } = await execAsync('netstat -ano -p tcp')
+        const { stdout } = await execAsync('netstat -ano -p tcp', { windowsHide: true })
         const lines = stdout.split(/\r?\n/)
 
         for (const rawLine of lines) {
@@ -160,7 +160,7 @@ export class PortConfigController {
       }
 
       // Unix-like 环境：尽量使用 lsof 获取端口和 PID
-      const { stdout } = await execAsync('lsof -nP -iTCP -sTCP:LISTEN')
+      const { stdout } = await execAsync('lsof -nP -iTCP -sTCP:LISTEN', { windowsHide: true })
       const lines = stdout.split(/\r?\n/).slice(1) // 跳过表头
 
       for (const rawLine of lines) {
@@ -446,8 +446,8 @@ export class PortConfigController {
       if (!forceRefresh && this.statisticsCache) {
         const now = Date.now()
         if (now - this.statisticsCache.timestamp < this.CACHE_TTL) {
-          logger.debug('使用缓存的端口统计数据', { 
-            age: Math.round((now - this.statisticsCache.timestamp) / 1000) + 's' 
+          logger.debug('使用缓存的端口统计数据', {
+            age: Math.round((now - this.statisticsCache.timestamp) / 1000) + 's'
           })
           return res.apiSuccess({
             ...this.statisticsCache.data,
@@ -460,7 +460,7 @@ export class PortConfigController {
       // 获取配置中的端口范围
       const stats = await this.getStatsData()
       const totalRange = stats.portRangeSize.frontend + stats.portRangeSize.backend || 200
-      
+
       // 构建待扫描的端口列表（与 getBackgroundScanStatus 保持一致）
       const config = this.configManager.getConfig()
       const portConfig = config?.portConfiguration
@@ -472,7 +472,7 @@ export class PortConfigController {
         8000, 8001, 8002, 8003, 8004, 8005, 8080, 8081,  // 后端端口
         4200, 4201  // Angular 端口
       ]
-      
+
       // 🔧 修复：从应用数据库获取所有应用使用的端口
       const appPorts: number[] = []
       try {
@@ -491,15 +491,15 @@ export class PortConfigController {
       } catch (err) {
         logger.debug('获取应用端口失败，使用默认端口列表', { error: err })
       }
-      
+
       const knownPorts = [...new Set([...reservedPorts, ...defaultPorts, ...appPorts])]
-      
+
       // 优先使用系统快照检测监听端口，避免 net.listen 在 Windows 误判
       const listeningSnapshot = await this.getListeningPortSnapshot()
 
       // 回退方案：使用 net 端口探测（仅当快照不可用时）
       const net = await import('net')
-      
+
       // 🚀 优化：快速端口检测（只使用 net.createServer，并行检测）
       const checkPortInUse = (port: number): Promise<boolean> => {
         return new Promise((resolve) => {
@@ -508,7 +508,7 @@ export class PortConfigController {
             server.close()
             resolve(false) // 超时认为端口空闲
           }, 500) // 500ms 超时
-          
+
           server.once('error', (err: any) => {
             clearTimeout(timeout)
             server.close()
@@ -522,7 +522,7 @@ export class PortConfigController {
           server.listen(port, '0.0.0.0')
         })
       }
-      
+
       let actualOccupied = 0
       if (listeningSnapshot.available) {
         actualOccupied = knownPorts.filter(port => listeningSnapshot.ports.has(port)).length
@@ -685,8 +685,8 @@ export class PortConfigController {
       if (!forceRefresh && this.backgroundScanCache) {
         const now = Date.now()
         if (now - this.backgroundScanCache.timestamp < this.CACHE_TTL) {
-          logger.debug('使用缓存的后台扫描数据', { 
-            age: Math.round((now - this.backgroundScanCache.timestamp) / 1000) + 's' 
+          logger.debug('使用缓存的后台扫描数据', {
+            age: Math.round((now - this.backgroundScanCache.timestamp) / 1000) + 's'
           })
           const cachedData = this.backgroundScanCache.data
           cachedData.cached = true
@@ -697,15 +697,15 @@ export class PortConfigController {
 
       const config = this.configManager.getConfig()
       const portConfig = config?.portConfiguration
-      
+
       // 🔧 从配置读取端口范围
       const frontendRange = portConfig?.frontendRange || { start: 3000, end: 3100 }
       const backendRange = portConfig?.backendRange || { start: 8000, end: 8100 }
       const reservedPorts = portConfig?.reservedPorts || []
-      
+
       // 构建端口到应用的映射
       const portToAppMap = new Map<number, { appId: string; appName: string; portType: string }>()
-      
+
       // 添加保留端口信息
       for (const rp of reservedPorts) {
         portToAppMap.set(rp.port, {
@@ -714,7 +714,7 @@ export class PortConfigController {
           portType: rp.category || 'system'
         })
       }
-      
+
       // 🔧 从应用数据库获取端口映射
       try {
         if (this.applicationService && typeof this.applicationService.findAll === 'function') {
@@ -743,16 +743,16 @@ export class PortConfigController {
       } catch (err) {
         logger.debug('获取应用端口映射失败', { error: err })
       }
-      
+
       // 🔧 构建扫描端口列表：配置范围内的常用端口 + 保留端口 + 应用端口
       const portsToScan = new Set<number>()
-      
+
       // 添加保留端口
       reservedPorts.forEach((p: any) => portsToScan.add(p.port))
-      
+
       // 添加应用使用的端口
       portToAppMap.forEach((_, port) => portsToScan.add(port))
-      
+
       // 添加配置范围内的常用端口（每10个取一个 + 头尾）
       for (let p = frontendRange.start; p <= Math.min(frontendRange.start + 20, frontendRange.end); p++) {
         portsToScan.add(p)
@@ -760,13 +760,13 @@ export class PortConfigController {
       for (let p = backendRange.start; p <= Math.min(backendRange.start + 20, backendRange.end); p++) {
         portsToScan.add(p)
       }
-      
+
       // 添加常用开发端口
       const commonPorts = [3000, 5173, 5174, 8080, 4200]
       commonPorts.forEach(p => portsToScan.add(p))
-      
+
       const knownPorts = Array.from(portsToScan).sort((a, b) => a - b)
-      
+
       const activePorts: Array<{
         port: number
         status: string
@@ -783,7 +783,7 @@ export class PortConfigController {
 
       // 回退方案：使用 net 模块并行检测端口
       const net = await import('net')
-      
+
       // 快速端口检测函数（带超时）
       const checkPortInUse = (port: number): Promise<boolean> => {
         return new Promise((resolve) => {
@@ -792,7 +792,7 @@ export class PortConfigController {
             server.close()
             resolve(false)
           }, 500) // 500ms 超时
-          
+
           server.once('error', (err: any) => {
             clearTimeout(timeout)
             server.close()
@@ -806,7 +806,7 @@ export class PortConfigController {
           server.listen(port, '0.0.0.0')
         })
       }
-      
+
       let portCheckResults: Array<{ port: number; isListening: boolean }>
       if (listeningSnapshot.available) {
         portCheckResults = knownPorts.map((port) => ({
@@ -822,19 +822,19 @@ export class PortConfigController {
           }))
         )
       }
-      
+
       // 构建活跃端口列表
       for (const { port, isListening } of portCheckResults) {
         if (isListening) {
           const appInfo = portToAppMap.get(port)
           const portType = port >= frontendRange.start && port <= frontendRange.end ? 'frontend' :
-                          port >= backendRange.start && port <= backendRange.end ? 'backend' : 'other'
-          
+            port >= backendRange.start && port <= backendRange.end ? 'backend' : 'other'
+
           // 获取默认应用名称
           let defaultAppName: string | undefined
           if (port === 3000) defaultAppName = '门户前端'
           else if (port === 8002) defaultAppName = '门户后端API'
-          
+
           const snapshotPid = listeningSnapshot.ports.get(port) || 0
           activePorts.push({
             port: port,
@@ -1329,8 +1329,8 @@ export class PortConfigController {
         cleanedCount: result.cleanedCount,
         cleanedPorts: result.cleanedPorts,
         errors: result.errors,
-        message: result.cleanedCount > 0 
-          ? `成功清理 ${result.cleanedCount} 个僵尸端口` 
+        message: result.cleanedCount > 0
+          ? `成功清理 ${result.cleanedCount} 个僵尸端口`
           : '没有发现需要清理的僵尸端口'
       }, `已清理 ${result.cleanedCount} 个僵尸端口`)
     } catch (error) {
