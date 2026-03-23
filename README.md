@@ -1,9 +1,16 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.1.0-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个智能化的Web应用检测、管理和统一门户系统，能够自动识别工作区内的各种技术栈应用，并提供统一的管理界面。
+
+## 📌 当前发布
+
+- **当前版本**: `1.1.0`
+- **GitHub Release**: [v1.1.0: 门户管理与运行态修复更新](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.1.0)
+- **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
 
@@ -234,6 +241,20 @@ VITE_WS_BASE=
 
 ## 📝 更新日志
 
+完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
+
+### v1.1.0 (2026-03-23) — 门户管理与运行态修复更新
+- 🧭 **运行态识别修复**
+  - 修复 `video-cms` 等应用在直启与 PM2 切换后，首页错误显示“生产(PM2)”的问题
+  - 直启应用现在会明确写入 `development` 模式，并清理遗留 `pm2ProcessName`
+  - 门户公共接口新增运行态兜底逻辑，避免数据库残留模式误导前端展示
+- ⚙️ **系统设置与路径访问增强**
+  - 补充系统设置 payload 工具与目录选择逻辑
+  - 优化文件系统路径访问控制与相关配置读写行为
+- 🧪 **测试与维护性提升**
+  - 补充 PM2 状态同步、网络服务、路径工具与系统设置相关测试
+  - 统一项目、配置、脚本、前端页面和文档中的版本号到 `1.1.0`
+
 ### v1.0.0 (2026-03-10) — 初始里程碑发布 (Initial Milestone)
 - 🖧 **智能全链路端口治理架构上线**
   - **极速探测引擎**: 引入 `PortSnapshotManager`，拦截高频 `netstat` 查询请求并聚合成 $O(1)$ 的内存映射，将刷新扫描速度从 3-5 秒极致压缩至 100ms 内，大幅优化中大型微服务集群下的宿主机 CPU 带宽。
@@ -276,4 +297,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.0.0 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.1.0 - 让应用管理更简单、更智能！*
