@@ -2,6 +2,24 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.2.0] - 2026-03-24
+
+### Added
+
+- 新增控制中心式前端信息架构，覆盖门户首页、应用管理、PM2 管理、端口管理与系统设置五个核心页面。
+- 新增前端内置 `1.2.0` 更新记录，方便在“关于系统”中直接查看本次升级内容。
+
+### Changed
+
+- 重构应用卡片与详情弹窗，强化技术栈、访问端口、运行模式、运行时间、访问入口和状态摘要展示。
+- 统一全局设计变量、排版、状态色、面板层级与响应式间距，提升多页面一致性和可读性。
+- 将根项目、前端、后端、系统配置、脚本模板和主要发布文档版本统一提升到 `1.2.0`。
+
+### Fixed
+
+- 优化离线应用默认主操作与状态文案，降低在首页和详情面板中的误操作概率。
+- 统一 PM2 进程、端口占用和系统设置中的状态表达，让异常进程与冲突端口更易识别。
+
 ## [1.1.1] - 2026-03-23
 
 ### Added
@@ -54,6 +72,7 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.2.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.0
 [1.1.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.1.1
 [1.1.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.1.0
 [1.0.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.0.0

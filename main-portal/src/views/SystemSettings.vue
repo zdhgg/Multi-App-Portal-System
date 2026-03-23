@@ -1,28 +1,45 @@
 <template>
   <div class="system-settings">
-    <!-- 紧凑工具栏 -->
-    <div class="toolbar">
-      <div class="toolbar-left">
-        <span class="toolbar-hint">管理系统配置和用户账户</span>
+    <section class="settings-hero">
+      <div class="settings-hero-copy">
+        <span class="settings-eyebrow">System Control</span>
+        <h1 class="settings-title">系统设置中心</h1>
+        <p class="settings-subtitle">管理系统配置、账户权限、安全策略与日志能力，保持整个平台运行稳定且可控。</p>
+
+        <div class="settings-meta">
+          <span class="settings-chip">{{ activeTabLabel }}</span>
+          <span class="settings-chip" :class="{ 'settings-chip-warning': isDirty }">{{ saveStateText }}</span>
+          <span class="settings-chip settings-chip-muted">上次同步 {{ updatedAtText }}</span>
+        </div>
       </div>
-      <div class="toolbar-right">
-        <el-button :icon="Refresh" @click="refreshSettings" :loading="loading.refresh" size="small">刷新</el-button>
+
+      <div class="settings-hero-actions">
+        <el-button :icon="Refresh" @click="refreshSettings" :loading="loading.refresh" class="settings-action settings-action-secondary">
+          刷新设置
+        </el-button>
         <el-button
           :type="isDirty ? 'danger' : 'success'"
           :icon="Check"
           @click="saveAllSettings"
           :loading="loading.save"
           :disabled="!meta.versionToken || !isDirty"
-          size="small"
-          class="save-button"
+          class="settings-action save-button"
           :class="{ 'has-changes': isDirty }"
         >
           {{ isDirty ? '保存 (有更改)' : '保存' }}
         </el-button>
       </div>
-    </div>
+    </section>
 
     <div class="settings-overview">
+      <div class="overview-heading">
+        <div>
+          <span class="overview-eyebrow">Overview</span>
+          <h2 class="overview-title">系统概览</h2>
+        </div>
+        <p class="overview-description">从账户、日志、告警与运行时长四个维度快速评估当前系统状态。</p>
+      </div>
+
       <el-row :gutter="16">
         <el-col v-if="canManageUsers" :span="6">
           <el-tooltip content="点击查看用户管理" placement="top" :show-after="500">
@@ -77,7 +94,8 @@
       </el-row>
     </div>
 
-    <el-tabs v-model="activeTab" class="settings-tabs">
+    <div class="settings-panel">
+      <el-tabs v-model="activeTab" class="settings-tabs">
       <el-tab-pane v-if="canManageUsers" label="用户管理" name="user-management">
         <template #label><div class="tab-label"><el-icon><User /></el-icon><span>用户管理</span></div></template>
         <div class="tab-content">
@@ -124,7 +142,8 @@
           <BackupRestorePanel />
         </div>
       </el-tab-pane>
-    </el-tabs>
+      </el-tabs>
+    </div>
   </div>
 </template>
 
@@ -135,7 +154,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   Refresh, Check, User, Document,
-  FolderOpened, Lock, Clock
+  FolderOpened, Lock, Clock, Bell
 } from '@element-plus/icons-vue'
 import { systemSettingsApiService, type SystemSettingsResponse, type SystemStatistics } from '@/services'
 import { useAuthStore } from '@/stores/auth'
@@ -194,6 +213,21 @@ const serverSettings = ref<any>({})
 const meta = reactive<{ versionToken: string | null; updatedAt: string | null }>({ versionToken: null, updatedAt: null })
 let isDirty = ref(false)
 let __syncing = false
+
+const activeTabLabel = computed(() => {
+  const labelMap: Record<string, string> = {
+    'user-management': '当前页签: 用户管理',
+    'logs': '当前页签: 日志中心',
+    'security': '当前页签: 安全设置',
+    'path-access': '当前页签: 路径访问',
+    'backup-restore': '当前页签: 系统备份与恢复'
+  }
+
+  return labelMap[activeTab.value] || '当前页签: 系统设置'
+})
+
+const saveStateText = computed(() => isDirty.value ? '存在未保存变更' : '当前配置已同步')
+const updatedAtText = computed(() => meta.updatedAt ? formatUpdatedAt(meta.updatedAt) : '尚未同步')
 
 // 局部编辑对象（与 serverSettings 双向同步）
 const accounts = reactive<{ users: any[] }>({ users: [] })
@@ -268,6 +302,16 @@ const formatUptime = (seconds: number) => {
   if (days > 0) return `${days}天${hours}时`
   if (hours > 0) return `${hours}时${minutes}分`
   return `${minutes}分钟`
+}
+
+const formatUpdatedAt = (timeString: string) => {
+  const date = new Date(timeString)
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 const navigateToTab = (tab: string) => { activeTab.value = tab }
@@ -427,70 +471,312 @@ onBeforeUnmount(() => { window.removeEventListener('beforeunload', beforeUnloadG
 </script>
 
 <style scoped>
-.system-settings { padding: 16px; background: #f5f7fa; min-height: 100vh; }
+.system-settings {
+  min-height: 100vh;
+  padding: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 26%),
+    linear-gradient(180deg, #eef4ff 0%, #f7f9fc 48%, #eef2f8 100%);
+}
 
-/* 紧凑工具栏 */
-.toolbar {
+.settings-hero {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 20px;
+  padding: 28px 30px;
+  border-radius: 28px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.84));
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 24px 54px rgba(15, 23, 42, 0.08);
+}
+
+.settings-hero-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-eyebrow,
+.overview-eyebrow {
+  display: inline-flex;
   align-items: center;
-  padding: 12px 16px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  margin-bottom: 16px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary-600);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
-.toolbar-left { flex: 1; }
-.toolbar-hint { font-size: 14px; color: #909399; }
-.toolbar-right { display: flex; gap: 8px; }
 
-.el-button[type='success'][disabled] { opacity: 0.6; }
+.settings-title {
+  margin-top: 14px;
+  color: var(--text-strong);
+  font-size: clamp(30px, 4vw, 42px);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
 
-/* 保存按钮样式 */
+.settings-subtitle {
+  max-width: 760px;
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.settings-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.settings-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-chip-muted {
+  color: var(--text-tertiary);
+}
+
+.settings-chip-warning {
+  color: var(--danger-500);
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.12);
+}
+
+.settings-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.settings-action {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.settings-action-secondary {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.8);
+}
+
 .save-button.has-changes {
-  animation: pulse 2s ease-in-out infinite;
-  box-shadow: 0 0 20px rgba(245, 108, 108, 0.6);
+  animation: savePulse 2.2s ease-in-out infinite;
+  box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.08);
 }
 
-@keyframes pulse {
-  0%, 100% {
-    box-shadow: 0 0 20px rgba(245, 108, 108, 0.6);
+@keyframes savePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.08);
   }
   50% {
-    box-shadow: 0 0 30px rgba(245, 108, 108, 0.8);
+    box-shadow: 0 0 0 8px rgba(220, 38, 38, 0.14);
   }
 }
 
-.overview-card { transition: transform .15s ease; }
-.overview-card.clickable { cursor: pointer; }
-.overview-card.clickable:hover { transform: translateY(-2px); }
-.card-content { display: flex; align-items: center; gap: 16px; }
-.card-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: #e0f2fe; border-radius: 12px; color: #0284c7; }
-.card-info { flex: 1; }
-.card-title { font-size: 14px; color: #6b7280; margin-bottom: 4px; font-weight: 500; }
-.card-value { font-size: 24px; font-weight: 700; color: #111827; line-height: 1.2; }
-.card-value.text-sm { font-size: 14px; font-weight: 600; }
-
-.settings-tabs { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); margin-top: 16px; }
-.tab-label { display: flex; align-items: center; gap: 8px; font-weight: 500; }
-.tab-content { padding: 20px 0; min-height: 400px; }
-.log-center-tabs { margin-bottom: 16px; }
-
-.panel-placeholder { display: flex; align-items: center; justify-content: center; min-height: 300px; background: #fafafa; border-radius: 8px; border: 2px dashed #d1d5db; }
-
-@media (max-width: 768px) {
-  .system-settings { padding: 16px; }
-  .page-header { padding: 24px 20px; }
-  .header-content { flex-direction: column; align-items: stretch; gap: 20px; }
-  .page-title { font-size: 24px; }
-  .action-buttons { justify-content: center; }
-  .settings-tabs { padding: 16px; }
-  .tab-content { padding: 16px 0; }
+.settings-overview {
+  margin-top: 18px;
 }
 
-:deep(.el-tabs__header) { margin-bottom: 24px; }
-:deep(.el-tabs__nav-wrap::after) { height: 2px; background: linear-gradient(90deg, #667eea, #764ba2); }
-:deep(.el-tabs__active-bar) { background: linear-gradient(90deg, #667eea, #764ba2); height: 3px; }
-:deep(.el-tabs__item.is-active) { color: #667eea; font-weight: 600; }
-:deep(.el-tabs__item:hover) { color: #667eea; }
+.overview-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.overview-title {
+  margin-top: 10px;
+  color: var(--text-strong);
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.overview-description {
+  max-width: 520px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.overview-card {
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.overview-card :deep(.el-card__body) {
+  padding: 18px 20px;
+}
+
+.overview-card.clickable {
+  cursor: pointer;
+}
+
+.overview-card.clickable:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 22px 42px rgba(15, 23, 42, 0.08);
+  border-color: rgba(37, 99, 235, 0.18);
+}
+
+.card-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.card-icon {
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(14, 165, 233, 0.16));
+  border-radius: 16px;
+  color: var(--primary-600);
+}
+
+.card-info {
+  flex: 1;
+}
+
+.card-title {
+  margin-bottom: 4px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-strong);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.card-value.text-sm {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.settings-panel {
+  margin-top: 18px;
+  padding: 22px 24px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 24px 54px rgba(15, 23, 42, 0.08);
+}
+
+.settings-tabs {
+  background: transparent;
+}
+
+.tab-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.tab-content {
+  padding: 18px 0 0;
+  min-height: 400px;
+}
+
+.log-center-tabs {
+  margin-bottom: 16px;
+}
+
+.panel-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  background: rgba(248, 250, 252, 0.82);
+  border-radius: 18px;
+  border: 1px dashed rgba(148, 163, 184, 0.32);
+}
+
+:deep(.el-tabs__header) {
+  margin-bottom: 24px;
+}
+
+:deep(.el-tabs__nav-wrap::after) {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.2);
+}
+
+:deep(.el-tabs__active-bar) {
+  background: linear-gradient(90deg, #2563eb, #0ea5e9);
+  height: 3px;
+  border-radius: 999px;
+}
+
+:deep(.el-tabs__item.is-active) {
+  color: var(--primary-600);
+  font-weight: 700;
+}
+
+:deep(.el-tabs__item:hover) {
+  color: var(--primary-600);
+}
+
+@media (max-width: 980px) {
+  .settings-hero,
+  .overview-heading {
+    flex-direction: column;
+  }
+
+  .settings-hero-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .system-settings {
+    padding: 16px 14px;
+  }
+
+  .settings-hero,
+  .settings-panel {
+    padding: 18px;
+    border-radius: 24px;
+  }
+
+  .settings-hero-actions,
+  .settings-action {
+    width: 100%;
+  }
+
+  .overview-card {
+    margin-bottom: 12px;
+  }
+
+  .tab-content {
+    min-height: 0;
+  }
+}
 </style>

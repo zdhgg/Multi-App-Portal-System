@@ -1,43 +1,99 @@
 <template>
   <div class="pm2-management">
-    <!-- 页面标题区 -->
-    <div class="page-header">
-      <div class="header-left">
-        <h2 class="page-title">PM2进程管理</h2>
-        <span class="page-subtitle">管理通过门户部署的应用进程</span>
+    <section class="pm2-hero">
+      <div class="pm2-hero-copy">
+        <span class="pm2-eyebrow">Process Control</span>
+        <h1 class="pm2-title">PM2 进程管理</h1>
+        <p class="pm2-subtitle">集中查看 PM2 守护状态、进程运行情况与生产模式应用的生命周期控制入口。</p>
+
+        <div class="pm2-meta">
+          <span class="pm2-chip">{{ pm2StatusText }}</span>
+          <span class="pm2-chip" :class="{ 'pm2-chip-warning': autoRefresh }">
+            {{ autoRefresh ? '自动刷新已开启' : '自动刷新未开启' }}
+          </span>
+          <span class="pm2-chip pm2-chip-muted">{{ pm2SummaryText }}</span>
+        </div>
       </div>
-      <!-- PM2状态标签 -->
-      <PM2StatusAlert
-        :status="pm2Status"
-        :status-loaded="pm2StatusLoaded"
-        :enable-loading="enableLoading"
-        @enable="handleQuickEnable"
-        @refresh="pm2Store.refreshStatus"
-        @show-guide="showPM2ManualGuide"
-      />
-    </div>
+
+      <div class="pm2-hero-side">
+        <PM2StatusAlert
+          :status="pm2Status"
+          :status-loaded="pm2StatusLoaded"
+          :enable-loading="enableLoading"
+          @enable="handleQuickEnable"
+          @refresh="pm2Store.refreshStatus"
+          @show-guide="showPM2ManualGuide"
+        />
+      </div>
+    </section>
+
+    <section class="pm2-metrics">
+      <article class="pm2-metric">
+        <span class="metric-label">总进程</span>
+        <strong class="metric-value">{{ pm2Stats.total }}</strong>
+        <span class="metric-help">PM2 当前托管的全部进程数量</span>
+      </article>
+      <article class="pm2-metric pm2-metric-success">
+        <span class="metric-label">运行中</span>
+        <strong class="metric-value">{{ pm2Stats.online }}</strong>
+        <span class="metric-help">处于可服务状态的进程数量</span>
+      </article>
+      <article class="pm2-metric">
+        <span class="metric-label">已停止</span>
+        <strong class="metric-value">{{ pm2Stats.stopped }}</strong>
+        <span class="metric-help">可重新拉起或进入排查流程</span>
+      </article>
+      <article class="pm2-metric pm2-metric-danger">
+        <span class="metric-label">异常</span>
+        <strong class="metric-value">{{ pm2Stats.error }}</strong>
+        <span class="metric-help">建议优先进入诊断与日志查看</span>
+      </article>
+    </section>
 
     <!-- PM2已启用时显示的内容 -->
     <template v-if="pm2StatusLoaded && pm2Status.enabled">
-      <!-- 统计面板：有进程时才显示 -->
-      <PM2StatsPanel v-if="pm2Stats.total > 0" :stats="pm2Stats" />
+      <section class="pm2-content-shell">
+        <div class="content-heading">
+          <div>
+            <span class="content-eyebrow">Daemon Overview</span>
+            <h2 class="content-title">进程监控与操作</h2>
+          </div>
+          <p class="content-note">查看托管进程状态，并在同一视图中完成启动、停止、重启、日志与诊断操作。</p>
+        </div>
 
-      <!-- 进程列表（包含操作栏） -->
-      <PM2ProcessTable
-        :processes="pm2Processes"
-        :loading="loading"
-        :auto-refresh="autoRefresh"
-        @update:auto-refresh="autoRefresh = $event"
-        @start="pm2Store.startProcess"
-        @stop="pm2Store.stopProcess"
-        @restart="pm2Store.restartProcess"
-        @delete="pm2Store.deleteProcess"
-        @config="showProcessConfig"
-        @logs="showLogs"
-        @go-to-management="$router.push('/management')"
-        @refresh="pm2Store.refreshProcesses"
-      />
+        <PM2StatsPanel v-if="pm2Stats.total > 0" :stats="pm2Stats" />
+
+        <div class="pm2-process-shell">
+          <PM2ProcessTable
+            :processes="pm2Processes"
+            :loading="loading"
+            :auto-refresh="autoRefresh"
+            @update:auto-refresh="autoRefresh = $event"
+            @start="pm2Store.startProcess"
+            @stop="pm2Store.stopProcess"
+            @restart="pm2Store.restartProcess"
+            @delete="pm2Store.deleteProcess"
+            @config="showProcessConfig"
+            @logs="showLogs"
+            @go-to-management="$router.push('/management')"
+            @refresh="pm2Store.refreshProcesses"
+          />
+        </div>
+      </section>
     </template>
+
+    <section v-else class="pm2-guide-shell">
+      <div class="content-heading">
+        <div>
+          <span class="content-eyebrow">Enable PM2</span>
+          <h2 class="content-title">尚未启用 PM2</h2>
+        </div>
+        <p class="content-note">启用后可以获得进程守护、日志管理、自动重启和统一的生产模式运维能力。</p>
+      </div>
+      <div class="guide-card">
+        <p class="guide-description">使用右侧状态卡可以快速启用 PM2，或查看手动配置指引。完成后刷新页面即可同步最新状态。</p>
+      </div>
+    </section>
 
     <!-- 对话框组件 -->
     <PM2ConfigDialog
@@ -64,7 +120,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { ElMessageBox } from 'element-plus'
@@ -104,6 +160,20 @@ const configDialogVisible = ref(false)
 const logDialogVisible = ref(false)
 const diagnosisDialogVisible = ref(false)
 const autoRefresh = ref(false)
+
+const pm2StatusText = computed(() => {
+  if (!pm2StatusLoaded.value) return '正在检查 PM2 状态'
+  if (!pm2Status.value.enabled) return 'PM2 尚未启用'
+  if (pm2Status.value.pm2DaemonRunning) return 'PM2 守护进程运行中'
+  return 'PM2 已启用，等待守护进程连接'
+})
+
+const pm2SummaryText = computed(() => {
+  if (!pm2StatusLoaded.value) return '载入守护进程与进程清单中'
+  if (!pm2Status.value.enabled) return '启用后可管理生产模式进程'
+  if (pm2Stats.value.total === 0) return 'PM2 已启用，但当前还没有托管进程'
+  return `当前托管 ${pm2Stats.value.total} 个进程，其中 ${pm2Stats.value.online} 个在线`
+})
 
 // ===== 事件处理 =====
 const handleQuickEnable = async () => {
@@ -211,31 +281,218 @@ onUnmounted(() => {
 
 <style scoped>
 .pm2-management {
-  padding: 20px;
+  min-height: 100vh;
+  padding: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 24%),
+    linear-gradient(180deg, #eef4ff 0%, #f7f9fc 48%, #eef2f8 100%);
 }
 
-.page-header {
+.pm2-hero {
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 20px;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 28px 30px;
+  border-radius: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.84));
+  box-shadow: 0 24px 54px rgba(15, 23, 42, 0.08);
 }
 
-.header-left {
+.pm2-hero-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.pm2-eyebrow,
+.content-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary-600);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.pm2-title {
+  margin-top: 14px;
+  color: var(--text-strong);
+  font-size: clamp(30px, 4vw, 42px);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.pm2-subtitle {
+  max-width: 760px;
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.pm2-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.pm2-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pm2-chip-warning {
+  color: var(--warning-500);
+  background: rgba(217, 119, 6, 0.08);
+  border-color: rgba(217, 119, 6, 0.14);
+}
+
+.pm2-chip-muted {
+  color: var(--text-tertiary);
+}
+
+.pm2-hero-side {
+  width: min(360px, 100%);
+}
+
+.pm2-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.pm2-metric {
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  padding: 18px 20px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.05);
 }
 
-.page-title {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  color: #303133;
+.pm2-metric-success {
+  background: linear-gradient(180deg, rgba(236, 253, 245, 0.92), rgba(255, 255, 255, 0.88));
 }
 
-.page-subtitle {
-  margin-top: 4px;
+.pm2-metric-danger {
+  background: linear-gradient(180deg, rgba(254, 242, 242, 0.92), rgba(255, 255, 255, 0.88));
+}
+
+.metric-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.metric-value {
+  color: var(--text-strong);
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.metric-help {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.pm2-content-shell,
+.pm2-guide-shell {
+  padding: 24px 26px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 24px 54px rgba(15, 23, 42, 0.08);
+}
+
+.content-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.content-title {
+  margin-top: 10px;
+  color: var(--text-strong);
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.content-note {
+  max-width: 520px;
+  color: var(--text-secondary);
   font-size: 14px;
-  color: #909399;
+}
+
+.pm2-process-shell {
+  margin-top: 16px;
+}
+
+.guide-card {
+  padding: 18px 20px;
+  border-radius: 22px;
+  background: rgba(248, 250, 252, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.guide-description {
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+@media (max-width: 980px) {
+  .pm2-hero,
+  .content-heading {
+    flex-direction: column;
+  }
+
+  .pm2-hero-side {
+    width: 100%;
+  }
+
+  .pm2-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .pm2-management {
+    padding: 16px 14px;
+  }
+
+  .pm2-hero,
+  .pm2-content-shell,
+  .pm2-guide-shell {
+    padding: 18px;
+    border-radius: 24px;
+  }
+
+  .pm2-metrics {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

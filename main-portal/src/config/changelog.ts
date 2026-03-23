@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.2.0',
+    date: '2026-03-24',
+    title: '控制中心界面焕新与运维体验升级',
+    items: [
+      { type: 'feature', description: '门户首页、应用管理、PM2 管理、端口管理和系统设置统一升级为控制中心式布局，关键指标与快捷操作集中展示' },
+      { type: 'feature', description: '应用卡片与详情面板焕新，新增访问端口、运行模式、访问入口、最近更新和更清晰的状态摘要' },
+      { type: 'improvement', description: 'PM2 进程列表、端口占用列表和用户资料卡采用统一视觉风格，异常与冲突信息更易识别' },
+      { type: 'improvement', description: '引入新的全局设计变量、字体与响应式间距，整体页面层级和阅读体验更一致' },
+      { type: 'fix', description: '离线应用的主按钮和部分运维操作文案更符合当前状态，降低误操作概率' }
+    ]
+  },
+  {
     version: '1.1.1',
     date: '2026-03-23',
     title: '发布配套与版本对齐补丁',

@@ -1,33 +1,90 @@
 <template>
   <div class="management-page">
     <div class="management-content">
+      <section class="management-hero">
+        <div class="management-hero-copy">
+          <span class="management-eyebrow">Application Operations</span>
+          <h1 class="management-title">应用管理中心</h1>
+          <p class="management-subtitle">
+            统一查看应用状态、访问入口与运行操作，让日常运维、配置调整和排障流程更集中。
+          </p>
+
+          <div class="management-meta">
+            <span class="management-chip">{{ currentViewMeta.title }}</span>
+            <span class="management-chip management-chip-muted">{{ managementScopeText }}</span>
+          </div>
+        </div>
+
+        <div class="management-hero-actions">
+          <el-button
+            @click="refreshApps"
+            :loading="loading"
+            class="management-action management-action-secondary"
+          >
+            刷新状态
+          </el-button>
+          <el-button
+            v-if="canCreateApp"
+            type="primary"
+            class="management-action management-action-primary"
+            @click="addApp"
+          >
+            添加应用
+          </el-button>
+        </div>
+      </section>
+
+      <section class="management-stats">
+        <article class="management-metric">
+          <span class="metric-label">应用总数</span>
+          <strong class="metric-value">{{ apps.length }}</strong>
+          <span class="metric-help">当前管理目录中可见的应用规模</span>
+        </article>
+        <article class="management-metric management-metric-highlight">
+          <span class="metric-label">当前显示</span>
+          <strong class="metric-value">{{ filteredApps.length }}</strong>
+          <span class="metric-help">已按筛选条件输出当前结果集</span>
+        </article>
+        <article class="management-metric management-metric-success">
+          <span class="metric-label">在线应用</span>
+          <strong class="metric-value">{{ onlineAppsCount }}</strong>
+          <span class="metric-help">可直接执行访问或停止操作</span>
+        </article>
+        <article class="management-metric">
+          <span class="metric-label">已选择</span>
+          <strong class="metric-value">{{ selectedApps.length }}</strong>
+          <span class="metric-help">{{ canBatchManage ? '支持批量启动、停止与删除' : '当前角色不支持批量操作' }}</span>
+        </article>
+      </section>
+
       <el-card class="management-card">
         <template #header>
           <div class="card-header">
-            <span class="card-title">应用列表</span>
-            <div class="header-actions">
-              <el-button 
-                @click="refreshApps" 
-                :loading="loading"
-                type="primary"
-                style="background-color: #409eff; border-color: #409eff; color: white;"
-              >
-                刷新
-              </el-button>
-              <el-button v-if="canCreateApp" type="primary" @click="addApp">添加应用</el-button>
+            <div class="card-heading">
+              <span class="card-eyebrow">Directory View</span>
+              <span class="card-title">应用列表</span>
+              <span class="card-subtitle">在同一视图中完成筛选、运行控制、配置编辑与诊断入口访问。</span>
+            </div>
+            <div class="header-indicator">
+              显示 {{ filteredApps.length }} / {{ apps.length }}
             </div>
           </div>
         </template>
         
         <div class="management-area">
-          <el-alert
-            :title="currentViewMeta.title"
-            :description="currentViewMeta.description"
-            :type="currentViewMeta.alertType"
-            :closable="false"
-            show-icon
-            class="view-meta-alert"
-          />
+          <div class="view-summary-panel">
+            <div class="view-summary-copy">
+              <span class="view-summary-title">{{ currentViewMeta.title }}</span>
+              <p class="view-summary-description">{{ currentViewMeta.description }}</p>
+            </div>
+            <div class="view-summary-meta">
+              <span class="summary-pill">{{ onlineAppsCount }} 在线</span>
+              <span class="summary-pill summary-pill-muted">{{ apps.length - onlineAppsCount }} 离线</span>
+              <span v-if="selectedApps.length > 0" class="summary-pill summary-pill-active">
+                已选择 {{ selectedApps.length }} 项
+              </span>
+            </div>
+          </div>
 
           <!-- 搜索和筛选区域 -->
           <div class="filter-section" v-if="apps.length > 0">
@@ -35,7 +92,7 @@
               <el-input
                 v-model="searchQuery"
                 placeholder="搜索应用名称、技术栈或描述..."
-                :prefix-icon="'Search'"
+                :prefix-icon="Search"
                 clearable
                 @input="handleSearch"
                 class="search-input"
@@ -683,6 +740,22 @@ const currentViewMeta = {
   description: '统一应用管理：应用目录、运行状态和配置操作按角色权限显示。',
   alertType: 'info' as const
 }
+
+const onlineAppsCount = computed(() =>
+  apps.value.filter(app => app.isRunning || app.status === 'online').length
+)
+
+const managementScopeText = computed(() => {
+  if (apps.value.length === 0) {
+    return '等待应用接入后自动展示'
+  }
+
+  if (searchQuery.value || statusFilter.value || techStackFilter.value) {
+    return `当前筛选结果 ${filteredApps.value.length} 项，便于快速聚焦目标应用`
+  }
+
+  return '集中执行启动、停止、配置与诊断操作'
+})
 
 const queuePortMonitoringRefresh = (delays: number[], reason: string) => {
   delays.forEach((delay) => {
@@ -4477,6 +4550,365 @@ const getCategoryLabel = (category: string) => {
       color: #389e0d;
       font-weight: 500;
     }
+  }
+}
+
+/* Management refresh */
+.management-page {
+  padding: 24px;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 24%),
+    linear-gradient(180deg, #eef4ff 0%, #f7f9fc 48%, #eef2f8 100%);
+}
+
+.management-content {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.management-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 28px 30px;
+  border-radius: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.82));
+  box-shadow: 0 24px 54px rgba(15, 23, 42, 0.08);
+}
+
+.management-hero-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.management-eyebrow,
+.card-eyebrow,
+.view-summary-title {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary-600);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.management-title {
+  margin-top: 14px;
+  color: var(--text-strong);
+  font-size: clamp(30px, 4vw, 42px);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.management-subtitle {
+  max-width: 760px;
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.management-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.management-chip,
+.summary-pill,
+.header-indicator {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.management-chip-muted,
+.summary-pill-muted {
+  color: var(--text-tertiary);
+}
+
+.summary-pill-active {
+  color: var(--primary-600);
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.management-hero-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.management-action {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.management-action-secondary {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.management-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.management-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 20px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.05);
+}
+
+.management-metric-highlight {
+  background: linear-gradient(180deg, rgba(219, 234, 254, 0.92), rgba(255, 255, 255, 0.88));
+}
+
+.management-metric-success {
+  background: linear-gradient(180deg, rgba(236, 253, 245, 0.92), rgba(255, 255, 255, 0.88));
+}
+
+.management-metric .metric-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.management-metric .metric-value {
+  color: var(--text-strong);
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.management-metric .metric-help {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.management-card {
+  border-radius: 28px;
+  box-shadow: 0 24px 54px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.management-card :deep(.el-card__header) {
+  padding: 22px 26px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.82));
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  color: inherit;
+}
+
+.management-card :deep(.el-card__body) {
+  padding: 22px 26px 26px;
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.card-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card-title {
+  color: var(--text-strong);
+  font-weight: 700;
+  font-size: 24px;
+  letter-spacing: -0.03em;
+}
+
+.card-subtitle,
+.view-summary-description {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.management-area {
+  min-height: 400px;
+}
+
+.view-summary-panel {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  border-radius: 22px;
+  background: rgba(248, 250, 252, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.view-summary-copy {
+  min-width: 0;
+}
+
+.view-summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.filter-section {
+  margin-bottom: 14px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  background: rgba(248, 250, 252, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.search-input {
+  flex: 1;
+  min-width: 220px;
+  max-width: 400px;
+}
+
+.filter-select {
+  width: 160px;
+}
+
+.search-input :deep(.el-input__wrapper),
+.filter-select :deep(.el-select__wrapper) {
+  min-height: 44px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.16);
+}
+
+.search-input :deep(.el-input__wrapper.is-focus),
+.filter-select :deep(.el-select__wrapper.is-focused) {
+  box-shadow:
+    inset 0 0 0 1px rgba(37, 99, 235, 0.34),
+    0 0 0 4px rgba(37, 99, 235, 0.08);
+}
+
+.batch-toolbar {
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.92), rgba(248, 250, 252, 0.88));
+}
+
+.batch-info {
+  color: var(--primary-600);
+  font-weight: 600;
+}
+
+.batch-actions {
+  gap: 10px;
+}
+
+.management-card :deep(.el-empty) {
+  padding: 42px 0;
+}
+
+.management-card :deep(.el-table) {
+  --el-table-header-bg-color: rgba(248, 250, 252, 0.92);
+  --el-table-row-hover-bg-color: rgba(37, 99, 235, 0.04);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.management-card :deep(.el-table th.el-table__cell) {
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.management-card :deep(.el-table td.el-table__cell) {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+@media (max-width: 980px) {
+  .management-hero,
+  .card-header,
+  .view-summary-panel {
+    flex-direction: column;
+  }
+
+  .management-hero-actions,
+  .view-summary-meta {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .management-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .management-page {
+    padding: 18px 14px;
+  }
+
+  .management-hero,
+  .management-card :deep(.el-card__header),
+  .management-card :deep(.el-card__body) {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .management-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .management-hero-actions,
+  .management-action,
+  .header-indicator {
+    width: 100%;
+  }
+
+  .filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-input,
+  .filter-select {
+    max-width: 100%;
+    width: 100%;
   }
 }
 </style>

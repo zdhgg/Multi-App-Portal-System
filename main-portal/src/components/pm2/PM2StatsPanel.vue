@@ -1,27 +1,37 @@
 <template>
-  <div class="stats-bar">
-    <div class="stat-item">
+  <div class="stats-grid">
+    <article class="stat-card">
       <span class="stat-label">总进程</span>
-      <span class="stat-value">{{ stats.total }}</span>
-    </div>
-    <div class="stat-divider"></div>
-    <div class="stat-item online">
-      <span class="stat-dot online"></span>
+      <strong class="stat-value">{{ stats.total }}</strong>
+      <span class="stat-help">当前由 PM2 托管的全部进程数量</span>
+    </article>
+
+    <article class="stat-card stat-card-success">
       <span class="stat-label">运行中</span>
-      <span class="stat-value">{{ stats.online }}</span>
-    </div>
-    <div class="stat-divider"></div>
-    <div class="stat-item stopped">
-      <span class="stat-dot stopped"></span>
+      <div class="stat-inline">
+        <span class="stat-dot online"></span>
+        <strong class="stat-value">{{ stats.online }}</strong>
+      </div>
+      <span class="stat-help">处于在线并可提供服务的进程</span>
+    </article>
+
+    <article class="stat-card">
       <span class="stat-label">已停止</span>
-      <span class="stat-value">{{ stats.stopped }}</span>
-    </div>
-    <div class="stat-divider"></div>
-    <div class="stat-item error">
-      <span class="stat-dot error"></span>
+      <div class="stat-inline">
+        <span class="stat-dot stopped"></span>
+        <strong class="stat-value">{{ stats.stopped }}</strong>
+      </div>
+      <span class="stat-help">可重新拉起或等待手动处理</span>
+    </article>
+
+    <article class="stat-card stat-card-danger">
       <span class="stat-label">错误</span>
-      <span class="stat-value">{{ stats.error }}</span>
-    </div>
+      <div class="stat-inline">
+        <span class="stat-dot error"></span>
+        <strong class="stat-value">{{ stats.error }}</strong>
+      </div>
+      <span class="stat-help">建议优先查看日志和诊断结果</span>
+    </article>
   </div>
 </template>
 
@@ -39,55 +49,84 @@ defineProps<{
 </script>
 
 <style scoped>
-.stats-bar {
-  display: flex;
-  align-items: center;
-  background: #fff;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  padding: 12px 20px;
-  margin-bottom: 16px;
-  gap: 20px;
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.stat-item {
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 20px;
+  border-radius: 22px;
+  background: rgba(248, 250, 252, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.stat-card-success {
+  background: linear-gradient(180deg, rgba(236, 253, 245, 0.92), rgba(255, 255, 255, 0.88));
+}
+
+.stat-card-danger {
+  background: linear-gradient(180deg, rgba(254, 242, 242, 0.92), rgba(255, 255, 255, 0.88));
+}
+
+.stat-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.stat-inline {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .stat-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
 }
 
 .stat-dot.online {
-  background: #67c23a;
+  background: var(--success-500);
 }
 
 .stat-dot.stopped {
-  background: #909399;
+  background: var(--info-500);
 }
 
 .stat-dot.error {
-  background: #f56c6c;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: #606266;
+  background: var(--danger-500);
 }
 
 .stat-value {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
+  color: var(--text-strong);
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.04em;
 }
 
-.stat-divider {
-  width: 1px;
-  height: 20px;
-  background: #dcdfe6;
+.stat-help {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

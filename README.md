@@ -1,19 +1,21 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.1.1-success.svg)
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.2.0-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-一个智能化的Web应用检测、管理和统一门户系统，能够自动识别工作区内的各种技术栈应用，并提供统一的管理界面。
+一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.1.1`
-- **GitHub Release**: [v1.1.1: 发布配套与版本对齐补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.1.1)
+- **当前版本**: `1.2.0`
+- **GitHub Release**: [v1.2.0: 控制中心界面焕新与运维体验升级](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.0)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
 
+- **控制中心界面焕新**: 门户首页、应用管理、PM2 管理、端口管理和系统设置升级为统一的指标总览 + 快捷操作布局
+- **应用信息表达增强**: 应用卡片与详情弹窗新增运行模式、访问端口、访问入口、最近更新和更清晰的状态摘要
 - **管道架构重构**: 全新的检测管道架构（Scanner → Analyzer → Aggregator → PortAllocator）
 - **智能全栈项目识别**: 自动识别 monorepo 和全栈项目结构，支持非标准命名（如 main-portal/detection-api）
 - **精确扫描深度控制**: 扫描时多扫描一层，返回时按用户设置深度过滤
@@ -243,6 +245,17 @@ VITE_WS_BASE=
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.2.0 (2026-03-24) — 控制中心界面焕新与运维体验升级
+- 🖥️ **控制中心式界面升级**
+  - 门户首页、应用管理、PM2 管理、端口管理、系统设置统一升级为 Hero + Metrics + Content 的信息架构
+  - 强化快捷操作、筛选摘要、实时状态和空状态引导，核心信息更集中
+- 📋 **应用与运维信息表达增强**
+  - 应用卡片和详情弹窗新增访问端口、运行模式、访问入口、最近更新和状态摘要
+  - PM2 进程列表与端口列表补充异常计数、状态说明和更清晰的操作入口
+- 🎨 **视觉系统统一**
+  - 引入新的全局设计变量、字体、状态色、面板层级和响应式节奏
+  - 前端“关于系统”中的更新记录同步到 `1.2.0`
+
 ### v1.1.1 (2026-03-23) — 发布配套与版本对齐补丁
 - 📝 **发布资料补齐**
   - 新增正式 `CHANGELOG.md`
@@ -305,4 +318,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.1.1 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.2.0 - 让应用管理更简单、更智能！*

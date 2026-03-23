@@ -377,19 +377,20 @@ const formatDate = (dateString?: string) => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+  border-radius: 18px;
   cursor: pointer;
   transition: all 0.2s ease;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
 }
 
 .user-info:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.9);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
 }
 
 .user-avatar {
@@ -399,7 +400,7 @@ const formatDate = (dateString?: string) => {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--primary-500) 0%, #0f8bff 100%);
   color: white;
 }
 
@@ -412,35 +413,36 @@ const formatDate = (dateString?: string) => {
 .username {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #303133;
+  color: var(--text-strong);
   line-height: 1.2;
 }
 
 .role-badge {
   font-size: 0.75rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 10px;
+  padding: 0.18rem 0.48rem;
+  border-radius: 999px;
   line-height: 1;
   margin-top: 0.1rem;
+  font-weight: 700;
 }
 
 .role-admin {
-  background: #f56c6c;
-  color: white;
+  background: rgba(220, 38, 38, 0.12);
+  color: var(--danger-500);
 }
 
 .role-user {
-  background: #67c23a;
-  color: white;
+  background: rgba(5, 150, 105, 0.12);
+  color: var(--success-500);
 }
 
 .role-guest {
-  background: #909399;
-  color: white;
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--text-secondary);
 }
 
 .dropdown-icon {
-  color: #909399;
+  color: var(--text-tertiary);
   transition: transform 0.2s ease;
 }
 
