@@ -313,6 +313,8 @@ export class ApplicationService implements IApplicationService {
     try {
       await this.processManager.start(app)
       await this.repository.updateState(id, 'running')
+      await this.repository.updateDeploymentMode(id, 'development')
+      await this.repository.updatePM2ProcessName(id, null)
       
       logger.info('Application started successfully', { id, name: app.name, port: app.network.primaryPort })
     } catch (processError) {
@@ -340,11 +342,22 @@ export class ApplicationService implements IApplicationService {
     const app = await this.findById(id)
 
     if (app.state === 'stopped') {
-      logger.warn('Application already stopped', { id })
-      return
-    }
+      const hasActivePorts = await this.hasActiveRuntimePorts(app)
+      if (!hasActivePorts) {
+        await this.repository.updateDeploymentMode(id, 'unknown')
+        await this.repository.updatePM2ProcessName(id, null)
+        logger.warn('Application already stopped', { id })
+        return
+      }
 
-    this.enforceStopPolicy(app)
+      logger.warn('Application state is stopped but runtime ports are still active, continuing cleanup', {
+        id,
+        appName: app.name,
+        ports: this.getConfiguredPorts(app)
+      })
+    } else {
+      this.enforceStopPolicy(app)
+    }
 
     // 传递应用ID而不是整个应用对象
     await this.processManager.stop(id as any)
@@ -373,6 +386,8 @@ export class ApplicationService implements IApplicationService {
     }
 
     await this.repository.updateState(id, 'stopped')
+    await this.repository.updateDeploymentMode(id, 'unknown')
+    await this.repository.updatePM2ProcessName(id, null)
 
     logger.info('Application stopped', { id, name: app.name })
   }
@@ -628,6 +643,44 @@ export class ApplicationService implements IApplicationService {
 
   private enforceStopPolicy(app: Application): void {
     this.assertStateTransition(app.state, 'stopped', 'stop', { appId: app.id, appName: app.name })
+  }
+
+  private getConfiguredPorts(app: Application): number[] {
+    const ports: number[] = []
+
+    if (app.network?.primaryPort) {
+      ports.push(app.network.primaryPort)
+    }
+
+    if (Array.isArray(app.network?.secondaryPorts)) {
+      for (const port of app.network.secondaryPorts) {
+        if (port) {
+          ports.push(port)
+        }
+      }
+    }
+
+    return ports
+  }
+
+  private async hasActiveRuntimePorts(app: Application): Promise<boolean> {
+    const configuredPorts = this.getConfiguredPorts(app)
+    if (configuredPorts.length === 0) {
+      return false
+    }
+
+    try {
+      const conflicts = await this.networkService.checkConflicts(configuredPorts)
+      return conflicts.length > 0
+    } catch (error) {
+      logger.warn('Failed to check active runtime ports, assuming no stale runtime remains', {
+        appId: app.id,
+        appName: app.name,
+        ports: configuredPorts,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return false
+    }
   }
 
   private assertStateTransition(

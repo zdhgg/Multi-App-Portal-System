@@ -169,7 +169,7 @@
       <div class="footer-content">
         <div class="footer-left">
           <span class="copyright">© 2025 智能应用门户系统</span>
-          <span class="version">v2.0</span>
+          <span class="version">{{ portalVersion }}</span>
         </div>
         <div class="footer-right">
           <span class="last-update">
@@ -207,11 +207,13 @@ import { useWebSocket } from '@/composables/useWebSocket'
 import { getAppAccessUrl, resolveAppProtocol } from '@/types/app'
 import { generateAppAccessUrl } from '@/utils/networkUtils'
 import { debugLog, debugWarn } from '@/utils/debugControl'
+import { getVersionString } from '@/config/version'
 
 const portalStore = usePortalStore()
 const authStore = useAuthStore()
 const route = useRoute()
 const { connect, disconnect, isConnected } = useWebSocket()
+const portalVersion = getVersionString()
 
 // 响应式数据
 const searchQuery = ref('')

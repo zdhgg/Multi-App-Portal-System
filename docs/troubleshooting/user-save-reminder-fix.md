@@ -45,7 +45,7 @@
 
 1. ✅ 数据已更新到前端状态
 2. ✅ `isDirty` 标志已设置为 true
-3. ❌ 数据**未保存**到服务器的 `configs/system-config.json` 文件
+3. ❌ 数据**未保存**到服务器的项目根目录 `configs/system-config.json` 文件
 4. ❌ 用户**没有意识到**需要点击"保存设置"按钮
 
 ---
@@ -226,7 +226,7 @@ emit('update:users')
   ↓
 处理密码加密（PasswordUtils.processUsersPasswords）
   ↓
-写入 configs/system-config.json 文件
+写入项目根目录 configs/system-config.json 文件
   ↓
 返回新的 versionToken
   ↓
@@ -313,7 +313,8 @@ if (current.versionToken !== clientToken) {
 
 - `detection-api/src/controllers/SystemSettingsController.ts` - 系统设置保存逻辑
 - `detection-api/src/utils/PasswordUtils.ts` - 密码加密处理
-- `configs/system-config.json` - 配置文件存储位置
+- `configs/system-config.json` - 系统设置主文件
+- `detection-api/configs/system-config.json` - 系统设置兼容镜像
 
 ---
 
@@ -364,4 +365,3 @@ if (current.versionToken !== clientToken) {
 ---
 
 **现在用户新增账户后不会再丢失数据了！** 🎊
-

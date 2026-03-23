@@ -7,7 +7,7 @@
         <transition name="fade">
           <div v-if="!isCollapsed" class="logo-text">
             <div class="app-name">智能门户</div>
-            <div class="app-version">v2.0</div>
+            <div class="app-version">{{ appVersion }}</div>
           </div>
         </transition>
       </div>
@@ -161,6 +161,7 @@ import { Expand, Fold, Avatar, User, SwitchButton, InfoFilled } from '@element-p
 import { useAuthStore } from '@/stores/auth'
 import UserProfile from '@/components/UserProfile.vue'
 import AboutDialog from '@/components/AboutDialog.vue'
+import { getVersionString } from '@/config/version'
 
 // 类型定义
 interface MenuItem {
@@ -187,6 +188,7 @@ const emit = defineEmits<{ 'update:mobileOpen': [value: boolean]; 'mobile-close'
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const appVersion = getVersionString()
 
 // 响应式状态
 const isCollapsed = ref(false)

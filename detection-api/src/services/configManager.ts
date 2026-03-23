@@ -1,7 +1,12 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, watch } from 'fs'
-import { join, dirname } from 'path'
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { dirname } from 'path'
 import { logger } from '../utils/logger.js'
 import { EventEmitter } from 'events'
+import {
+  getPortalConfigFilePath,
+  readPortalConfigFileSync,
+  writePortalConfigFileSync
+} from '../utils/portalConfigPath.js'
 
 /**
  * 端口配置接口
@@ -103,10 +108,12 @@ export class ConfigManager extends EventEmitter {
   private configWatcher: any = null
   private readonly enableFileWatching: boolean = true
   private isLoading: boolean = false
+  private readonly useManagedPortalConfigPath: boolean
 
-  constructor(configPath: string = join(process.cwd(), 'config', 'system-config.json')) {
+  constructor(configPath?: string) {
     super()
-    this.configPath = configPath
+    this.useManagedPortalConfigPath = !configPath
+    this.configPath = configPath || getPortalConfigFilePath()
   }
 
   /**
@@ -195,11 +202,23 @@ export class ConfigManager extends EventEmitter {
    * 保存配置到文件
    */
   async saveConfig(config: CompleteConfiguration): Promise<void> {
+    const persistedConfig = {
+      version: '1.0.0',
+      lastUpdated: new Date().toISOString(),
+      ...config
+    }
+
+    if (this.useManagedPortalConfigPath) {
+      this.configPath = getPortalConfigFilePath()
+      writePortalConfigFileSync(JSON.stringify(persistedConfig, null, 2))
+      return
+    }
+
     const configDir = dirname(this.configPath)
     if (!existsSync(configDir)) {
       mkdirSync(configDir, { recursive: true })
     }
-    writeFileSync(this.configPath, JSON.stringify(config, null, 2), 'utf8')
+    writeFileSync(this.configPath, JSON.stringify(persistedConfig, null, 2), 'utf8')
   }
 
   /**
@@ -232,10 +251,14 @@ export class ConfigManager extends EventEmitter {
     }
     this.isLoading = true
     try {
+      if (this.useManagedPortalConfigPath) {
+        this.configPath = getPortalConfigFilePath()
+      }
+
       if (!existsSync(this.configPath)) {
         await this.createDefaultConfig()
       }
-      const raw = readFileSync(this.configPath, 'utf8')
+      const raw = this.useManagedPortalConfigPath ? readPortalConfigFileSync() : readFileSync(this.configPath, 'utf8')
       const parsed = JSON.parse(raw) as CompleteConfiguration
       this.currentConfig = parsed
       await this.startFileWatching()

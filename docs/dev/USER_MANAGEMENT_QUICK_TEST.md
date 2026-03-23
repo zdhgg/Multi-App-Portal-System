@@ -146,7 +146,7 @@ Get-Content logs/api.log | Select-String "用户管理操作"
 1. 创建一个测试用户（密码: `Test123456!`）
 2. 保存后查看配置文件：
 ```bash
-cat configs/system-config.json
+cat ../configs/system-config.json
 ```
 3. **验证**：
    - 密码字段包含`$2a$10$`开头的哈希值
@@ -171,7 +171,7 @@ cat configs/system-config.json
 ### 问题：无法登录新账户
 **解决**：
 1. 检查是否点击了"保存设置"
-2. 查看`configs/system-config.json`是否有该用户
+2. 查看项目根目录的`configs/system-config.json`是否有该用户
 3. 检查密码是否为加密格式（`$2a$10$...`）
 
 ### 问题：密码强度不显示

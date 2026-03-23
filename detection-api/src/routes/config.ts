@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
+import { existsSync } from 'fs';
 import ConfigService from '../services/configService';
 import { ServiceContainer } from '../core/ServiceContainer.js';
+import { getPortalConfigFilePath, readPortalConfigFileSync } from '../utils/portalConfigPath.js';
 
 const router = Router();
 const configService = ConfigService.getInstance();
@@ -29,13 +31,10 @@ router.get('/ui', async (req: Request, res: Response) => {
  */
 router.get('/portal', async (req: Request, res: Response) => {
   try {
-    // 读取端口配置文件
-    const fs = await import('fs');
-    const path = await import('path');
-    const configPath = path.join(process.cwd(), 'configs', 'portal-config.json');
+    const configPath = getPortalConfigFilePath();
     
-    if (fs.existsSync(configPath)) {
-      const configContent = fs.readFileSync(configPath, 'utf8');
+    if (configPath && existsSync(configPath)) {
+      const configContent = readPortalConfigFileSync();
       const config = JSON.parse(configContent);
       
       res.json({
@@ -44,18 +43,19 @@ router.get('/portal', async (req: Request, res: Response) => {
           portConfiguration: config.portConfiguration
         }
       });
-    } else {
-      // 返回默认配置
-      res.json({
-        success: true,
-        data: {
-          portConfiguration: {
-            frontendRange: { start: 3001, end: 3100, description: "前端应用端口范围" },
-            backendRange: { start: 8001, end: 8100, description: "���Ӧ�ö˿ڷ�Χ" }
-          }
-        }
-      });
+      return;
     }
+
+    // 返回默认配置
+    res.json({
+      success: true,
+      data: {
+        portConfiguration: {
+          frontendRange: { start: 3001, end: 3100, description: "前端应用端口范围" },
+          backendRange: { start: 8001, end: 8100, description: "后端应用端口范围" }
+        }
+      }
+    });
   } catch (error) {
     console.error('Failed to get portal config:', error);
     res.status(500).json({

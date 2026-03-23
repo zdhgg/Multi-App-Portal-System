@@ -1,6 +1,12 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { readFileSync } from 'fs'
 import { resolve } from 'path'
+
+const packageJson = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf-8')
+) as { version?: string }
+const appVersion = typeof packageJson.version === 'string' ? packageJson.version : '1.1.0'
 
 export default defineConfig({
   plugins: [vue()],
@@ -14,7 +20,7 @@ export default defineConfig({
       process.env.NODE_ENV === 'production' ? undefined : 'ws://localhost:3000/ws'
     ),
     // 定义应用版本号
-    '__APP_VERSION__': JSON.stringify('1.0.0')
+    '__APP_VERSION__': JSON.stringify(appVersion)
   },
   resolve: {
     alias: {

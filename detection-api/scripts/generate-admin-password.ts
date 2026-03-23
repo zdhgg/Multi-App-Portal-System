@@ -17,7 +17,7 @@ async function generateAdminPassword() {
   console.log('加密后的密码哈希:')
   console.log(hash)
   console.log('========================================')
-  console.log('\n请将此哈希值添加到 configs/system-config.json 文件的 accounts.users 部分')
+  console.log('\n请将此哈希值添加到项目根目录 configs/system-config.json 文件的 accounts.users 部分')
   
   // 输出完整的配置示例
   const config = {

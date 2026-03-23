@@ -1,14 +1,12 @@
 {
-  "version": "1.0.0",
-  "lastUpdated": "2025-09-28T00:28:33.133Z",
   "portConfiguration": {
     "frontendRange": {
-      "start": 3001,
+      "start": 3003,
       "end": 3100,
       "description": "前端应用端口范围"
     },
     "backendRange": {
-      "start": 8001,
+      "start": 8003,
       "end": 8100,
       "description": "后端应用端口范围"
     },
@@ -34,9 +32,14 @@
         "category": "portal"
       },
       {
-        "port": 8000,
-        "description": "门户系统备用服务",
+        "port": 8002,
+        "description": "门户系统后端API",
         "category": "portal"
+      },
+      {
+        "port": 8317,
+        "description": "External EXE: CLI Proxy API",
+        "category": "external-exe"
       }
     ],
     "allocationPolicy": {

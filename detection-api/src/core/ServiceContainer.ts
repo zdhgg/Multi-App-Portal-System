@@ -119,7 +119,11 @@ export class ServiceContainer {
 
     // 🔄 PM2状态同步服务
     this.services.set('pm2StateSyncService',
-      new PM2StateSyncService(pm2Service, this.get('applicationService')))
+      new PM2StateSyncService(
+        pm2Service,
+        this.get('applicationService'),
+        this.get('networkService')
+      ))
 
     this.services.set('detectionService',
       new DetectionService(

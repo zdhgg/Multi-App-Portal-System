@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Portal System - Offline Deployment Package Generator v2.0
+# Portal System - Offline Deployment Package Generator v1.1.0
 
 param(
     [switch]$SkipBuild
@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Portal System - Offline Deployment Package Generator v2.0" -ForegroundColor Cyan
+Write-Host "  Portal System - Offline Deployment Package Generator v1.1.0" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 
 # Step 1: Check dependencies

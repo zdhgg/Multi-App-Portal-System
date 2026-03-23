@@ -1,7 +1,7 @@
-# 智能多Web应用门户系统 - 统一启动脚本 v2.0
+﻿# 智能多Web应用门户系统 - 统一启动脚本 v1.1.0
 # 集成环境管理、依赖检查、健康监控、PM2部署等功能
 # 作者: Augment Agent
-# 版本: 2.0.0
+# 版本: 1.1.0
 
 param(
     # 环境选择
@@ -38,7 +38,7 @@ param(
 # 全局配置和常量
 # ============================================================================
 
-$SCRIPT_VERSION = "2.0.0"
+$SCRIPT_VERSION = "1.1.0"
 $SCRIPT_NAME = "智能多Web应用门户系统统一启动器"
 
 # 标准化环境名称
@@ -60,29 +60,9 @@ $PROJECT_ROOT = $PSScriptRoot
 $BACKEND_DIR = Join-Path $PROJECT_ROOT "detection-api"
 $FRONTEND_DIR = Join-Path $PROJECT_ROOT "main-portal"
 
-# 导入统一日志系统
 $LOGS_SCRIPT = Join-Path $PROJECT_ROOT "scripts/diagnostics/logs.ps1"
-if (Test-Path $LOGS_SCRIPT) {
-    . $LOGS_SCRIPT
-}
-
-# 导入配置管理系统
-$CONFIG_SCRIPT = Join-Path $PROJECT_ROOT "scripts/management/config.ps1"
-if (Test-Path $CONFIG_SCRIPT) {
-    . $CONFIG_SCRIPT
-}
-
-# 导入API管理系统
 $API_SCRIPT = Join-Path $PROJECT_ROOT "scripts/management/api.ps1"
-if (Test-Path $API_SCRIPT) {
-    . $API_SCRIPT
-}
-
-# 导入备份管理系统
 $BACKUP_SCRIPT = Join-Path $PROJECT_ROOT "scripts/management/backup.ps1"
-if (Test-Path $BACKUP_SCRIPT) {
-    . $BACKUP_SCRIPT
-}
 $CONFIG_DIR = Join-Path $PROJECT_ROOT "config"
 
 # 健康检查配置
@@ -204,9 +184,9 @@ function Show-InteractiveMenu {
     Write-Host "      • 查看和搜索日志" -ForegroundColor Gray
     Write-Host "      • 日志统计和清理" -ForegroundColor Gray
     Write-Host ""
-    Write-Host "  [7] ⚙️ 配置管理" -ForegroundColor Magenta
-    Write-Host "      • 系统配置管理" -ForegroundColor Gray
-    Write-Host "      • 配置备份和恢复" -ForegroundColor Gray
+    Write-Host "  [7] ⚙️ 配置说明" -ForegroundColor Magenta
+    Write-Host "      • 查看当前运行时配置入口" -ForegroundColor Gray
+    Write-Host "      • 指引系统设置与端口配置位置" -ForegroundColor Gray
     Write-Host ""
     Write-Host "  [8] 🔌 API接口管理" -ForegroundColor Blue
     Write-Host "      • API发现和注册" -ForegroundColor Gray
@@ -250,7 +230,7 @@ function Show-InteractiveMenu {
             return $null
         }
         "7" {
-            Write-Info "启动配置管理..." "MENU"
+            Write-Info "查看配置说明..." "MENU"
             Start-ConfigManagement
             return $null
         }
@@ -337,34 +317,6 @@ function Main {
             Invoke-SystemCheck
             return
         }
-    } else {
-        # 如果没有通过菜单设置，尝试从配置系统读取默认值
-        if ([string]::IsNullOrEmpty($ENV_NAME) -or [string]::IsNullOrEmpty($START_MODE)) {
-            try {
-                # 加载配置管理系统
-                $configScript = Join-Path $PROJECT_ROOT "config.ps1"
-                if (Test-Path $configScript) {
-                    . $configScript
-
-                    # 从配置系统读取默认值
-                    if ([string]::IsNullOrEmpty($ENV_NAME)) {
-                        $configEnv = Get-SystemConfig -ConfigKey "system.environment"
-                        if (-not [string]::IsNullOrEmpty($configEnv)) {
-                            $script:ENV_NAME = $configEnv
-                        }
-                    }
-
-                    if ([string]::IsNullOrEmpty($START_MODE)) {
-                        $configMode = Get-SystemConfig -ConfigKey "system.mode"
-                        if (-not [string]::IsNullOrEmpty($configMode)) {
-                            $script:START_MODE = $configMode
-                        }
-                    }
-                }
-            } catch {
-                Write-Debug "无法从配置系统读取默认值: $($_.Exception.Message)" "MAIN"
-            }
-        }
     }
 
     # 显示启动信息
@@ -386,6 +338,7 @@ function Main {
         Show-StartupSummary
     } else {
         Write-Error "❌ 启动失败" "MAIN"
+        Stop-AllServices
         exit 1
     }
 }
@@ -475,8 +428,8 @@ function Start-LogManagement {
         switch ($choice) {
             "1" {
                 Write-Info "查看最新日志..." "LOG"
-                if (Get-Command Show-LogEntries -ErrorAction SilentlyContinue) {
-                    Show-LogEntries "all" "ALL" "" "24h" 50
+                if (Test-Path $LOGS_SCRIPT) {
+                    & $LOGS_SCRIPT -Action view -Component all -Level ALL -TimeRange 24h -Lines 50
                 } else {
                     Write-Error "日志系统未加载，请检查logs.ps1文件"
                 }
@@ -487,8 +440,8 @@ function Start-LogManagement {
                 $searchTerm = Read-Host "请输入搜索关键词"
                 if ($searchTerm) {
                     Write-Info "搜索日志: $searchTerm" "LOG"
-                    if (Get-Command Search-LogEntries -ErrorAction SilentlyContinue) {
-                        Search-LogEntries $searchTerm "all" "ALL" "7d" 100
+                    if (Test-Path $LOGS_SCRIPT) {
+                        & $LOGS_SCRIPT -Action search -SearchTerm $searchTerm -Component all -Level ALL -TimeRange 7d -Lines 100
                     } else {
                         Write-Error "日志系统未加载，请检查logs.ps1文件"
                     }
@@ -500,8 +453,8 @@ function Start-LogManagement {
             }
             "3" {
                 Write-Info "生成日志统计..." "LOG"
-                if (Get-Command Show-LogStatistics -ErrorAction SilentlyContinue) {
-                    Show-LogStatistics "all" "7d"
+                if (Test-Path $LOGS_SCRIPT) {
+                    & $LOGS_SCRIPT -Action stats -Component all -TimeRange 7d
                 } else {
                     Write-Error "日志系统未加载，请检查logs.ps1文件"
                 }
@@ -513,8 +466,8 @@ function Start-LogManagement {
                 $confirm = Read-Host "确定要继续吗？将自动归档现有日志 (y/N)"
                 if ($confirm -eq "y" -or $confirm -eq "Y") {
                     Write-Info "清理日志文件..." "LOG"
-                    if (Get-Command Clear-LogFiles -ErrorAction SilentlyContinue) {
-                        Clear-LogFiles "all" -Archive:$true -Force:$true
+                    if (Test-Path $LOGS_SCRIPT) {
+                        & $LOGS_SCRIPT -Action archive -Component all
                     } else {
                         Write-Error "日志系统未加载，请检查logs.ps1文件"
                     }
@@ -526,8 +479,8 @@ function Start-LogManagement {
             }
             "5" {
                 Write-Info "启动实时日志监控（按Ctrl+C退出）..." "LOG"
-                if (Get-Command Start-LogTail -ErrorAction SilentlyContinue) {
-                    Start-LogTail "all" "ALL"
+                if (Test-Path $LOGS_SCRIPT) {
+                    & $LOGS_SCRIPT -Action tail -Component all -Level ALL
                 } else {
                     Write-Error "日志系统未加载，请检查logs.ps1文件"
                     Read-Host "按回车键继续"
@@ -535,8 +488,8 @@ function Start-LogManagement {
             }
             "6" {
                 Write-Info "归档旧日志..." "LOG"
-                if (Get-Command Remove-OldLogFiles -ErrorAction SilentlyContinue) {
-                    Remove-OldLogFiles 30
+                if (Test-Path $LOGS_SCRIPT) {
+                    & $LOGS_SCRIPT -Action archive -Component all
                 } else {
                     Write-Error "日志系统未加载，请检查logs.ps1文件"
                 }
@@ -563,200 +516,28 @@ function Start-LogManagement {
 function Start-ConfigManagement {
     Clear-Host
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
-    Write-Host "  系统配置管理" -ForegroundColor Magenta
+    Write-Host "  配置入口说明" -ForegroundColor Magenta
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
     Write-Host ""
-
-    # 检查配置管理系统是否可用
-    if (-not (Get-Command Start-InteractiveConfig -ErrorAction SilentlyContinue)) {
-        Write-Host "❌ 配置管理系统未加载，请检查config.ps1文件" -ForegroundColor Red
-        Read-Host "按回车键返回主菜单"
-        return
-    }
-
-    while ($true) {
-        Write-Host "⚙️ 配置管理选项:" -ForegroundColor Yellow
-        Write-Host "  [1] 交互式配置管理" -ForegroundColor White
-        Write-Host "  [2] 查看当前配置" -ForegroundColor White
-        Write-Host "  [3] 快速配置向导" -ForegroundColor White
-        Write-Host "  [4] 配置备份管理" -ForegroundColor White
-        Write-Host "  [5] 配置验证检查" -ForegroundColor White
-        Write-Host "  [6] 同步配置到脚本" -ForegroundColor White
-        Write-Host "  [0] 返回主菜单" -ForegroundColor Red
-        Write-Host ""
-
-        $choice = Read-Host "请输入选择 (0-6)"
-
-        switch ($choice) {
-            "1" {
-                Write-Info "启动交互式配置管理..." "CONFIG"
-                Start-InteractiveConfig
-            }
-            "2" {
-                Write-Info "显示当前配置..." "CONFIG"
-                if (Get-Command Show-ConfigList -ErrorAction SilentlyContinue) {
-                    Show-ConfigList
-                } else {
-                    Write-Error "配置显示功能不可用"
-                }
-                Write-Host ""
-                Read-Host "按回车键继续"
-            }
-            "3" {
-                Write-Info "启动快速配置向导..." "CONFIG"
-                Start-QuickConfigWizard
-            }
-            "4" {
-                Write-Info "配置备份管理..." "CONFIG"
-                if (Get-Command Show-ConfigBackups -ErrorAction SilentlyContinue) {
-                    Show-ConfigBackups
-                    Write-Host ""
-                    Write-Host "备份操作:" -ForegroundColor Yellow
-                    Write-Host "  [1] 创建新备份"
-                    Write-Host "  [2] 恢复备份"
-                    Write-Host "  [0] 返回"
-
-                    $backupChoice = Read-Host "请选择"
-                    switch ($backupChoice) {
-                        "1" {
-                            if (Get-Command Backup-ConfigFile -ErrorAction SilentlyContinue) {
-                                $backupPath = Backup-ConfigFile (Join-Path $PROJECT_ROOT "configs\system-config.json")
-                                if ($backupPath) {
-                                    Write-Host "✅ 配置备份成功: $([System.IO.Path]::GetFileName($backupPath))" -ForegroundColor Green
-                                }
-                            }
-                        }
-                        "2" {
-                            $backupName = Read-Host "请输入备份文件名"
-                            if ($backupName -and (Get-Command Restore-ConfigFile -ErrorAction SilentlyContinue)) {
-                                $backupPath = Join-Path $PROJECT_ROOT "configs\backups\$backupName"
-                                $success = Restore-ConfigFile $backupPath
-                                if ($success) {
-                                    Write-Host "✅ 配置恢复成功" -ForegroundColor Green
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    Write-Error "配置备份功能不可用"
-                }
-                Write-Host ""
-                Read-Host "按回车键继续"
-            }
-            "5" {
-                Write-Info "验证配置文件..." "CONFIG"
-                if (Get-Command Validate-ConfigFile -ErrorAction SilentlyContinue) {
-                    $isValid = Validate-ConfigFile
-                    if ($isValid) {
-                        Write-Host "✅ 配置文件验证通过" -ForegroundColor Green
-                    } else {
-                        Write-Host "❌ 配置文件验证失败，请检查日志" -ForegroundColor Red
-                    }
-                } else {
-                    Write-Error "配置验证功能不可用"
-                }
-                Write-Host ""
-                Read-Host "按回车键继续"
-            }
-            "6" {
-                Write-Info "同步配置到其他脚本..." "CONFIG"
-                if (Get-Command Sync-ConfigToScripts -ErrorAction SilentlyContinue) {
-                    Sync-ConfigToScripts
-                    Write-Host "✅ 配置同步完成" -ForegroundColor Green
-                } else {
-                    Write-Error "配置同步功能不可用"
-                }
-                Write-Host ""
-                Read-Host "按回车键继续"
-            }
-            "0" {
-                return
-            }
-            default {
-                Write-Warning "无效选择，请输入 0-6"
-                Start-Sleep -Seconds 1
-            }
-        }
-
-        Clear-Host
-        Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
-        Write-Host "  系统配置管理" -ForegroundColor Magenta
-        Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
-        Write-Host ""
-    }
+    Write-Host "旧的 PowerShell 配置管理脚本已移除，以避免继续使用损坏的遗留入口。" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "当前推荐的配置入口：" -ForegroundColor Cyan
+    Write-Host "  1. Web 界面系统设置" -ForegroundColor White
+    Write-Host "     路径：系统设置 -> 安全设置 / 路径访问 / 用户管理" -ForegroundColor Gray
+    Write-Host "  2. 系统设置主文件" -ForegroundColor White
+    Write-Host "     $PROJECT_ROOT\configs\system-config.json" -ForegroundColor Gray
+    Write-Host "  3. 端口与门户配置主文件" -ForegroundColor White
+    Write-Host "     $PROJECT_ROOT\detection-api\configs\portal-config.json" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "兼容镜像文件（不建议手工维护）：" -ForegroundColor DarkYellow
+    Write-Host "  $PROJECT_ROOT\detection-api\configs\system-config.json" -ForegroundColor DarkGray
+    Write-Host "  $PROJECT_ROOT\detection-api\config\system-config.json" -ForegroundColor DarkGray
+    Write-Host ""
+    Read-Host "按回车键返回主菜单"
 }
 
 function Start-QuickConfigWizard {
-    Write-Host ""
-    Write-Host "🧙‍♂️ 快速配置向导" -ForegroundColor Cyan
-    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-    Write-Host ""
-
-    # 环境配置
-    Write-Host "1. 选择运行环境:" -ForegroundColor Yellow
-    Write-Host "   [1] 开发环境 (development)"
-    Write-Host "   [2] 生产环境 (production)"
-    $envChoice = Read-Host "请选择 (1-2)"
-
-    $environment = switch ($envChoice) {
-        "1" { "development" }
-        "2" { "production" }
-        default { "development" }
-    }
-
-    # 启动模式配置
-    Write-Host ""
-    Write-Host "2. 选择启动模式:" -ForegroundColor Yellow
-    Write-Host "   [1] 自动模式 (auto)"
-    Write-Host "   [2] 开发模式 (development)"
-    Write-Host "   [3] PM2模式 (pm2)"
-    $modeChoice = Read-Host "请选择 (1-3)"
-
-    $mode = switch ($modeChoice) {
-        "1" { "auto" }
-        "2" { "development" }
-        "3" { "pm2" }
-        default { "auto" }
-    }
-
-    # 端口配置
-    Write-Host ""
-    Write-Host "3. 配置端口:" -ForegroundColor Yellow
-    $backendPort = Read-Host "后端端口 (默认: 8002)"
-    if (-not $backendPort) { $backendPort = 8002 }
-
-    $frontendPort = Read-Host "前端端口 (默认: 3000)"
-    if (-not $frontendPort) { $frontendPort = 3000 }
-
-    # 应用配置
-    Write-Host ""
-    Write-Host "4. 应用配置向导完成，正在保存..." -ForegroundColor Green
-
-    # 保存配置
-    if (Get-Command Set-SystemConfig -ErrorAction SilentlyContinue) {
-        Set-SystemConfig "system.environment" $environment
-        Set-SystemConfig "system.mode" $mode
-        Set-SystemConfig "ports.backend" ([int]$backendPort)
-        Set-SystemConfig "ports.frontend" ([int]$frontendPort)
-
-        # 同步配置
-        if (Get-Command Sync-ConfigToScripts -ErrorAction SilentlyContinue) {
-            Sync-ConfigToScripts
-        }
-
-        Write-Host "✅ 配置保存成功！" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "配置摘要:" -ForegroundColor Cyan
-        Write-Host "  环境: $environment" -ForegroundColor White
-        Write-Host "  模式: $mode" -ForegroundColor White
-        Write-Host "  后端端口: $backendPort" -ForegroundColor White
-        Write-Host "  前端端口: $frontendPort" -ForegroundColor White
-    } else {
-        Write-Host "❌ 配置保存失败，配置管理功能不可用" -ForegroundColor Red
-    }
-
-    Write-Host ""
-    Read-Host "按回车键继续"
+    Start-ConfigManagement
 }
 
 function Show-StartupBanner {
@@ -1494,8 +1275,8 @@ function Start-ApiManagement {
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Blue
     Write-Host ""
 
-    # 检查API管理系统是否可用
-    if (-not (Get-Command Start-InteractiveApiManager -ErrorAction SilentlyContinue)) {
+    # 检查API管理脚本是否可用
+    if (-not (Test-Path $API_SCRIPT)) {
         Write-Host "❌ API管理系统未加载，请检查api.ps1文件" -ForegroundColor Red
         Read-Host "按回车键返回主菜单"
         return
@@ -1517,33 +1298,31 @@ function Start-ApiManagement {
         switch ($choice) {
             "1" {
                 Write-Info "启动交互式API管理..." "API"
-                Start-InteractiveApiManager
+                & $API_SCRIPT -Action interactive
             }
             "2" {
                 Write-Info "开始API自动发现..." "API"
-                $discovered = Invoke-ApiDiscovery
-                Write-Host "发现了 $($discovered.Count) 个新API" -ForegroundColor Green
+                & $API_SCRIPT -Action discover
                 Read-Host "按回车键继续"
             }
             "3" {
                 Write-Info "执行API健康检查..." "API"
-                Show-ApiHealthStatus
+                & $API_SCRIPT -Action health
                 Read-Host "按回车键继续"
             }
             "4" {
                 Write-Info "执行API监控..." "API"
-                $results = Invoke-ApiMonitoring
-                Write-Host "监控完成，检查了 $($results.Count) 个API" -ForegroundColor Green
+                & $API_SCRIPT -Action monitor
                 Read-Host "按回车键继续"
             }
             "5" {
                 Write-Info "显示API统计..." "API"
-                Show-ApiStatistics
+                & $API_SCRIPT -Action stats
                 Read-Host "按回车键继续"
             }
             "6" {
                 Write-Info "生成API文档..." "API"
-                Generate-ApiDocumentation
+                & $API_SCRIPT -Action docs
                 Read-Host "按回车键继续"
             }
             "0" {
@@ -1576,11 +1355,6 @@ function Add-MonitorOption {
     Write-Host "  • 启动监控仪表板: .\scripts\monitoring\monitor.ps1" -ForegroundColor Cyan
     Write-Host "  • 集成监控启动: .\start.ps1 -ShowMenu 选择选项5" -ForegroundColor Cyan
     Write-Host ""
-}
-
-# 注册清理函数
-Register-EngineEvent PowerShell.Exiting -Action {
-    Stop-AllServices
 }
 
 # 执行主函数

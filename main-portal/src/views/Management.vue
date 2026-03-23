@@ -604,6 +604,7 @@ import {
 import { formatPortsDisplay, getAllPorts } from '@/types/app'
 import { useAuthStore } from '@/stores/auth'
 import { usePortalStore } from '@/stores/portal'
+import { usePortMonitoringStore } from '@/stores/portMonitoring'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { debugInfo, debugLog } from '@/utils/debugControl'
 
@@ -668,6 +669,8 @@ const tableRef = ref() // Table引用，用于控制全选
 // 权限管理
 const authStore = useAuthStore()
 const portalStore = usePortalStore()
+const portMonitoringStore = usePortMonitoringStore()
+const pendingPortRefreshTimers = new Set<ReturnType<typeof setTimeout>>()
 
 // 搜索和过滤相关
 const searchQuery = ref('')
@@ -679,6 +682,37 @@ const currentViewMeta = {
   title: '应用管理视图',
   description: '统一应用管理：应用目录、运行状态和配置操作按角色权限显示。',
   alertType: 'info' as const
+}
+
+const queuePortMonitoringRefresh = (delays: number[], reason: string) => {
+  delays.forEach((delay) => {
+    const timer = setTimeout(() => {
+      pendingPortRefreshTimers.delete(timer)
+      portMonitoringStore.refreshAll(true).catch((error) => {
+        console.warn(`刷新端口监控失败 (${reason}, ${delay}ms):`, error)
+      })
+    }, delay)
+
+    pendingPortRefreshTimers.add(timer)
+  })
+}
+
+const isPortConflictError = (error: any): boolean => {
+  const code = String(error?.code || '').trim().toUpperCase()
+  if (code === 'PORT_CONFLICTS' || code === 'PORT_CONFLICT') {
+    return true
+  }
+
+  const message = [
+    error?.message,
+    error?.details?.message,
+    error?.response?.data?.message,
+    error?.response?.data?.error?.message
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .join(' ')
+
+  return error?.status === 409 && /端口冲突|已被占用|port conflict|already in use/i.test(message)
 }
 
 // 技术栈动态加载
@@ -791,6 +825,8 @@ onMounted(() => {
 onUnmounted(() => {
   disconnect()
   stopRuntimeLogAutoRefresh()
+  pendingPortRefreshTimers.forEach(timer => clearTimeout(timer))
+  pendingPortRefreshTimers.clear()
 })
 
 watch(runtimeLogDialogVisible, (visible) => {
@@ -951,7 +987,24 @@ const handleFilter = () => {
 
 // 刷新应用
 const refreshApps = async () => {
+  let syncResult: Awaited<ReturnType<typeof pm2ApiService.syncState>> | null = null
+
+  if (hasOperationPermission('start') || hasOperationPermission('stop') || hasOperationPermission('status')) {
+    try {
+      syncResult = await pm2ApiService.syncState()
+      debugLog('应用状态已执行即时同步:', syncResult)
+    } catch (error) {
+      console.warn('即时同步应用状态失败，回退到普通列表刷新:', error)
+    }
+  }
+
   await loadApps()
+
+  if (syncResult && syncResult.updated > 0) {
+    ElMessage.success(`应用列表已刷新，已同步 ${syncResult.updated} 项状态`)
+    return
+  }
+
   ElMessage.success('应用列表已刷新')
 }
 
@@ -1383,6 +1436,7 @@ const toggleApp = async (app: AppWithUIState) => {
       app.status = 'offline'
       applyFilters()
       ElMessage.success(`应用 ${app.name} 已停止（PM2模式）`)
+      queuePortMonitoringRefresh([0, 1200], `pm2-stop:${app.id}`)
       
       // ✅ 刷新门户应用列表
       portalStore.loadApps().catch(err => {
@@ -1397,6 +1451,7 @@ const toggleApp = async (app: AppWithUIState) => {
         app.status = 'offline'
         applyFilters()
         ElMessage.success(`应用 ${app.name} 已停止`)
+        queuePortMonitoringRefresh([0, 1200], `native-stop:${app.id}`)
         
         // ✅ 刷新门户应用列表
         portalStore.loadApps().catch(err => {
@@ -1654,6 +1709,7 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
         if (response) {
           ElMessage.success(`应用 ${app.name} PM2启动请求已发送（生产模式）`)
           const expectedName = response.pm2ProcessName || toSlugName(app.name)
+          queuePortMonitoringRefresh([800, 2500], `pm2-start:${app.id}`)
           
           // ✨ 立即刷新一次门户数据（快速更新UI）
           portalStore.loadApps().catch(err => {
@@ -1677,6 +1733,7 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
                 if (pm2Process.status === 'online') {
                   app.status = 'online'
                   ElMessage.success(`✅ 应用 ${app.name} 已成功启动`)
+                  queuePortMonitoringRefresh([0, 1200], `pm2-online:${app.id}`)
                   // ✅ 再次刷新门户应用列表，确保首页显示正确的端口和模式
                   portalStore.loadApps().catch(err => {
                     console.warn('刷新门户应用列表失败:', err)
@@ -1717,6 +1774,7 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
       app.status = 'online'
       applyFilters() // 刷新过滤列表
       ElMessage.success(`应用 ${app.name} 已启动（开发模式）`)
+      queuePortMonitoringRefresh([400, 1800], `native-start:${app.id}`)
 
       // 主动刷新应用列表以确保状态同步（作为 WebSocket 的备用）
       setTimeout(() => {
@@ -1727,6 +1785,10 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
     }
   } catch (error: any) {
     console.error(`${action}应用失败:`, error)
+
+    if (isPortConflictError(error)) {
+      queuePortMonitoringRefresh([0, 1200], `start-conflict:${app.id}`)
+    }
 
     // 🔍 调试：打印完整的错误对象
     debugLog('🔍 Error object:', {

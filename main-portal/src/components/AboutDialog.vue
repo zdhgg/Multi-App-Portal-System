@@ -68,7 +68,7 @@
                   :key="entry.version"
                   :timestamp="entry.date"
                   placement="top"
-                  :type="entry.version.startsWith('2') ? 'primary' : 'info'"
+                  :type="entry.version === versionInfo.version ? 'primary' : 'info'"
                 >
                   <div class="timeline-content">
                     <div class="version-header">

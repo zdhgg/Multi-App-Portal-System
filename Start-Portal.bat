@@ -10,10 +10,18 @@ set "PORTAL_PORT=8002"
 
 :menu
 cls
+echo ============================================================
+echo Portal System - One-Click Control
+echo ============================================================
+echo.
+echo Loading current status...
+echo First launch can take a few seconds while PM2 and health checks initialize.
+echo.
 call :detect_pm2_state
 call :detect_port_owner
 call :detect_health
 call :detect_autostart
+cls
 echo ============================================================
 echo Portal System - One-Click Control
 echo ============================================================
@@ -310,10 +318,16 @@ goto menu
 set "PM2_STATE=unknown"
 set "PM2_PID=0"
 set "PM2_RAW="
-for /f "usebackq delims=" %%A in (`%PS_EXE% -NoProfile -ExecutionPolicy Bypass -Command "$result = cmd /c 'pm2 pid portal-api 2>&1'; $firstLine = ($result | Select-Object -First 1); if ($firstLine) { $firstLine = $firstLine.ToString().Trim() }; if ($firstLine -match 'EPERM|rpc.sock|operation not permitted') { Write-Output 'PM2_PERMISSION' } elseif ($firstLine -match '^[0-9]+$') { Write-Output $firstLine } else { Write-Output '0' }"`) do (
-  if not defined PM2_RAW set "PM2_RAW=%%A"
-  if "!PM2_PID!"=="0" set "PM2_PID=%%A"
+for /f "usebackq delims=" %%A in (`cmd /d /c "pm2 pid portal-api 2>&1"`) do (
+  if not "%%~A"=="" (
+    if not defined PM2_RAW set "PM2_RAW=%%~A"
+    echo(%%~A| findstr /I /C:"EPERM" /C:"rpc.sock" /C:"operation not permitted" >nul && set "PM2_RAW=PM2_PERMISSION"
+    if "!PM2_PID!"=="0" (
+      echo(%%~A| findstr /R "^[0-9][0-9]*$" >nul && set "PM2_PID=%%~A"
+    )
+  )
 )
+if not defined PM2_RAW set "PM2_RAW=0"
 if /i "!PM2_RAW!"=="PM2_PERMISSION" (
   set "PM2_STATE=permission issue"
   set "PM2_PID=N/A"
@@ -386,6 +400,11 @@ if /i "%PM2_STATE%"=="permission issue" (
   exit /b 0
 )
 
+if /i "!PORT_OWNER_STATE!"=="free" (
+  set "HEALTH_STATE=unreachable"
+  exit /b 0
+)
+
 where curl >nul 2>nul
 if errorlevel 1 (
   set "HEALTH_STATE=unknown"
@@ -393,7 +412,7 @@ if errorlevel 1 (
 )
 
 set "HEALTH_CODE=000"
-for /f "usebackq delims=" %%A in (`curl -s -o nul -w "%%{http_code}" http://localhost:8002/health 2^>nul`) do set "HEALTH_CODE=%%A"
+for /f "usebackq delims=" %%A in (`curl.exe -s --connect-timeout 1 --max-time 2 -o nul -w "%%{http_code}" http://localhost:8002/health 2^>nul`) do set "HEALTH_CODE=%%A"
 if "!HEALTH_CODE!"=="200" (
   if /i "!PORT_OWNER_STATE!"=="pm2" (
     set "HEALTH_STATE=ok (200, pm2)"

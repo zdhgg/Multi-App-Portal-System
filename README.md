@@ -175,6 +175,17 @@ cd main-portal && npm install && npm run dev
 
 后端与前端分别使用 `.env` 文件独立管理环境与安全策略：
 
+### 配置文件地图
+
+- `configs/system-config.json`
+  系统设置主文件，保存用户账号、安全策略、路径白名单等运行时系统设置。
+- `detection-api/configs/portal-config.json`
+  端口与门户配置主文件，保存端口范围、保留端口、应用启动相关的运行时配置。
+- `detection-api/configs/system-config.json`
+  系统设置兼容镜像，由后端自动同步，不建议手工维护。
+- `detection-api/config/system-config.json`
+  端口配置兼容镜像，由后端自动同步，不建议手工维护。
+
 ### 后端配置 (`detection-api/.env`)
 ```env
 PORT=8002

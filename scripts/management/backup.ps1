@@ -1,5 +1,5 @@
-# ============================================================================
-# 智能多Web应用门户系统 - 数据备份管理工具 v2.0.0
+﻿# ============================================================================
+# 智能多Web应用门户系统 - 数据备份管理工具 v1.1.0
 # ============================================================================
 # 
 # 功能说明：
@@ -72,7 +72,7 @@ if (-not (Test-Path $LOG_DIR)) {
 
 # 备份配置架构
 $BACKUP_CONFIG_SCHEMA = @{
-    version = "2.0.0"
+    version = "1.1.0"
     lastUpdated = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
     settings = @{
         defaultBackupPath = Join-Path $BACKUP_CONFIG_DIR "data"
@@ -129,7 +129,7 @@ $BACKUP_CONFIG_SCHEMA = @{
 
 # 备份注册表架构
 $BACKUP_REGISTRY_SCHEMA = @{
-    version = "2.0.0"
+    version = "1.1.0"
     lastUpdated = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
     backups = @()
     statistics = @{
@@ -370,7 +370,7 @@ function New-BackupInfo {
         status = "completed"
         description = "Backup created by backup.ps1"
         metadata = @{
-            version = "2.0.0"
+            version = "1.1.0"
             creator = $env:USERNAME
             machine = $env:COMPUTERNAME
             systemVersion = try { (Get-CimInstance -ClassName Win32_OperatingSystem).Version } catch { $PSVersionTable.PSVersion.ToString() }
@@ -999,7 +999,7 @@ function Start-InteractiveBackupManager {
 function Show-BackupHelp {
     Write-Host ""
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
-    Write-Host "  智能多Web应用门户系统 - 数据备份管理工具 v2.0.0" -ForegroundColor Green
+    Write-Host "  智能多Web应用门户系统 - 数据备份管理工具 v1.1.0" -ForegroundColor Green
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
     Write-Host ""
     Write-Host "📖 使用方法:" -ForegroundColor Yellow

@@ -162,4 +162,4 @@ project/
 ---
 
 *Generated: Auto-generated deployment guide*
-*Version: 2.0*
+*Version: 1.1.0*

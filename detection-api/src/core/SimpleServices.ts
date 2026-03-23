@@ -905,6 +905,7 @@ export class SimpleProcessManager implements ProcessManager {
     originalContent: string
   }> // 全栈项目进程组
   private readonly maxLogLines = 1000 // 增加日志容量
+  private readonly healthStartupGraceMs = 15000 // 启动后的宽限期，避免健康检查误杀冷启动进程
   private applicationRepository?: ApplicationRepository // 用于状态同步
   private healthCheckInterval?: NodeJS.Timeout // 健康检查定时器
   private wsService?: any // WebSocket服务，用于实时推送日志
@@ -936,7 +937,10 @@ export class SimpleProcessManager implements ProcessManager {
       await this.performHealthCheck()
     }, 30000)
 
-    logger.info('Process health check started', { interval: '30s' })
+    logger.info('Process health check started', {
+      interval: '30s',
+      startupGraceMs: this.healthStartupGraceMs
+    })
   }
 
   /**
@@ -1037,7 +1041,7 @@ export class SimpleProcessManager implements ProcessManager {
    */
   private async forceReleasePort(port: number, appId: string): Promise<void> {
     try {
-      const { spawn } = require('child_process')
+      const { spawn } = await import('child_process')
       
       // 查找占用端口的进程
       return new Promise((resolve) => {
@@ -1068,7 +1072,10 @@ export class SimpleProcessManager implements ProcessManager {
                   })
                 } catch (killError) {
                   logger.warn('Failed to kill process occupying port', { 
-                    appId, port, pid, error: killError.message 
+                    appId,
+                    port,
+                    pid,
+                    error: killError instanceof Error ? killError.message : String(killError)
                   })
                 }
               }
@@ -1091,7 +1098,9 @@ export class SimpleProcessManager implements ProcessManager {
       
     } catch (error) {
       logger.warn('Failed to force release port', { 
-        appId, port, error: error.message 
+        appId,
+        port,
+        error: error instanceof Error ? error.message : String(error)
       })
     }
   }
@@ -1105,6 +1114,17 @@ export class SimpleProcessManager implements ProcessManager {
     // 检查进程是否还存在
     if (!childProcess || childProcess.killed || childProcess.exitCode !== null) {
       return false
+    }
+
+    const uptimeMs = Date.now() - processInfo.startedAt.getTime()
+    if (uptimeMs < this.healthStartupGraceMs) {
+      logger.debug('Skipping port health verification during startup grace period', {
+        appId,
+        pid: childProcess.pid,
+        uptimeMs,
+        startupGraceMs: this.healthStartupGraceMs
+      })
+      return true
     }
 
     // 检查端口是否还在监听（如果有端口信息）

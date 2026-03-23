@@ -47,6 +47,7 @@ import { reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ApiError } from '@/services/api'
 import { filesystemApiService } from '@/services/filesystemApi'
+import { getNativeDirectoryPickerFailureMessage } from '@/utils/directoryPicker'
 
 type PathAccessSettings = {
   allowWorkspaceParent: boolean
@@ -136,11 +137,7 @@ const pickFolder = async (index: number) => {
     emit('picker-selected', payload)
     ElMessage.success(`已选择目录: ${selectedPath}`)
   } catch (error: any) {
-    const message = error instanceof ApiError
-      ? error.message
-      : error instanceof Error
-        ? error.message
-        : '目录选择失败'
+    const message = getNativeDirectoryPickerFailureMessage(error instanceof ApiError ? error : error)
     ElMessage.error(message)
   } finally {
     pickingIndex.value = null
@@ -179,11 +176,7 @@ const addPathByPicker = async () => {
     emit('picker-selected', payload)
     ElMessage.success(`已添加路径: ${selectedPath}`)
   } catch (error: any) {
-    const message = error instanceof ApiError
-      ? error.message
-      : error instanceof Error
-        ? error.message
-        : '目录选择失败'
+    const message = getNativeDirectoryPickerFailureMessage(error instanceof ApiError ? error : error)
     ElMessage.error(message)
   } finally {
     addingByPicker.value = false

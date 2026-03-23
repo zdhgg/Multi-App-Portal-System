@@ -13,8 +13,8 @@ export interface VersionInfo {
 
 export const VERSION_INFO: VersionInfo = {
   name: '智能多Web应用门户系统',
-  version: '2.0.0',
-  buildDate: '2025-12-12',
+  version: __APP_VERSION__,
+  buildDate: '2026-03-23',
   description: '一个智能化的Web应用检测、管理和统一门户系统',
   author: 'Portal Team',
   repository: 'https://github.com/portal-system'

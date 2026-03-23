@@ -145,6 +145,11 @@ import PathAccessSettingsPanel from '@/components/settings/PathAccessSettingsPan
 import SystemLogsPanel from '@/components/settings/SystemLogsPanel.vue'
 import BackupRestorePanel from '@/components/settings/BackupRestorePanel.vue'
 import LogManagementPanel from '@/components/settings/LogManagementPanel.vue'
+import {
+  buildSystemSettingsPayload,
+  normalizePathAccessSettings,
+  type PathAccessSettingsModel
+} from '@/utils/systemSettingsPayload'
 
 // 路由管理
 const router = useRouter()
@@ -196,18 +201,6 @@ const securitySettings = reactive<any>({})
 const pathAccessSettings = reactive<{ allowWorkspaceParent: boolean; allowedBasePaths: string[] }>({
   allowWorkspaceParent: false,
   allowedBasePaths: []
-})
-
-type PathAccessSettingsModel = {
-  allowWorkspaceParent: boolean
-  allowedBasePaths: string[]
-}
-
-const normalizePathAccessSettings = (value: any): PathAccessSettingsModel => ({
-  allowWorkspaceParent: Boolean(value?.allowWorkspaceParent),
-  allowedBasePaths: Array.isArray(value?.allowedBasePaths)
-    ? value.allowedBasePaths.map((item: unknown) => String(item).trim()).filter((item: string) => item.length > 0)
-    : []
 })
 
 const arePathAccessSettingsEqual = (a: PathAccessSettingsModel, b: PathAccessSettingsModel): boolean => {
@@ -320,13 +313,20 @@ const saveAllSettings = async () => {
   if (!meta.versionToken) { ElMessage.warning('请先刷新获取最新配置'); return }
   loading.save = true
   try {
+    const payloadSettings = buildSystemSettingsPayload({
+      serverSettings: serverSettings.value,
+      accountsUsers: accounts.users,
+      securitySettings,
+      pathAccessSettings
+    })
+
     // 调试日志：保存前的数据
     console.log('🔍 保存前的数据检查：')
     console.log('  - accounts.users:', accounts.users)
-    console.log('  - serverSettings.value.accounts:', serverSettings.value.accounts)
-    console.log('  - 完整的 serverSettings:', JSON.stringify(serverSettings.value, null, 2))
+    console.log('  - payloadSettings.accounts:', payloadSettings.accounts)
+    console.log('  - 完整的 payloadSettings:', JSON.stringify(payloadSettings, null, 2))
 
-    const resp = await systemSettingsApiService.save({ settings: serverSettings.value, versionToken: meta.versionToken })
+    const resp = await systemSettingsApiService.save({ settings: payloadSettings, versionToken: meta.versionToken })
 
     // 调试日志：保存响应
     console.log('📥 保存响应：', resp)
@@ -345,6 +345,7 @@ const saveAllSettings = async () => {
         serverSettings.value = data.settings
         meta.versionToken = data.versionToken
         meta.updatedAt = data.updatedAt
+        syncFromServer()
         isDirty.value = false
       } finally {
         // 延迟重置标志，确保所有watch回调都已执行

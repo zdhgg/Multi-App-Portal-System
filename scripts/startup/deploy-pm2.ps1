@@ -1,4 +1,4 @@
-# 智能多Web应用门户系统 - PM2部署脚本 (Windows PowerShell)
+﻿# 智能多Web应用门户系统 - PM2部署脚本 (Windows PowerShell)
 # 使用方法: .\deploy-pm2.ps1 [-Environment development|production]
 
 param(

@@ -10,6 +10,7 @@ import { normalize, join, extname, basename } from 'path'
 import { spawn } from 'child_process'
 import { logger } from '../../utils/logger.js'
 import { pathSecurityManager } from '../../core/security/PathSecurityManager.js'
+import { parseWindowsFolderPickerOutput, sanitizePickerText } from './filesystemPicker.js'
 
 export class FilesystemController {
   private router = Router()
@@ -46,9 +47,9 @@ export class FilesystemController {
         "if ($initialPath -and (Test-Path -LiteralPath $initialPath)) { $dialog.SelectedPath = $initialPath }",
         "$result = $dialog.ShowDialog()",
         "if ($result -eq [System.Windows.Forms.DialogResult]::OK -and $dialog.SelectedPath) {",
-        "  Write-Output ('__FOLDER_PICKER_SELECTED__' + $dialog.SelectedPath)",
+        "  (@{ cancelled = $false; path = $dialog.SelectedPath } | ConvertTo-Json -Compress) | Write-Output",
         "} else {",
-        "  Write-Output '__FOLDER_PICKER_CANCELLED__'",
+        "  (@{ cancelled = $true; path = $null } | ConvertTo-Json -Compress) | Write-Output",
         "}"
       ].join('; ')
 
@@ -82,16 +83,16 @@ export class FilesystemController {
       ps.on('close', (code) => {
         clearTimeout(timeout)
 
-        const output = stdout.trim()
+        const output = sanitizePickerText(stdout)
+        const parsedResult = parseWindowsFolderPickerOutput(output)
 
-        if (output.includes('__FOLDER_PICKER_CANCELLED__')) {
+        if (parsedResult.cancelled) {
           resolve({ cancelled: true })
           return
         }
 
-        if (output.includes('__FOLDER_PICKER_SELECTED__')) {
-          const selectedPath = output.replace('__FOLDER_PICKER_SELECTED__', '').trim()
-          resolve({ cancelled: false, path: selectedPath })
+        if (parsedResult.path) {
+          resolve({ cancelled: false, path: parsedResult.path })
           return
         }
 
@@ -100,7 +101,7 @@ export class FilesystemController {
           return
         }
 
-        reject(new Error(stderr.trim() || `PowerShell exited with code ${code ?? 'unknown'}`))
+        reject(new Error(sanitizePickerText(stderr) || `PowerShell exited with code ${code ?? 'unknown'}`))
       })
     })
   }
@@ -235,6 +236,12 @@ export class FilesystemController {
       }
 
       if (!existsSync(selectedPath)) {
+        logger.warn('原生目录选择返回的路径在当前进程中不存在', {
+          startPath,
+          selectedPath,
+          cwd: process.cwd(),
+          platform: process.platform
+        })
         res.status(404).json({
           success: false,
           error: '所选目录不存在'

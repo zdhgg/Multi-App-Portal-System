@@ -122,7 +122,7 @@ private logUserManagementAction(req: Request, settings: any): void {
 ```typescript
 // 替换硬编码的mockUsers
 private async loadUsers(): Promise<any[]> {
-  // 从 configs/system-config.json 读取用户列表
+  // 从项目根目录 configs/system-config.json 读取用户列表
   // 使用5秒缓存避免频繁读取文件
 }
 ```
@@ -149,7 +149,7 @@ this.clearUsersCache() // 清除缓存
 
 ### 3. 配置文件更新
 
-#### 3.1 系统配置文件（configs/system-config.json）
+#### 3.1 系统配置文件（项目根目录 configs/system-config.json）
 
 添加accounts部分：
 ```json
@@ -425,7 +425,7 @@ npx tsx scripts/generate-admin-password.ts
 - `detection-api/src/api/controllers/AuthController.ts`
 
 ### 配置文件
-- `configs/system-config.json`
+- `configs/system-config.json`（系统设置主文件）
 
 ### 工具脚本
 - `detection-api/scripts/generate-admin-password.ts`

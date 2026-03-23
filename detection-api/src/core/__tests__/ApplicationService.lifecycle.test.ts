@@ -5,8 +5,10 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
-type MutableApp = Application & {
+type MutableApp = Omit<Application, 'state' | 'deploymentMode' | 'pm2ProcessName'> & {
   state: Application['state'] | string
+  deploymentMode?: 'development' | 'production' | 'unknown'
+  pm2ProcessName?: string | null
 }
 
 class InMemoryApplicationRepository {
@@ -52,8 +54,23 @@ class InMemoryApplicationRepository {
     this.apps.set(id, app)
   }
 
-  async updatePM2ProcessName(): Promise<void> {}
-  async updateDeploymentMode(): Promise<void> {}
+  async updatePM2ProcessName(id: string, pm2ProcessName: string | null): Promise<void> {
+    const app = this.apps.get(id)
+    if (!app) {
+      throw new Error(`Application not found: ${id}`)
+    }
+    app.pm2ProcessName = pm2ProcessName
+    this.apps.set(id, app)
+  }
+
+  async updateDeploymentMode(id: string, deploymentMode: 'development' | 'production' | 'unknown'): Promise<void> {
+    const app = this.apps.get(id)
+    if (!app) {
+      throw new Error(`Application not found: ${id}`)
+    }
+    app.deploymentMode = deploymentMode
+    this.apps.set(id, app)
+  }
 
   async findByState(state: Application['state']): Promise<readonly Application[]> {
     return Array.from(this.apps.values()).filter(app => app.state === state) as Application[]
@@ -133,6 +150,94 @@ describe('ApplicationService lifecycle policy', () => {
     expect(stored?.state).toBe('failed')
   })
 
+  it('marks direct starts as development and clears stale PM2 metadata', async () => {
+    const app = createBaseApp({
+      deploymentMode: 'production',
+      pm2ProcessName: 'video-cms'
+    })
+    const repository = new InMemoryApplicationRepository([app])
+    const networkService = {
+      allocatePort: vi.fn(async () => 3200),
+      releasePort: vi.fn(async () => {}),
+      checkConflicts: vi.fn(async () => [])
+    }
+    const processManager = {
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {})
+    }
+
+    const service = new ApplicationService(repository as any, networkService as any, processManager as any)
+    vi.spyOn(service as any, 'checkPortRealTime').mockResolvedValue({ isInUse: false })
+
+    await service.start(app.id)
+
+    const stored = await repository.findById(app.id)
+    expect(stored?.state).toBe('running')
+    expect(stored?.deploymentMode).toBe('development')
+    expect(stored?.pm2ProcessName).toBeNull()
+  })
+
+  it('keeps stopped applications untouched when no runtime ports are active', async () => {
+    const app = createBaseApp({ state: 'stopped' })
+    const repository = new InMemoryApplicationRepository([app])
+    const networkService = {
+      allocatePort: vi.fn(async () => 3200),
+      releasePort: vi.fn(async () => {}),
+      checkConflicts: vi.fn(async () => [])
+    }
+    const processManager = {
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {})
+    }
+
+    const service = new ApplicationService(repository as any, networkService as any, processManager as any)
+
+    await service.stop(app.id)
+
+    expect(networkService.checkConflicts).toHaveBeenCalledWith([3100])
+    expect(processManager.stop).not.toHaveBeenCalled()
+    expect(networkService.releasePort).not.toHaveBeenCalled()
+  })
+
+  it('cleans up stale runtime ports even when application state is already stopped', async () => {
+    const app = createBaseApp({
+      state: 'stopped',
+      network: {
+        primaryPort: 3005,
+        secondaryPorts: [8005],
+        protocol: 'http'
+      }
+    })
+    const repository = new InMemoryApplicationRepository([app])
+    const networkService = {
+      allocatePort: vi.fn(async () => 3200),
+      releasePort: vi.fn(async () => {}),
+      checkConflicts: vi.fn(async () => [
+        { port: 3005, currentOwner: 'node', requestedBy: 'application' },
+        { port: 8005, currentOwner: 'node', requestedBy: 'application' }
+      ])
+    }
+    const processManager = {
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {})
+    }
+
+    const service = new ApplicationService(repository as any, networkService as any, processManager as any)
+
+    await service.stop(app.id)
+
+    expect(networkService.checkConflicts).toHaveBeenCalledWith([3005, 8005])
+    expect(processManager.stop).toHaveBeenCalledWith(app.id)
+    expect(networkService.releasePort).toHaveBeenCalledTimes(2)
+    expect(networkService.releasePort).toHaveBeenNthCalledWith(1, 3005)
+    expect(networkService.releasePort).toHaveBeenNthCalledWith(2, 8005)
+
+    const stored = await repository.findById(app.id)
+    expect(stored?.state).toBe('stopped')
+    expect(stored?.deploymentMode).toBe('unknown')
+    expect(stored?.pm2ProcessName).toBeNull()
+  })
+
   it('rejects start when directory does not exist', async () => {
     const app = createBaseApp({
       state: 'stopped',
@@ -155,6 +260,39 @@ describe('ApplicationService lifecycle policy', () => {
       code: 'APPLICATION_DIRECTORY_NOT_FOUND'
     })
     expect(processManager.start).not.toHaveBeenCalled()
+  })
+
+  it('resets runtime markers when stopping a running direct app', async () => {
+    const app = createBaseApp({
+      state: 'running',
+      deploymentMode: 'development',
+      pm2ProcessName: 'stale-process-name',
+      network: {
+        primaryPort: 3005,
+        secondaryPorts: [8005],
+        protocol: 'http'
+      }
+    })
+    const repository = new InMemoryApplicationRepository([app])
+    const networkService = {
+      allocatePort: vi.fn(async () => 3200),
+      releasePort: vi.fn(async () => {}),
+      checkConflicts: vi.fn(async () => [])
+    }
+    const processManager = {
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {})
+    }
+
+    const service = new ApplicationService(repository as any, networkService as any, processManager as any)
+
+    await service.stop(app.id)
+
+    const stored = await repository.findById(app.id)
+    expect(processManager.stop).toHaveBeenCalledWith(app.id)
+    expect(stored?.state).toBe('stopped')
+    expect(stored?.deploymentMode).toBe('unknown')
+    expect(stored?.pm2ProcessName).toBeNull()
   })
 
   it('rejects external-exe creation when buildScript is missing', async () => {

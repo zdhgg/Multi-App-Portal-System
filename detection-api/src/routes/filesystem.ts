@@ -12,6 +12,7 @@ import { spawn } from 'child_process'
 import { existsSync, statSync, readFileSync } from 'fs'
 import { resolve, normalize } from 'path'
 import { logger } from '../utils/logger'
+import { getSystemConfigFilePath } from '../utils/systemConfigPath.js'
 
 const router = Router()
 const TRUTHY_VALUES = new Set(['1', 'true', 'on', 'yes'])
@@ -53,7 +54,7 @@ interface SystemPathAccessSettings {
 let systemPathAccessSettingsCache: { mtimeMs: number; data: SystemPathAccessSettings } | null = null
 
 function loadSystemPathAccessSettings(): SystemPathAccessSettings {
-  const settingsPath = resolve(process.cwd(), 'configs', 'system-config.json')
+  const settingsPath = getSystemConfigFilePath()
   try {
     if (!existsSync(settingsPath)) {
       return { allowedBasePaths: [] }

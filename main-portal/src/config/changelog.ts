@@ -16,8 +16,8 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: '2.0.0',
-    date: '2026-02-18',
+    version: '1.1.0',
+    date: '2026-03-23',
     title: '统一路由治理 + 多应用运维增强',
     items: [
       { type: 'feature', description: '检测管道持续优化：Scanner → Analyzer → Aggregator → PortAllocator 稳定支撑全栈识别与端口分配' },
@@ -36,7 +36,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     ]
   },
   {
-    version: '1.1.0',
+    version: '1.0.5',
     date: '2025-11-05',
     title: '智能命令注入功能',
     items: [

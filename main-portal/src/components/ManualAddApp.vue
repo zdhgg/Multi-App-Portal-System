@@ -292,6 +292,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Search, FolderOpened, ArrowDown, Loading, CircleCheck, Warning } from '@element-plus/icons-vue'
 import { ApiError } from '@/services/api'
+import { getNativeDirectoryPickerFailureMessage } from '@/utils/directoryPicker'
 import {
   detectionApiService,
   type SingleDirectoryDetectionData
@@ -887,34 +888,12 @@ const selectProjectDirectory = async () => {
 
     throw new Error(response.message || '未获取到有效目录路径')
   } catch (error: any) {
-    // 回退：浏览器目录选择API（通常无法直接拿到绝对路径）
-    if ('showDirectoryPicker' in window) {
-      try {
-        const handle = await (window as any).showDirectoryPicker({ mode: 'read' })
-        const folderName = String(handle?.name || '').trim()
-        if (folderName) {
-          ElMessage.warning(`已选择目录 "${folderName}"，浏览器限制无法获取绝对路径，请手动补全完整路径`)
-          if (!form.directory.trim()) {
-            form.directory = folderName
-            applyAutoDirectorySuggestions(folderName)
-          }
-        } else {
-          ElMessage.info('已取消目录选择')
-        }
-        return
-      } catch (pickerError: any) {
-        if (pickerError?.name === 'AbortError') {
-          ElMessage.info('已取消目录选择')
-          return
-        }
-      }
+    if (error?.name === 'AbortError') {
+      ElMessage.info('已取消目录选择')
+      return
     }
 
-    const message = error instanceof ApiError
-      ? error.message
-      : error instanceof Error
-        ? error.message
-        : '目录选择失败，请手动输入路径'
+    const message = getNativeDirectoryPickerFailureMessage(error instanceof ApiError ? error : error)
     ElMessage.error(message)
   } finally {
     selectingDirectory.value = false

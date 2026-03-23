@@ -106,6 +106,13 @@ export interface PM2EnableResponse {
   restartCommand: string
 }
 
+export interface PM2SyncStateResult {
+  synced: number
+  updated: number
+  errors: number
+  message: string
+}
+
 // PM2诊断问题
 export interface PM2DiagnosticIssue {
   type: 'port_conflict' | 'missing_dependencies' | 'config_error' | 'path_error' | 'startup_script_error' | 'permission_error'
@@ -403,6 +410,18 @@ export class PM2ApiService {
    */
   async refresh(): Promise<PM2Process[]> {
     return this.getProcessList()
+  }
+
+  /**
+   * 立即同步门户中的应用运行状态
+   */
+  async syncState(): Promise<PM2SyncStateResult> {
+    const response = await apiService.post<{ success: boolean; data: PM2SyncStateResult }>(
+      '/pm2/sync-state',
+      undefined,
+      { showErrorMessage: false }
+    )
+    return response.data
   }
 
   /**

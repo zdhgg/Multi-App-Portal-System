@@ -953,6 +953,7 @@ import type { ImportCandidate, BatchImportResult } from '@/services/appsApi'
 import { filesystemApiService } from '@/services'
 import { getPortTypeColor, getPortTypeIcon } from '@/types/app'
 import { getStoredAccessToken } from '@/utils/authStorage'
+import { getNativeDirectoryPickerFailureMessage } from '@/utils/directoryPicker'
 
 // 路由相关
 const router = useRouter()
@@ -1632,22 +1633,10 @@ const selectQuickStartFolder = async () => {
         }
       }
     } catch (nativeError) {
-      console.warn('后端原生文件夹选择不可用，回退浏览器选择:', nativeError)
-    }
-
-    // 回退到浏览器目录选择（受安全策略限制通常只能拿到目录名）
-    if ('showDirectoryPicker' in window) {
-      const folderHandle = await (window as any).showDirectoryPicker({
-        mode: 'read',
-        startIn: 'documents'
-      })
-      const selectedName = String(folderHandle?.name || '').trim()
-      ElMessage.warning(
-        `已选择文件夹 "${selectedName}"，但浏览器安全限制无法获取绝对路径，请手动输入完整路径（如 D:\\My Programs\\${selectedName}）`
-      )
+      console.warn('后端原生文件夹选择失败:', nativeError)
+      ElMessage.warning(getNativeDirectoryPickerFailureMessage(nativeError))
       return
     }
-
     ElMessage.warning('当前环境无法自动获取绝对路径，请手动输入完整路径')
   } catch (error: any) {
     if (error.name !== 'AbortError') {

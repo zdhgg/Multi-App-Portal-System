@@ -232,22 +232,57 @@ export class PublicController {
 
     let accessPort = primaryPort
     let deploymentMode: 'production' | 'development' | 'unknown' = app.deploymentMode || 'unknown'
+    let frontendListening: boolean | null = null
+    let backendListening: boolean | null = null
+
+    const inspectRuntimePorts = async () => {
+      if (frontendListening === null) {
+        frontendListening = await this.isLocalPortListening(primaryPort)
+      }
+
+      if (backendPort && backendListening === null) {
+        backendListening = await this.isLocalPortListening(backendPort)
+      }
+
+      return {
+        frontendListening,
+        backendListening: backendListening ?? false
+      }
+    }
+
+    if (deploymentMode === 'production' && app.state === 'running' && isFullStack && backendPort) {
+      const isPM2Running = await this.checkIfPM2Running(app.name, app.pm2ProcessName)
+
+      if (!isPM2Running) {
+        const runtimePorts = await inspectRuntimePorts()
+        deploymentMode = runtimePorts.frontendListening ? 'development' : 'unknown'
+
+        logger.warn('检测到陈旧的production模式标记，已按实时运行态修正展示', {
+          appName: app.name,
+          appId: app.id,
+          pm2ProcessName: app.pm2ProcessName || null,
+          frontendListening: runtimePorts.frontendListening,
+          backendListening: runtimePorts.backendListening,
+          fallbackDeploymentMode: deploymentMode
+        })
+      }
+    }
 
     // 如果数据库中的 deploymentMode 为 unknown 且应用正在运行，尝试实时查询
     if (deploymentMode === 'unknown' && app.state === 'running' && isFullStack && backendPort) {
-      const isPM2Running = await this.checkIfPM2Running(app.name)
+      const isPM2Running = await this.checkIfPM2Running(app.name, app.pm2ProcessName)
 
       if (isPM2Running) {
         deploymentMode = 'production'
-        const backendListening = await this.isLocalPortListening(backendPort)
-        accessPort = backendListening ? backendPort : primaryPort
+        const runtimePorts = await inspectRuntimePorts()
+        accessPort = runtimePorts.backendListening ? backendPort : primaryPort
         logger.debug('实时检测到PM2运行，更新为生产模式', {
           appName: app.name,
           port: accessPort,
           backendPort,
-          backendListening
+          backendListening: runtimePorts.backendListening
         })
-        if (!backendListening) {
+        if (!runtimePorts.backendListening) {
           logger.warn('PM2运行中但后端端口未监听，回退到前端端口', {
             appName: app.name,
             backendPort,
@@ -255,19 +290,30 @@ export class PublicController {
           })
         }
       } else if (app.state === 'running') {
-        // 应用在运行但不在PM2中，判定为开发模式
-        deploymentMode = 'development'
-        accessPort = primaryPort
-        logger.debug('应用运行中但非PM2，判定为开发模式', {
-          appName: app.name,
-          port: accessPort
-        })
+        const runtimePorts = await inspectRuntimePorts()
+
+        if (runtimePorts.frontendListening) {
+          // 应用在运行但不在PM2中，且前端开发端口在线 → 开发模式
+          deploymentMode = 'development'
+          accessPort = primaryPort
+          logger.debug('应用运行中但非PM2，判定为开发模式', {
+            appName: app.name,
+            port: accessPort
+          })
+        } else if (runtimePorts.backendListening) {
+          // 仅后端端口在线，但没有PM2证据，保留 unknown，避免误标记为 PM2。
+          accessPort = backendPort
+          logger.warn('应用仅检测到后端端口监听，保留unknown模式展示', {
+            appName: app.name,
+            backendPort
+          })
+        }
       }
     } else if (deploymentMode === 'production' && isFullStack && backendPort) {
       // 数据库已标记为生产模式，优先使用backend端口。
       // 兼容性兜底：若backend端口当前未监听（例如只启动了frontend preview），回退到frontend端口。
-      const backendListening = await this.isLocalPortListening(backendPort)
-      if (backendListening) {
+      const runtimePorts = await inspectRuntimePorts()
+      if (runtimePorts.backendListening) {
         accessPort = backendPort
         logger.debug('使用数据库中的生产模式端口', {
           appName: app.name,
@@ -410,7 +456,7 @@ export class PublicController {
   /**
    * 检查应用是否通过PM2运行
    */
-  private async checkIfPM2Running(appName: string): Promise<boolean> {
+  private async checkIfPM2Running(appName: string, pm2ProcessName?: string | null): Promise<boolean> {
     if (!this.pm2Service) {
       return false
     }
@@ -418,9 +464,16 @@ export class PublicController {
     try {
       const processes = await this.pm2Service.getProcessList()
       const normalizedAppName = appName.toLowerCase().replace(/\s+/g, '-')
+      const normalizedPm2Name = typeof pm2ProcessName === 'string' && pm2ProcessName.trim() !== ''
+        ? pm2ProcessName.toLowerCase().replace(/\s+/g, '-')
+        : null
 
       // 检查是否有同名的PM2进程在运行
       const pm2Process = processes.find(p =>
+        (!!normalizedPm2Name && (
+          p.name === pm2ProcessName ||
+          p.name.toLowerCase() === normalizedPm2Name
+        )) ||
         p.name === normalizedAppName ||
         p.name === appName ||
         p.name.toLowerCase().replace(/\s+/g, '-') === normalizedAppName

@@ -46,7 +46,6 @@ const PM2_CONFIRMATION_RULES: ConfirmationRule[] = [
   { method: 'POST', path: /^\/restart-all$/, action: 'pm2-restart-all' },
   { method: 'POST', path: /^\/delete-all$/, action: 'pm2-delete-all' },
   { method: 'POST', path: /^\/processes\/[^/]+\/auto-fix$/, action: 'pm2-auto-fix' },
-  { method: 'POST', path: /^\/sync-state$/, action: 'pm2-sync-state' },
   { method: 'POST', path: /^\/sync-app\/[^/]+$/, action: 'pm2-sync-app' }
 ]
 
@@ -1804,7 +1803,7 @@ router.post('/processes/:name/auto-fix', requireAdmin, auditLog('pm2-auto-fix'),
  * POST /api/pm2/sync-state
  * 🔄 手动同步PM2进程状态到数据库 - 仅admin
  */
-router.post('/sync-state', requireAdmin, auditLog('pm2-sync-state'), async (req, res) => {
+router.post('/sync-state', requireOperator, auditLog('pm2-sync-state'), async (req, res) => {
   try {
     logger.info('收到PM2状态同步请求')
 
@@ -1851,7 +1850,7 @@ router.post('/sync-state', requireAdmin, auditLog('pm2-sync-state'), async (req,
  * POST /api/pm2/sync-app/:appId
  * 🔄 同步指定应用的状态 - 仅admin
  */
-router.post('/sync-app/:appId', requireAdmin, auditLog('pm2-sync-app'), async (req, res) => {
+router.post('/sync-app/:appId', requireOperator, auditLog('pm2-sync-app'), async (req, res) => {
   try {
     const { appId } = req.params
     logger.info('收到单个应用状态同步请求', { appId })

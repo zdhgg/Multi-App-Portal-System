@@ -8,7 +8,7 @@
       <div class="header-actions">
         <el-tooltip 
           v-if="browserSupportsFileSystemAccess"
-          content="您的浏览器支持文件夹选择功能！可以直接从资源管理器选择文件夹"
+          :content="browserDirectoryPickerDescription"
           placement="bottom"
         >
           <el-tag type="success" size="small">
@@ -18,7 +18,7 @@
         </el-tooltip>
         <el-tooltip 
           v-else
-          content="建议使用 Chrome 86+ 或 Edge 86+ 获得完整的文件夹选择功能"
+          :content="browserDirectoryPickerDescription"
           placement="bottom"
         >
           <el-tag type="warning" size="small">
@@ -301,7 +301,7 @@
           <el-alert
             v-if="!browserSupportsFileSystemAccess"
             title="浏览器兼容性提示"
-            description="建议使用 Chrome 86+ 或 Edge 86+ 获得完整的文件夹选择功能。当前浏览器支持有限的文件夹选择。"
+            :description="browserDirectoryPickerDescription"
             type="warning"
             show-icon
             :closable="false"
@@ -309,7 +309,7 @@
           <el-alert
             v-else
             title="文件夹选择功能"
-            description="您的浏览器支持文件夹选择功能！点击上方'选择文件夹'按钮可直接从资源管理器选择。"
+            :description="browserDirectoryPickerDescription"
             type="success"
             show-icon
             :closable="false"
@@ -381,6 +381,11 @@ import {
 } from '@element-plus/icons-vue'
 import { userSettingsApiService, filesystemApiService, type UserSettings, type PresetPath } from '@/services'
 import { getStoredAccessToken } from '@/utils/authStorage'
+import {
+  canUseBrowserDirectoryPickerInCurrentContext,
+  getDirectoryPickerCompatibilityDescription,
+  getNativeDirectoryPickerFailureMessage
+} from '@/utils/directoryPicker'
 
 export interface PathConfig {
   path: string
@@ -505,7 +510,11 @@ const scanSummary = computed<ScanSummary>(() => {
 })
 
 const browserSupportsFileSystemAccess = computed(() => {
-  return 'showDirectoryPicker' in window
+  return canUseBrowserDirectoryPickerInCurrentContext()
+})
+
+const browserDirectoryPickerDescription = computed(() => {
+  return getDirectoryPickerCompatibilityDescription()
 })
 
 // 方法
@@ -608,7 +617,6 @@ const selectFolderFromExplorer = async (index: number) => {
     currentEditIndex.value = index
     
     let selectedPath = ''
-    let folderHandle: any = null
 
     // 方法0: 优先使用后端原生目录选择（可返回绝对路径）
     try {
@@ -630,52 +638,13 @@ const selectFolderFromExplorer = async (index: number) => {
         }
       }
     } catch (nativeError) {
-      console.warn('后端原生文件夹选择不可用，回退浏览器选择:', nativeError)
+      console.warn('后端原生文件夹选择失败:', nativeError)
+      ElMessage.warning(getNativeDirectoryPickerFailureMessage(nativeError))
+      return
     }
-    
-    // 方法1: 使用现代 File System Access API (Chrome 86+)
-    if (!selectedPath && 'showDirectoryPicker' in window) {
-      try {
-        folderHandle = await (window as any).showDirectoryPicker({
-          mode: 'read',
-          startIn: 'documents'
-        })
-        
-        // 保存文件夹句柄以便后续使用
-        selectedPath = folderHandle.name
-        
-        // 尝试通过查询权限来验证访问
-        const permission = await folderHandle.queryPermission({ mode: 'read' })
-        if (permission === 'granted') {
-          ElMessage.success(`文件夹选择成功: ${folderHandle.name}`)
-        } else {
-          ElMessage.warning('文件夹选择成功，但可能需要授予读取权限')
-        }
-        
-        // 存储句柄引用（如果需要后续操作）
-        paths.value[index].folderHandle = folderHandle
-        
-      } catch (error: any) {
-        if (error.name === 'AbortError') {
-          ElMessage.info('用户取消了文件夹选择')
-          return
-        }
-        throw error
-      }
-    }
-    // 方法2: 使用传统 webkitdirectory (备选方案)
-    else if (!selectedPath && 'webkitdirectory' in document.createElement('input')) {
-      const result = await selectFolderWithWebkit()
-      selectedPath = result.path
-      // 存储文件信息以便后续使用
-      paths.value[index].fileList = result.files
-      ElMessage.success(`文件夹选择成功: ${result.path}`)
-    }
-    // 方法3: 不支持的浏览器
-    else if (!selectedPath) {
-      ElMessage.warning('您的浏览器不支持文件夹选择，请使用 Chrome 86+ 或 Edge 86+ 版本')
-      // 回退到预设路径选择
-      browsePath(index)
+
+    if (!selectedPath) {
+      ElMessage.info('未获取到目录路径，请手动输入完整路径')
       return
     }
     
@@ -701,7 +670,7 @@ const selectFolderFromExplorer = async (index: number) => {
       }
 
       if (!resolvedPath) {
-        const folderName = folderHandle?.name || normalizedSelectedPath
+        const folderName = normalizedSelectedPath
         ElMessage.warning(
           `已选择文件夹 "${folderName}"，但浏览器安全限制无法获取绝对路径，请点击“编辑”手动输入完整路径（如 D:\\My Programs\\${folderName}）`
         )

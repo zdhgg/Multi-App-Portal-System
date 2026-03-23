@@ -9,10 +9,10 @@
 import { Router, Request, Response } from 'express'
 import Joi from 'joi'
 import { promises as fs } from 'fs'
-import { join } from 'path'
 import { logger } from '../../utils/logger'
 import { PasswordUtils } from '../../utils/passwordUtils'
 import { ACCESS_TOKEN_EXPIRES_IN_SECONDS, generateToken, generateRefreshToken, verifyToken } from '../../utils/jwt.js'
+import { getSystemConfigFilePath, writeSystemConfigFile } from '../../utils/systemConfigPath.js'
 import { authSecurityEnhancer } from '../../core/security/AuthSecurityEnhancer.js'
 import { requireAuth, requireAdmin } from '../../middleware/authMiddleware.js'
 import { createLoginRateLimiter, getClientIp } from '../../middleware/rateLimit.js'
@@ -104,7 +104,7 @@ export class AuthController {
         return this.settingsCache
       }
 
-      const settingsPath = join(process.cwd(), 'configs', 'system-config.json')
+      const settingsPath = getSystemConfigFilePath()
       const content = await fs.readFile(settingsPath, 'utf8')
       const settings = JSON.parse(content) as SystemSettings
 
@@ -818,7 +818,7 @@ export class AuthController {
       
       // 更新系统设置文件中的密码
       try {
-        const settingsPath = join(process.cwd(), 'configs', 'system-config.json')
+        const settingsPath = getSystemConfigFilePath()
         const content = await fs.readFile(settingsPath, 'utf8')
         const settings = JSON.parse(content)
         
@@ -829,7 +829,7 @@ export class AuthController {
             settings.accounts.users[userIndex].updatedAt = new Date().toISOString()
             settings.accounts.users[userIndex].mustChangePassword = false
             
-            await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8')
+            await writeSystemConfigFile(JSON.stringify(settings, null, 2))
             this.clearUsersCache() // 清除缓存
             
             logger.info('用户密码修改成功', { username: currentUser.username })

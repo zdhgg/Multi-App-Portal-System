@@ -352,8 +352,10 @@ const hasOperationPermission = (operation: string): boolean => {
 - `detection-api/config/production.config.js` - 生产环境配置
 
 ### 配置文件
-- `configs/system-config.json` - 系统配置
-- `detection-api/configs/system-config.json` - API配置
+- `configs/system-config.json` - 系统设置主文件
+- `detection-api/configs/portal-config.json` - 端口/门户配置主文件
+- `detection-api/configs/system-config.json` - 系统设置兼容镜像
+- `detection-api/config/system-config.json` - 端口配置兼容镜像
 
 ---
 
@@ -361,4 +363,3 @@ const hasOperationPermission = (operation: string): boolean => {
 **创建日期**: 2025-10-29  
 **最后更新**: 2025-10-29  
 **维护者**: 系统开发团队
-

@@ -8,6 +8,7 @@
 import fs from 'fs'
 import path from 'path'
 import { logger } from '../../utils/logger'
+import { getSystemConfigFilePath } from '../../utils/systemConfigPath.js'
 import { securityValidator, SecurityValidator } from './SecurityValidator'
 
 // =============================================================================
@@ -52,7 +53,7 @@ interface SystemPathAccessSettings {
 let systemPathAccessSettingsCache: { mtimeMs: number; data: SystemPathAccessSettings } | null = null
 
 function loadSystemPathAccessSettings(): SystemPathAccessSettings {
-  const settingsPath = path.join(process.cwd(), 'configs', 'system-config.json')
+  const settingsPath = getSystemConfigFilePath()
 
   try {
     if (!fs.existsSync(settingsPath)) {

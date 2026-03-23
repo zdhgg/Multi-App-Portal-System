@@ -453,7 +453,7 @@ npm run test:run -- websocket-reconnect.test.ts
 
 ## 更新日志
 
-### v2.0.0 (2024-01-XX)
+### v1.1.0 (2026-03-23)
 
 **新增**：
 - ✅ 指数退避算法
@@ -470,4 +470,3 @@ npm run test:run -- websocket-reconnect.test.ts
 **修复**：
 - ✅ 手动重连不重置计数的问题
 - ✅ 连接成功后未清除重连状态的问题
-

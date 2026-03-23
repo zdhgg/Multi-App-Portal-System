@@ -229,12 +229,22 @@ export class NetworkService implements INetworkService {
       const snapshot = await PortSnapshotManager.getSnapshot();
       const portInfo = snapshot.get(port);
 
-      if (portInfo) {
-        // 如果在系统级发现了端口，立刻返回被占用
+      if (portInfo && this.isListeningSnapshotState(portInfo.state)) {
+        // 仅将真实监听态视为冲突，避免 TIME_WAIT 等瞬时状态误判
         return {
           isFree: false,
           owner: 'system',
           pid: portInfo.pid
+        };
+      }
+
+      if (portInfo) {
+        // 对于 TIME_WAIT / CLOSE_WAIT 等非监听态，再用 TCP 探测确认一次
+        const isReallyFree = await this.checkSystemPort(port);
+        return {
+          isFree: isReallyFree,
+          owner: isReallyFree ? undefined : 'system',
+          pid: isReallyFree ? undefined : portInfo.pid
         };
       }
 
@@ -250,6 +260,15 @@ export class NetworkService implements INetworkService {
       // 降维打击失败，优雅回落到系统层查询作为冗余
       return { isFree: await this.checkSystemPort(port), owner: 'system' };
     }
+  }
+
+  private isListeningSnapshotState(state?: string): boolean {
+    if (!state) {
+      return false
+    }
+
+    const normalized = state.trim().toUpperCase()
+    return normalized === 'LISTENING' || normalized === 'LISTEN'
   }
 
   /**

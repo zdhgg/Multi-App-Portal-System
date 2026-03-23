@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express'
 import { promises as fs } from 'fs'
-import { join } from 'path'
 import { logger } from '../utils/logger'
 import { PasswordUtils } from '../utils/passwordUtils'
 import { ServiceContainer } from '../core/ServiceContainer'
+import { getSystemConfigFilePath, writeSystemConfigFile } from '../utils/systemConfigPath.js'
 
 interface SystemSettingsResponse {
   versionToken: string
@@ -35,8 +35,7 @@ export class SystemSettingsController {
   }
 
   private getSettingsFilePath(): string {
-    // Use repository-level configs/system-config.json as the single source of truth
-    return join(process.cwd(), 'configs', 'system-config.json')
+    return getSystemConfigFilePath()
   }
 
   private async loadFromDisk(): Promise<SystemSettingsResponse> {
@@ -53,9 +52,8 @@ export class SystemSettingsController {
   }
 
   private async writeToDisk(newSettings: any): Promise<SystemSettingsResponse> {
-    const file = this.getSettingsFilePath()
     const json = JSON.stringify(newSettings, null, 2)
-    await fs.writeFile(file, json, 'utf8')
+    await writeSystemConfigFile(json)
     return this.loadFromDisk()
   }
 
@@ -252,4 +250,3 @@ export class SystemSettingsController {
     return this.router
   }
 }
-
