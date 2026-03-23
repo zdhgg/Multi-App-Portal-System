@@ -453,7 +453,7 @@ npm run test:run -- websocket-reconnect.test.ts
 
 ## 更新日志
 
-### v1.1.0 (2026-03-23)
+### v1.1.1 (2026-03-23)
 
 **新增**：
 - ✅ 指数退避算法

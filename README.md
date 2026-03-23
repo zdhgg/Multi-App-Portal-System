@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.1.0-success.svg)
+![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.1.1-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个智能化的Web应用检测、管理和统一门户系统，能够自动识别工作区内的各种技术栈应用，并提供统一的管理界面。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.1.0`
-- **GitHub Release**: [v1.1.0: 门户管理与运行态修复更新](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.1.0)
+- **当前版本**: `1.1.1`
+- **GitHub Release**: [v1.1.1: 发布配套与版本对齐补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.1.1)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -243,6 +243,14 @@ VITE_WS_BASE=
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.1.1 (2026-03-23) — 发布配套与版本对齐补丁
+- 📝 **发布资料补齐**
+  - 新增正式 `CHANGELOG.md`
+  - 更新 GitHub 首页 README 的当前版本、Release 链接和版本徽章
+- 🔢 **版本再次统一**
+  - 将项目包版本、系统配置、脚本头部、前端页面展示和主要发布文档统一到 `1.1.1`
+  - 保持 `v1.1.0` 发布历史不变，采用补丁版纳入发布配套更新
+
 ### v1.1.0 (2026-03-23) — 门户管理与运行态修复更新
 - 🧭 **运行态识别修复**
   - 修复 `video-cms` 等应用在直启与 PM2 切换后，首页错误显示“生产(PM2)”的问题
@@ -297,4 +305,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.1.0 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.1.1 - 让应用管理更简单、更智能！*

@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.1.1',
+    date: '2026-03-23',
+    title: '发布配套与版本对齐补丁',
+    items: [
+      { type: 'fix', description: '补发正式 CHANGELOG，并同步 GitHub README 中的当前版本、发布链接和版本徽章' },
+      { type: 'fix', description: '将项目包版本、系统配置、脚本头部、前端展示和发布文档统一对齐到 1.1.1' },
+      { type: 'improvement', description: '保留 v1.1.0 发布历史不变，使用补丁版发布来纳入发布配套更新，保持语义化版本记录清晰' }
+    ]
+  },
+  {
     version: '1.1.0',
     date: '2026-03-23',
     title: '统一路由治理 + 多应用运维增强',

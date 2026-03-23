@@ -1,7 +1,7 @@
 ﻿# 智能多Web应用门户系统 - 统一日志管理系统
 # 提供日志收集、查看、搜索、清理等功能
 # 作者: Augment Agent
-# 版本: 1.1.0
+# 版本: 1.1.1
 
 param(
     [ValidateSet("view", "search", "clean", "stats", "tail", "archive", "help")]
@@ -24,7 +24,7 @@ param(
 # 全局配置和变量
 # ============================================================================
 
-$SCRIPT_VERSION = "1.1.0"
+$SCRIPT_VERSION = "1.1.1"
 $SCRIPT_NAME = "智能多Web应用门户系统统一日志管理"
 
 # 路径配置

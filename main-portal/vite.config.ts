@@ -6,7 +6,7 @@ import { resolve } from 'path'
 const packageJson = JSON.parse(
   readFileSync(new URL('./package.json', import.meta.url), 'utf-8')
 ) as { version?: string }
-const appVersion = typeof packageJson.version === 'string' ? packageJson.version : '1.1.0'
+const appVersion = typeof packageJson.version === 'string' ? packageJson.version : '1.1.1'
 
 export default defineConfig({
   plugins: [vue()],

@@ -1,7 +1,7 @@
 ﻿# 智能多Web应用门户系统 - 自动恢复机制
 # 提供故障检测、自动恢复、日志记录等功能
 # 作者: Augment Agent
-# 版本: 1.1.0
+# 版本: 1.1.1
 
 param(
     [string]$Mode = "monitor",  # monitor, recover, daemon
@@ -19,7 +19,7 @@ param(
 # 全局配置和变量
 # ============================================================================
 
-$SCRIPT_VERSION = "1.1.0"
+$SCRIPT_VERSION = "1.1.1"
 $SCRIPT_NAME = "智能多Web应用门户系统自动恢复机制"
 
 # 路径配置

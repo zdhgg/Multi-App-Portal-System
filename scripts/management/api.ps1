@@ -1,5 +1,5 @@
 ﻿# ============================================================================
-# 智能多Web应用门户系统 - API接口管理工具 v1.1.0
+# 智能多Web应用门户系统 - API接口管理工具 v1.1.1
 # ============================================================================
 # 
 # 功能说明：
@@ -65,7 +65,7 @@ if (-not (Test-Path $LOG_DIR)) {
 
 # API配置架构
 $API_CONFIG_SCHEMA = @{
-    version = "1.1.0"
+    version = "1.1.1"
     lastUpdated = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
     monitoring = @{
         enabled = $true
@@ -103,7 +103,7 @@ $API_CONFIG_SCHEMA = @{
 
 # API注册表架构
 $API_REGISTRY_SCHEMA = @{
-    version = "1.1.0"
+    version = "1.1.1"
     lastUpdated = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
     apis = @()
     categories = @("system", "application", "monitoring", "configuration", "authentication", "detection")
@@ -888,7 +888,7 @@ function Start-InteractiveApiManager {
 function Show-ApiHelp {
     Write-Host ""
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
-    Write-Host "  智能多Web应用门户系统 - API接口管理工具 v1.1.0" -ForegroundColor Green
+    Write-Host "  智能多Web应用门户系统 - API接口管理工具 v1.1.1" -ForegroundColor Green
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
     Write-Host ""
     Write-Host "📖 使用方法:" -ForegroundColor Yellow

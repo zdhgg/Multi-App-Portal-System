@@ -2,6 +2,22 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.1.1] - 2026-03-23
+
+### Added
+
+- 新增仓库根目录正式 `CHANGELOG.md`，作为 GitHub 与本地统一的版本历史入口。
+
+### Changed
+
+- 将 GitHub 首页 README 的版本徽章、当前版本、Release 链接和更新日志入口同步到 `1.1.1`。
+- 将项目包版本、系统配置、脚本头部、前端页面展示和部分发布文档统一提升到 `1.1.1`。
+
+### Fixed
+
+- 修复 `v1.1.0` tag 已发布但 README/CHANGELOG 仍未纳入正式发布版本的问题。
+- 通过补丁版发布避免重写既有 `v1.1.0` tag，保持发布历史清晰可追踪。
+
 ## [1.1.0] - 2026-03-23
 
 ### Added
@@ -38,5 +54,6 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.1.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.1.1
 [1.1.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.1.0
 [1.0.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.0.0

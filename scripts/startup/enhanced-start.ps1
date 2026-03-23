@@ -38,7 +38,7 @@ function Write-Debug { param($Message) Write-Log $Message "DEBUG" }
 function Show-StartupInfo {
     Clear-Host
     Write-Host "=========================================" -ForegroundColor Cyan
-    Write-Host "  智能多Web应用门户系统 v1.1.0" -ForegroundColor Cyan
+    Write-Host "  智能多Web应用门户系统 v1.1.1" -ForegroundColor Cyan
     Write-Host "=========================================" -ForegroundColor Cyan
     Write-Host ""
     Write-Success "🚀 启动增强版开发环境..."
