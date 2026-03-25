@@ -1840,21 +1840,52 @@ export class SimpleProcessManager implements ProcessManager {
 
   /**
    * 为 Vite 前端创建 proxy 配置文件
-   * 这样前端可以通过 /api 访问后端，无论是 localhost 还是局域网 IP 都能正常工作
+   * 这样前端可以通过 /api 访问后端，无论是 localhost 还是局域网 IP 都能正常工作。
+   * 同时优先继承项目原有的 Vite 配置，避免丢失 Element Plus 自动导入等插件链路。
    */
   private async createViteProxyConfig(workingDir: string, backendPort: string): Promise<void> {
     try {
       const configPath = join(workingDir, 'vite.config.proxy.ts')
       const backendTarget = `http://localhost:${backendPort}`
+      const baseConfigPath = this.findViteConfig(workingDir)
+      const baseConfigFileName = baseConfigPath ? basename(baseConfigPath) : null
+      const proxyConfig = this.buildViteProxyConfigContent(backendTarget, baseConfigFileName)
 
-      const proxyConfig = `// 自动生成的 Vite proxy 配置 - 支持局域网访问
+      await writeFile(configPath, proxyConfig, 'utf-8')
+
+      logger.info('Created Vite proxy configuration for LAN access', {
+        workingDir,
+        backendPort,
+        backendTarget,
+        configPath,
+        baseConfigFileName: baseConfigFileName ?? 'generated-fallback'
+      })
+    } catch (error) {
+      logger.error('Failed to create Vite proxy config', { error, workingDir, backendPort })
+    }
+  }
+
+  private buildViteProxyConfigContent(backendTarget: string, baseConfigFileName: string | null): string {
+    const serializedBaseConfig = JSON.stringify(baseConfigFileName)
+
+    return `// 自动生成的 Vite proxy 配置 - 支持局域网访问
 // 由智能门户系统自动创建，请勿手动修改
-import { defineConfig } from 'vite'
+import { defineConfig, loadConfigFromFile, mergeConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 
-export default defineConfig({
+const baseConfigFile = ${serializedBaseConfig}
+
+const fallbackConfig = defineConfig({
   plugins: [vue()],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url))
+    }
+  }
+})
+
+const proxyOverrides = defineConfig({
   server: {
     host: '0.0.0.0',  // 支持局域网访问
     strictPort: false,
@@ -1875,28 +1906,35 @@ export default defineConfig({
             console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
           });
         }
+      },
+      '/uploads': {
+        target: '${backendTarget}',
+        changeOrigin: true,
+        secure: false,
+        ws: true
       }
-    }
-  },
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   }
 })
+
+export default defineConfig(async (env) => {
+  if (!baseConfigFile) {
+    return mergeConfig(fallbackConfig, proxyOverrides)
+  }
+
+  try {
+    const loadedConfig = await loadConfigFromFile(
+      env,
+      fileURLToPath(new URL(\`./\${baseConfigFile}\`, import.meta.url))
+    )
+
+    return mergeConfig(loadedConfig?.config ?? fallbackConfig, proxyOverrides)
+  } catch (error) {
+    console.warn('[portal] Failed to load base Vite config, falling back to generated proxy config.', error)
+    return mergeConfig(fallbackConfig, proxyOverrides)
+  }
+})
 `
-
-      await writeFile(configPath, proxyConfig, 'utf-8')
-
-      logger.info('Created Vite proxy configuration for LAN access', {
-        workingDir,
-        backendPort,
-        backendTarget,
-        configPath
-      })
-    } catch (error) {
-      logger.error('Failed to create Vite proxy config', { error, workingDir, backendPort })
-    }
   }
 
   /**
@@ -2146,7 +2184,14 @@ export default defineConfig({
    * 查找vite配置文件
    */
   private findViteConfig(directory: string): string | null {
-    const possibleNames = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs']
+    const possibleNames = [
+      'vite.config.ts',
+      'vite.config.js',
+      'vite.config.mjs',
+      'vite.config.cjs',
+      'vite.config.mts',
+      'vite.config.cts'
+    ]
     for (const name of possibleNames) {
       const configPath = join(directory, name)
       if (existsSync(configPath)) {
