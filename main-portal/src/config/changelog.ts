@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.2.1',
+    date: '2026-03-25',
+    title: '门户交互修复与发布补丁',
+    items: [
+      { type: 'fix', description: '修复用户资料相关弹窗在门户首页特殊布局下可能被错误定位到页面下方的问题' },
+      { type: 'improvement', description: '离线应用卡片保留“查看详情”主操作，并将次级操作改为直接可点击的“刷新”按钮' },
+      { type: 'improvement', description: '为单卡片刷新增加请求中禁点与 2 秒冷却，减少重复点击和重复请求' },
+      { type: 'fix', description: '修复 video-cms 等单行标题卡片与同排应用卡片在标题高度和底部操作区上的视觉不一致问题' },
+      { type: 'improvement', description: '将前后端包版本、系统配置、脚本模板和主要发布文档统一对齐到 1.2.1' }
+    ]
+  },
+  {
     version: '1.2.0',
     date: '2026-03-24',
     title: '控制中心界面焕新与运维体验升级',

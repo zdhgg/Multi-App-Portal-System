@@ -68,19 +68,32 @@
           {{ app.isRunning ? '打开应用' : '查看详情' }}
         </el-button>
 
-        <el-dropdown @command="handleAction" trigger="click">
-          <el-button class="more-button" :icon="More" circle />
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="refresh" :icon="Refresh">
-                刷新状态
-              </el-dropdown-item>
-              <el-dropdown-item command="details" :icon="InfoFilled">
-                查看详情
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <template v-if="app.isRunning">
+          <el-dropdown @command="handleAction" trigger="click">
+            <el-button class="more-button" :icon="More" circle />
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="refresh" :icon="Refresh" :disabled="refreshLocked">
+                  刷新状态
+                </el-dropdown-item>
+                <el-dropdown-item command="details" :icon="InfoFilled">
+                  查看详情
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </template>
+
+        <el-button
+          v-else
+          class="refresh-button"
+          :icon="Refresh"
+          :loading="refreshing"
+          :disabled="refreshLocked"
+          @click="handleRefresh"
+        >
+          {{ refreshButtonText }}
+        </el-button>
       </div>
     </div>
 
@@ -100,9 +113,14 @@ import type { App, AppPort } from '@/types/app'
 import { getAllPorts } from '@/types/app'
 import { getTechStackInfo } from '@/utils/techStackUtils'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   app: App
-}>()
+  refreshing?: boolean
+  refreshCoolingDown?: boolean
+}>(), {
+  refreshing: false,
+  refreshCoolingDown: false
+})
 
 const emit = defineEmits<{
   access: [app: App]
@@ -235,11 +253,23 @@ const handlePrimaryAction = () => {
   emit('details', props.app)
 }
 
+const refreshLocked = computed(() => props.refreshing || props.refreshCoolingDown)
+
+const refreshButtonText = computed(() => {
+  if (props.refreshing) return '刷新中'
+  if (props.refreshCoolingDown) return '稍后刷新'
+  return '刷新'
+})
+
+const handleRefresh = () => {
+  if (refreshLocked.value) return
+  emit('refresh', props.app)
+}
+
 const handleAction = (command: string) => {
   switch (command) {
     case 'refresh':
-      emit('refresh', props.app)
-      ElMessage.success('已发起状态刷新')
+      handleRefresh()
       break
     case 'details':
       emit('details', props.app)
@@ -275,6 +305,9 @@ const formatUptime = (uptime: number) => {
 <style scoped>
 .app-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   overflow: hidden;
   min-height: 332px;
   padding: 22px;
@@ -388,6 +421,8 @@ const formatUptime = (uptime: number) => {
 }
 
 .app-headline {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
@@ -411,6 +446,7 @@ const formatUptime = (uptime: number) => {
 
 .app-name {
   margin-top: 12px;
+  min-height: calc(1.25em * 2);
   color: var(--text-strong);
   font-size: 24px;
   line-height: 1.25;
@@ -583,7 +619,7 @@ const formatUptime = (uptime: number) => {
 }
 
 .card-footer {
-  margin-top: 18px;
+  margin-top: auto;
   padding-top: 18px;
   border-top: 1px solid rgba(148, 163, 184, 0.12);
 }
@@ -618,6 +654,22 @@ const formatUptime = (uptime: number) => {
   min-height: 44px;
   border-color: rgba(148, 163, 184, 0.18);
   color: var(--text-secondary);
+}
+
+.refresh-button {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-secondary);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.refresh-button:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--text-strong);
 }
 
 @keyframes pulse {

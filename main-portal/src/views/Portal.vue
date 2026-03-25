@@ -204,6 +204,8 @@
               v-for="app in filteredApps"
               :key="app.id"
               :app="app"
+              :refreshing="Boolean(refreshingAppIds[String(app.id)])"
+              :refresh-cooling-down="Boolean(refreshCooldownIds[String(app.id)])"
               @access="handleAppAccess"
               @refresh="handleAppRefresh"
               @details="handleAppDetails"
@@ -266,6 +268,9 @@ const showDetailDialog = ref(false)
 const selectedApp = ref<any | null>(null)
 const lastUpdateTime = ref(new Date())
 const showGuestHint = ref(true)
+const refreshingAppIds = reactive<Record<string, boolean>>({})
+const refreshCooldownIds = reactive<Record<string, boolean>>({})
+const REFRESH_COOLDOWN_MS = 2000
 
 const loading = reactive({
   initial: true,
@@ -474,10 +479,27 @@ const handleAppAccess = (app: any) => {
 }
 
 const handleAppRefresh = async (app: any) => {
+  const refreshKey = String(app.id)
+  if (refreshingAppIds[refreshKey] || refreshCooldownIds[refreshKey]) {
+    return
+  }
+
+  refreshCooldownIds[refreshKey] = true
+  setTimeout(() => {
+    delete refreshCooldownIds[refreshKey]
+  }, REFRESH_COOLDOWN_MS)
+
+  refreshingAppIds[refreshKey] = true
   try {
     await portalStore.refreshAppStatus(app.id)
+    lastUpdateTime.value = new Date()
+    ElMessage.success(`${app.name} 状态已刷新`)
   } catch (error) {
     console.error('刷新单个应用失败:', error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    ElMessage.error(`刷新 ${app.name} 失败: ${errorMessage}`)
+  } finally {
+    refreshingAppIds[refreshKey] = false
   }
 }
 

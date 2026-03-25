@@ -2,6 +2,20 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.2.1] - 2026-03-25
+
+### Changed
+
+- 调整门户首页离线应用卡片操作区，保留“查看详情”作为主操作，并将次级操作改为直接可点击的“刷新”按钮。
+- 为单卡片状态刷新增加前端冷却与请求中禁点机制，减少重复点击和重复请求。
+- 将根项目、前端、后端、系统配置、脚本模板和主要发布文档版本统一提升到 `1.2.1`。
+
+### Fixed
+
+- 修复用户资料相关弹窗在门户首页特殊布局下可能被错误定位到页面下方的问题。
+- 修复离线卡片在主按钮和更多菜单中重复暴露“查看详情”造成的操作冗余。
+- 修复 `video-cms` 等单行标题卡片与同排应用卡片在标题高度和底部操作区上的视觉不一致问题。
+
 ## [1.2.0] - 2026-03-24
 
 ### Added
@@ -73,6 +87,7 @@
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
 [1.2.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.0
+[1.2.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.1
 [1.1.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.1.1
 [1.1.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.1.0
 [1.0.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.0.0

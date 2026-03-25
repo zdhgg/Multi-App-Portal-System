@@ -4,6 +4,7 @@
     v-model="visible"
     title="管理员登录"
     width="420px"
+    append-to-body
     :close-on-click-modal="false"
     :close-on-press-escape="true"
     center

@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.2.0-success.svg)
+![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.2.1-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.2.0`
-- **GitHub Release**: [v1.2.0: 控制中心界面焕新与运维体验升级](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.0)
+- **当前版本**: `1.2.1`
+- **GitHub Release**: [v1.2.1: 门户交互修复与发布补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.1)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -245,6 +245,16 @@ VITE_WS_BASE=
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.2.1 (2026-03-25) — 门户交互修复与发布补丁
+- 🛠️ **门户交互修复**
+  - 修复首页用户资料弹窗在特殊布局下可能跑到页面下方的问题
+  - 离线应用卡片保留“查看详情”主操作，并将次级操作改为直接可点的“刷新”
+- 🧭 **卡片一致性优化**
+  - 为离线卡片刷新增加请求中禁点与 2 秒冷却，减少重复点击
+  - 修复 `video-cms` 等单行标题卡片与同排卡片在标题高度和底部操作区上的错位
+- 🔢 **发布补丁同步**
+  - 前后端包版本、系统配置、脚本模板和主要发布文档统一提升到 `1.2.1`
+
 ### v1.2.0 (2026-03-24) — 控制中心界面焕新与运维体验升级
 - 🖥️ **控制中心式界面升级**
   - 门户首页、应用管理、PM2 管理、端口管理、系统设置统一升级为 Hero + Metrics + Content 的信息架构
@@ -318,4 +328,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.2.0 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.2.1 - 让应用管理更简单、更智能！*

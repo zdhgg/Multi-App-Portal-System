@@ -63,6 +63,7 @@
       v-model="profileDialogVisible"
       title="个人信息"
       width="500px"
+      append-to-body
       :close-on-click-modal="false"
     >
       <div class="profile-content">
@@ -105,6 +106,7 @@
       v-model="passwordDialogVisible"
       title="修改密码"
       width="450px"
+      append-to-body
       :close-on-click-modal="false"
       @closed="resetPasswordForm"
     >
