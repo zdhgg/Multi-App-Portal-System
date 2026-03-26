@@ -992,29 +992,7 @@ export class SimpleProcessManager implements ProcessManager {
 
       if (childProcess && !childProcess.killed) {
         logger.info('Force killing unhealthy process', { appId, pid: childProcess.pid })
-        
-        // 尝试优雅停止
-        childProcess.kill('SIGTERM')
-        
-        // 等待2秒，如果还没退出就强制杀死
-        await new Promise<void>((resolve) => {
-          const forceTimeout = setTimeout(() => {
-            if (!childProcess.killed && childProcess.exitCode === null) {
-              logger.warn('Force killing process with SIGKILL', { appId, pid: childProcess.pid })
-              try {
-                childProcess.kill('SIGKILL')
-              } catch (error) {
-                logger.warn('Failed to force kill process', { appId, pid: childProcess.pid, error: error.message })
-              }
-            }
-            resolve()
-          }, 2000)
-
-          childProcess.once('exit', () => {
-            clearTimeout(forceTimeout)
-            resolve()
-          })
-        })
+        await this.terminateChildProcess(appId, childProcess, 2000)
       }
 
       // 如果有端口信息，尝试清理端口占用
@@ -2277,25 +2255,7 @@ export default defineConfig(async (env) => {
       const { process: childProcess } = processInfo
 
       if (childProcess && !childProcess.killed) {
-        // 优雅关闭流程
-        logger.info('Sending SIGTERM to process', { appId, pid: childProcess.pid })
-        childProcess.kill('SIGTERM')
-
-        // 等待进程退出，超时后强制杀死
-        const gracefulTimeout = setTimeout(() => {
-          if (!childProcess.killed) {
-            logger.warn('Force killing process after graceful timeout', { appId, pid: childProcess.pid })
-            childProcess.kill('SIGKILL')
-          }
-        }, 10000) // 10秒优雅关闭时间
-
-        // 等待进程退出
-        await new Promise<void>((resolve) => {
-          childProcess.once('exit', () => {
-            clearTimeout(gracefulTimeout)
-            resolve()
-          })
-        })
+        await this.terminateChildProcess(appId, childProcess, 10000)
       }
 
       this.processes.delete(appId)
@@ -2325,6 +2285,115 @@ export default defineConfig(async (env) => {
   // 获取进程信息
   getProcessInfo(appId: string): ProcessInfo | undefined {
     return this.processes.get(appId)
+  }
+
+  private async terminateChildProcess(appId: string, childProcess: ChildProcess, timeoutMs: number): Promise<void> {
+    const pid = childProcess.pid
+
+    if (platform() === 'win32' && Number.isInteger(pid) && pid! > 0) {
+      const treeKilled = await this.killWindowsProcessTree(appId, pid as number, childProcess, timeoutMs)
+      if (treeKilled) {
+        return
+      }
+
+      logger.warn('Windows process tree termination did not complete, falling back to signal-based stop', {
+        appId,
+        pid
+      })
+    }
+
+    logger.info('Sending SIGTERM to process', { appId, pid })
+    try {
+      childProcess.kill('SIGTERM')
+    } catch (error) {
+      logger.warn('Failed to send SIGTERM to process', {
+        appId,
+        pid,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+
+    const exitedGracefully = await this.waitForChildProcessExit(childProcess, timeoutMs)
+    if (exitedGracefully) {
+      return
+    }
+
+    logger.warn('Force killing process after graceful timeout', { appId, pid })
+    try {
+      childProcess.kill('SIGKILL')
+    } catch (error) {
+      logger.warn('Failed to send SIGKILL to process', {
+        appId,
+        pid,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+
+    await this.waitForChildProcessExit(childProcess, 2000)
+  }
+
+  private async killWindowsProcessTree(
+    appId: string,
+    pid: number,
+    childProcess: ChildProcess,
+    timeoutMs: number
+  ): Promise<boolean> {
+    logger.info('Stopping Windows process tree with taskkill', { appId, pid })
+
+    const exitCode = await new Promise<number | null>((resolve) => {
+      const killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true
+      })
+
+      let settled = false
+      const finish = (value: number | null) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve(value)
+      }
+
+      killer.on('close', code => finish(typeof code === 'number' ? code : null))
+      killer.on('error', () => finish(null))
+
+      const timer = setTimeout(() => {
+        try {
+          killer.kill()
+        } catch {
+        }
+        finish(null)
+      }, timeoutMs)
+    })
+
+    if (exitCode !== 0) {
+      logger.warn('taskkill exited with non-zero status', { appId, pid, exitCode })
+      return false
+    }
+
+    return this.waitForChildProcessExit(childProcess, Math.min(timeoutMs, 3000))
+  }
+
+  private async waitForChildProcessExit(childProcess: ChildProcess, timeoutMs: number): Promise<boolean> {
+    if (childProcess.exitCode !== null) {
+      return true
+    }
+
+    return new Promise<boolean>((resolve) => {
+      let settled = false
+      const finish = (value: boolean) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        childProcess.removeListener('exit', onExit)
+        resolve(value)
+      }
+
+      const onExit = () => finish(true)
+      childProcess.once('exit', onExit)
+
+      const timer = setTimeout(() => finish(childProcess.exitCode !== null), timeoutMs)
+    })
   }
 
 

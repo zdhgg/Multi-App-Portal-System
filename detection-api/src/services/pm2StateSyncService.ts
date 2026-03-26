@@ -64,6 +64,103 @@ export class PM2StateSyncService {
     return this.syncStates()
   }
 
+  private normalizeComparableName(value: string | null | undefined): string {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s._-]+/g, '')
+  }
+
+  private normalizeComparablePath(value: string | null | undefined): string {
+    return String(value || '')
+      .trim()
+      .replace(/\//g, '\\')
+      .replace(/\\+/g, '\\')
+      .replace(/[\\]+$/, '')
+      .toLowerCase()
+  }
+
+  private getProcessDirectories(processInfo: { cwd?: string; script?: string }): string[] {
+    const cwd = this.normalizeComparablePath(processInfo.cwd)
+    const script = this.normalizeComparablePath(processInfo.script)
+    const directories = new Set<string>()
+
+    if (cwd) {
+      directories.add(cwd)
+    }
+
+    if (script) {
+      const lastSeparatorIndex = script.lastIndexOf('\\')
+      directories.add(lastSeparatorIndex >= 0 ? script.slice(0, lastSeparatorIndex) : script)
+    }
+
+    return Array.from(directories).filter(Boolean)
+  }
+
+  private matchesPm2ProcessByPath(app: Application, processInfo: { cwd?: string; script?: string }): boolean {
+    const appDirectory = this.normalizeComparablePath(app.directory)
+    if (!appDirectory) {
+      return false
+    }
+
+    const processDirectories = this.getProcessDirectories(processInfo)
+    return processDirectories.some(candidate =>
+      candidate === appDirectory ||
+      candidate.startsWith(`${appDirectory}\\`)
+    )
+  }
+
+  private findMatchingPm2Process(
+    app: Application,
+    pm2Processes: any[],
+    pm2ProcessMap: Map<string, any>
+  ): any | null {
+    const candidateNames = [
+      app.pm2ProcessName || '',
+      app.name,
+      app.name.toLowerCase().replace(/\s+/g, '-'),
+      app.name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()
+    ]
+      .map(name => String(name || '').trim())
+      .filter(Boolean)
+
+    const rankProcess = (processInfo: any): number => {
+      const processName = String(processInfo?.name || '').trim()
+      let score = 0
+
+      const matchesConfiguredProcessName = this.normalizeComparableName(app.pm2ProcessName) !== '' &&
+        this.normalizeComparableName(app.pm2ProcessName) === this.normalizeComparableName(processName)
+      const matchesCandidateName = candidateNames.some(candidate =>
+        this.normalizeComparableName(candidate) !== '' &&
+        this.normalizeComparableName(candidate) === this.normalizeComparableName(processName)
+      )
+
+      if (matchesConfiguredProcessName) score += 300
+      else if (matchesCandidateName) score += 200
+
+      if (this.matchesPm2ProcessByPath(app, processInfo)) {
+        score += 100
+      }
+
+      if (score <= 0) {
+        return 0
+      }
+
+      const status = String(processInfo?.status || '').toLowerCase()
+      if (status === 'online') score += 1000
+      else if (status === 'launching' || status === 'stopping') score += 500
+
+      return score
+    }
+
+    const rankedProcesses = pm2Processes
+      .map(processInfo => ({ processInfo, score: rankProcess(processInfo) }))
+      .filter(entry => entry.score > 0)
+      .sort((left, right) => right.score - left.score)
+
+    return rankedProcesses[0]?.processInfo || null
+  }
+
   /**
    * 执行状态同步
    */
@@ -96,22 +193,8 @@ export class PM2StateSyncService {
         try {
           syncedCount++
 
-          // ⚡ 增强的PM2进程匹配逻辑（支持更多变体）
-          const normalizedAppName = app.name.toLowerCase().replace(/[-_\s]/g, '')
-          const slugName = app.name.toLowerCase().replace(/\s+/g, '-')
-          const dotlessName = app.name.toLowerCase().replace(/\./g, '')
-          
-          let pm2Process =
-            (app.pm2ProcessName && (
-              pm2ProcessMap.get(app.pm2ProcessName) ||
-              pm2ProcessMap.get(app.pm2ProcessName.toLowerCase())
-            )) ||
-            pm2ProcessMap.get(app.name) ||                        // 精确匹配
-            pm2ProcessMap.get(app.name.toLowerCase()) ||          // 小写匹配
-            pm2ProcessMap.get(slugName) ||                        // slug格式
-            pm2ProcessMap.get(normalizedAppName) ||               // 无分隔符
-            pm2ProcessMap.get(dotlessName) ||                     // 无点号
-            pm2ProcessMap.get(app.name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()) // 所有特殊字符替换为-
+          // ⚡ 增强的PM2进程匹配逻辑（支持名称与目录双重匹配）
+          const pm2Process = this.findMatchingPm2Process(app, pm2Processes, pm2ProcessMap)
 
           // 判断应用实际状态
           const isRunningInPM2 = pm2Process && pm2Process.status === 'online'
@@ -137,44 +220,22 @@ export class PM2StateSyncService {
               activePorts: inferredRuntime.activePorts,
               inactivePorts: inferredRuntime.inactivePorts
             })
-          } else if (app.state === 'running') {
-            // 应用在运行但不在PM2中 → 开发模式
-            targetState = 'running'
-            targetDeploymentMode = 'development'
           } else {
             // 应用停止 → 未知模式
             targetState = 'stopped'
             targetDeploymentMode = 'unknown'
           }
-          
-          // ⚠️ 特殊处理：如果数据库已经是production模式，但PM2中找不到进程
-          // 可能是进程名称不匹配，保留production模式，避免错误降级
-          if (app.deploymentMode === 'production' &&
-              app.state === 'running' &&
-              !isRunningInPM2 &&
-              !!app.pm2ProcessName) {
-            // 记录警告但不修改
-            logger.warn('应用标记为production但PM2中未找到，保留现有模式', {
-              appName: app.name,
-              appId: app.id,
-              pm2ProcessName: app.pm2ProcessName,
-              normalizedNames: {
-                original: app.name,
-                normalized: normalizedAppName,
-                slug: slugName,
-                dotless: dotlessName
-              },
-              pm2ProcessCount: pm2Processes.length
-            })
-            // 保持原有的deployment mode，不降级
-            targetDeploymentMode = 'production'
-          }
 
           // 检查是否需要更新
           const stateChanged = currentStateInDB !== targetState
           const deploymentModeChanged = app.deploymentMode !== targetDeploymentMode
+          const nextPm2ProcessName =
+            targetDeploymentMode === 'production'
+              ? (pm2Process?.name || app.pm2ProcessName || null)
+              : null
+          const pm2ProcessNameChanged = (app.pm2ProcessName || null) !== nextPm2ProcessName
           
-          if (stateChanged || deploymentModeChanged) {
+          if (stateChanged || deploymentModeChanged || pm2ProcessNameChanged) {
             logger.debug('检测到状态或部署模式不一致，执行同步', {
               appId: app.id,
               appName: app.name,
@@ -182,7 +243,9 @@ export class PM2StateSyncService {
               targetState,
               dbDeploymentMode: app.deploymentMode,
               targetDeploymentMode,
-              pm2Running: isRunningInPM2
+              pm2Running: isRunningInPM2,
+              dbPm2ProcessName: app.pm2ProcessName,
+              targetPm2ProcessName: nextPm2ProcessName
             })
 
             if (stateChanged) {
@@ -191,6 +254,10 @@ export class PM2StateSyncService {
             
             if (deploymentModeChanged && (this.applicationService as any).repository.updateDeploymentMode) {
               await (this.applicationService as any).repository.updateDeploymentMode(app.id, targetDeploymentMode)
+            }
+
+            if (pm2ProcessNameChanged && (this.applicationService as any).repository.updatePM2ProcessName) {
+              await (this.applicationService as any).repository.updatePM2ProcessName(app.id, nextPm2ProcessName)
             }
             
             updatedCount++
@@ -201,7 +268,9 @@ export class PM2StateSyncService {
               oldState: currentStateInDB,
               newState: targetState,
               oldDeploymentMode: app.deploymentMode,
-              newDeploymentMode: targetDeploymentMode
+              newDeploymentMode: targetDeploymentMode,
+              oldPm2ProcessName: app.pm2ProcessName,
+              newPm2ProcessName: nextPm2ProcessName
             })
           }
 
@@ -262,13 +331,14 @@ export class PM2StateSyncService {
       }
 
       const pm2Processes = await this.pm2Service.getProcessList()
-      const normalizedAppName = app.name.toLowerCase().replace(/[-_\s]/g, '')
-      
-      const pm2Process = pm2Processes.find(p => 
-        p.name === app.name ||
-        p.name.toLowerCase() === app.name.toLowerCase() ||
-        p.name.toLowerCase().replace(/[-_]/g, '') === normalizedAppName
-      )
+      const pm2ProcessMap = new Map<string, any>()
+      pm2Processes.forEach(proc => {
+        pm2ProcessMap.set(proc.name, proc)
+        pm2ProcessMap.set(proc.name.toLowerCase(), proc)
+        pm2ProcessMap.set(this.normalizeComparableName(proc.name), proc)
+      })
+
+      const pm2Process = this.findMatchingPm2Process(app, pm2Processes, pm2ProcessMap)
 
       const isRunningInPM2 = pm2Process && pm2Process.status === 'online'
       const inferredRuntime = await this.detectManualRuntime(app)
@@ -278,12 +348,20 @@ export class PM2StateSyncService {
         : inferredRuntime.isRunning
           ? inferredRuntime.deploymentMode
           : 'unknown'
+      const targetPm2ProcessName =
+        targetDeploymentMode === 'production'
+          ? (pm2Process?.name || app.pm2ProcessName || null)
+          : null
       const deploymentModeChanged = app.deploymentMode !== targetDeploymentMode
+      const pm2ProcessNameChanged = (app.pm2ProcessName || null) !== targetPm2ProcessName
 
-      if (app.state !== targetState || deploymentModeChanged) {
+      if (app.state !== targetState || deploymentModeChanged || pm2ProcessNameChanged) {
         await (this.applicationService as any).repository.updateState(appId, targetState)
         if (deploymentModeChanged && (this.applicationService as any).repository.updateDeploymentMode) {
           await (this.applicationService as any).repository.updateDeploymentMode(appId, targetDeploymentMode)
+        }
+        if (pm2ProcessNameChanged && (this.applicationService as any).repository.updatePM2ProcessName) {
+          await (this.applicationService as any).repository.updatePM2ProcessName(appId, targetPm2ProcessName)
         }
         logger.debug('单个应用状态已同步', {
           appId,
@@ -291,7 +369,9 @@ export class PM2StateSyncService {
           oldState: app.state,
           newState: targetState,
           oldDeploymentMode: app.deploymentMode,
-          newDeploymentMode: targetDeploymentMode
+          newDeploymentMode: targetDeploymentMode,
+          oldPm2ProcessName: app.pm2ProcessName,
+          newPm2ProcessName: targetPm2ProcessName
         })
         return true
       }

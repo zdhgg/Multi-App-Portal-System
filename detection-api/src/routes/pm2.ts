@@ -14,7 +14,7 @@ import { webSocketManager } from '../services/websocket'
 import { defaultConfigManager } from '../services/configManager'
 import { existsSync } from 'fs'
 import { writeFileSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { spawn, spawnSync } from 'child_process'
 import { homedir } from 'os'
 import { requireAuth, requireAdmin, requireOperator, auditLog } from '../middleware/authMiddleware.js'
@@ -34,6 +34,7 @@ const PM2_CONFIRMATION_RULES: ConfirmationRule[] = [
   { method: 'POST', path: /^\/enable$/, action: 'pm2-enable' },
   { method: 'POST', path: /^\/processes\/[^/]+\/start$/, action: 'pm2-start' },
   { method: 'POST', path: /^\/apps\/[^/]+\/start$/, action: 'pm2-app-start' },
+  { method: 'POST', path: /^\/apps\/[^/]+\/stop$/, action: 'pm2-app-stop' },
   { method: 'POST', path: /^\/processes\/[^/]+\/stop$/, action: 'pm2-stop' },
   { method: 'POST', path: /^\/processes\/[^/]+\/restart$/, action: 'pm2-restart' },
   { method: 'DELETE', path: /^\/processes\/[^/]+$/, action: 'pm2-delete' },
@@ -171,6 +172,183 @@ async function ensureReservedExternalExePort(port: number, appName: string, sour
       return
     }
     logger.warn('自动保留 external-exe 端口失败（忽略）', { appName, port, source, error: message })
+  }
+}
+
+function normalizeComparableName(value: string | null | undefined): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s._-]+/g, '')
+}
+
+function normalizeComparablePath(value: string | null | undefined): string {
+  return String(value || '')
+    .trim()
+    .replace(/\//g, '\\')
+    .replace(/\\+/g, '\\')
+    .replace(/[\\]+$/, '')
+    .toLowerCase()
+}
+
+function getScriptDirectory(scriptPath?: string | null): string | null {
+  const trimmedPath = String(scriptPath || '').trim()
+  if (!trimmedPath) {
+    return null
+  }
+
+  try {
+    return dirname(trimmedPath)
+  } catch {
+    return null
+  }
+}
+
+function processPathMatchesAppDirectory(
+  appDirectory: string | null | undefined,
+  processCwd?: string | null,
+  processScript?: string | null
+): boolean {
+  const normalizedAppDirectory = normalizeComparablePath(appDirectory)
+  if (!normalizedAppDirectory) {
+    return false
+  }
+
+  const candidates = [processCwd, getScriptDirectory(processScript)]
+    .map(candidate => normalizeComparablePath(candidate))
+    .filter(Boolean)
+
+  return candidates.some(candidate =>
+    candidate === normalizedAppDirectory ||
+    candidate.startsWith(`${normalizedAppDirectory}\\`)
+  )
+}
+
+function findManagedAppForPm2Process(
+  apps: any[],
+  processName: string,
+  processCwd?: string | null,
+  processScript?: string | null
+): any | null {
+  const normalizedProcessName = normalizeComparableName(processName)
+
+  const rankApp = (app: any): number => {
+    let score = 0
+    const candidateNames = [
+      app?.pm2ProcessName,
+      app?.name,
+      typeof app?.name === 'string' ? app.name.toLowerCase().replace(/\s+/g, '-') : ''
+    ]
+
+    if (candidateNames.some(candidate => normalizeComparableName(candidate) === normalizedProcessName)) {
+      score += 300
+    }
+
+    if (processPathMatchesAppDirectory(app?.directory, processCwd, processScript)) {
+      score += 100
+    }
+
+    return score
+  }
+
+  const rankedApps = apps
+    .map((app: any) => ({ app, score: rankApp(app) }))
+    .filter(entry => entry.score > 0)
+    .sort((left, right) => right.score - left.score)
+
+  return rankedApps[0]?.app || null
+}
+
+function findPm2ProcessForApp(app: any, processes: any[]): any | null {
+  const candidateNames = [
+    app?.pm2ProcessName,
+    app?.name,
+    typeof app?.name === 'string' ? app.name.toLowerCase().replace(/\s+/g, '-') : ''
+  ]
+
+  const rankProcess = (processInfo: any): number => {
+    const processName = String(processInfo?.name || '')
+    let score = 0
+
+    const matchesConfiguredProcessName = normalizeComparableName(app?.pm2ProcessName) !== '' &&
+      normalizeComparableName(app?.pm2ProcessName) === normalizeComparableName(processName)
+    const matchesAppName = candidateNames.some(candidate =>
+      normalizeComparableName(candidate) !== '' &&
+      normalizeComparableName(candidate) === normalizeComparableName(processName)
+    )
+
+    if (matchesConfiguredProcessName) score += 300
+    else if (matchesAppName) score += 200
+
+    if (processPathMatchesAppDirectory(app?.directory, processInfo?.cwd, processInfo?.script)) {
+      score += 100
+    }
+
+    if (score <= 0) {
+      return 0
+    }
+
+    const status = String(processInfo?.status || '').toLowerCase()
+    if (status === 'online') score += 1000
+    else if (status === 'launching' || status === 'stopping') score += 500
+
+    return score
+  }
+
+  const rankedProcesses = processes
+    .map((processInfo: any) => ({ processInfo, score: rankProcess(processInfo) }))
+    .filter(entry => entry.score > 0)
+    .sort((left, right) => right.score - left.score)
+
+  return rankedProcesses[0]?.processInfo || null
+}
+
+async function syncStoppedApplicationState(applicationService: any, app: any): Promise<void> {
+  if (!applicationService || !app?.id) {
+    return
+  }
+
+  const repository = applicationService.repository
+  if (repository?.updateState) {
+    await repository.updateState(app.id, 'stopped')
+    logger.info('应用状态已更新为stopped', { appId: app.id, appName: app.name })
+  }
+
+  if (repository?.updateDeploymentMode) {
+    await repository.updateDeploymentMode(app.id, 'unknown')
+    logger.info('应用部署模式已更新为unknown', { appId: app.id, appName: app.name })
+  }
+
+  if (applicationService.setPM2ProcessName) {
+    await applicationService.setPM2ProcessName(app.id, null)
+  } else if (typeof repository?.updatePM2ProcessName === 'function') {
+    await repository.updatePM2ProcessName(app.id, null)
+  }
+
+  try {
+    const wsManager = webSocketManager
+    if (wsManager) {
+      wsManager.broadcast({
+        type: 'app_status_changed',
+        payload: {
+          appId: app.id,
+          appName: app.name,
+          state: 'stopped',
+          deploymentMode: 'unknown',
+          isRunning: false,
+          timestamp: new Date().toISOString()
+        }
+      })
+      logger.info('已广播应用停止WebSocket消息', {
+        appId: app.id,
+        appName: app.name
+      })
+    }
+  } catch (wsError) {
+    logger.warn('广播WebSocket消息失败，但不影响PM2停止', {
+      appId: app.id,
+      error: wsError instanceof Error ? wsError.message : String(wsError)
+    })
   }
 }
 
@@ -1131,6 +1309,81 @@ router.post('/apps/:appId/start', requireAdmin, auditLog('pm2-app-start'), async
 })
 
 /**
+ * POST /api/pm2/apps/:appId/stop
+ * 通过应用ID停止PM2进程 - 仅admin
+ */
+router.post('/apps/:appId/stop', requireAdmin, auditLog('pm2-app-stop'), async (req, res) => {
+  try {
+    if (process.platform === 'win32' && process.env.PM2_ENABLED !== '1') {
+      return res.status(503).json({
+        success: false,
+        error: 'PM2 integration is disabled on Windows by default',
+        message: 'Set PM2_ENABLED=1 to enable'
+      })
+    }
+
+    const { appId } = req.params
+    const applicationService = (pm2Service as any).applicationService
+    if (!applicationService) {
+      return res.status(500).json({
+        success: false,
+        error: '应用服务未初始化',
+        message: '无法获取应用信息'
+      })
+    }
+
+    let app
+    try {
+      app = await applicationService.findById(appId)
+    } catch {
+      const apps = await applicationService.findAll()
+      app = apps.find((candidate: any) => candidate?.id === appId || candidate?.name === appId)
+    }
+
+    if (!app) {
+      return res.status(404).json({
+        success: false,
+        error: '应用不存在',
+        message: `未找到ID或名称为 "${appId}" 的应用`
+      })
+    }
+
+    const processes = await pm2Service.getProcessList()
+    const matchedProcess = findPm2ProcessForApp(app, processes)
+    const targetProcessName = matchedProcess?.name || app.pm2ProcessName
+
+    if (!targetProcessName) {
+      return res.status(404).json({
+        success: false,
+        error: '未找到对应PM2进程',
+        message: `应用 ${app.name} 当前没有可识别的 PM2 进程`
+      })
+    }
+
+    await pm2Service.stopProcess(targetProcessName)
+    await syncStoppedApplicationState(applicationService, app)
+
+    res.json({
+      success: true,
+      message: `应用 ${app.name} 已停止`,
+      data: {
+        appId: app.id,
+        appName: app.name,
+        processName: targetProcessName
+      },
+      timestamp: new Date().toISOString()
+    })
+  } catch (error) {
+    logger.error('按应用停止PM2进程失败:', error)
+    res.status(500).json({
+      success: false,
+      error: '按应用停止PM2进程失败',
+      message: error instanceof Error ? error.message : '未知错误'
+    })
+  }
+})
+
+/**
  * POST /api/pm2/processes/:name/stop
  * 停止PM2进程 - 仅admin
  */
@@ -1144,63 +1397,24 @@ router.post('/processes/:name/stop', requireAdmin, auditLog('pm2-stop'), async (
       })
     }
     const { name } = req.params
+    const processesBeforeStop = await pm2Service.getProcessList()
+    const targetProcess = processesBeforeStop.find(processInfo => processInfo.name === name) || null
     await pm2Service.stopProcess(name)
 
     // 🔧 更新应用状态到数据库（修复状态同步问题）
     try {
       const applicationService = (pm2Service as any).applicationService
       if (applicationService) {
-        // 通过进程名称查找对应的应用
         const apps = await applicationService.findAll()
-        const app = apps.find((a: any) => {
-          const normalizedName = a.name.toLowerCase().replace(/\s+/g, '-')
-          return normalizedName === name.toLowerCase() || a.name === name
-        })
+        const app = findManagedAppForPm2Process(
+          apps as any[],
+          name,
+          targetProcess?.cwd,
+          targetProcess?.script
+        )
 
         if (app && app.id) {
-          const repository = (applicationService as any).repository
-          if (repository && repository.updateState) {
-            await repository.updateState(app.id, 'stopped')
-            logger.info('应用状态已更新为stopped', { appId: app.id, appName: app.name })
-          }
-          // ✨ 更新部署模式为未知（应用已停止）
-        if (repository && repository.updateDeploymentMode) {
-          await repository.updateDeploymentMode(app.id, 'unknown')
-          logger.info('应用部署模式已更新为unknown', { appId: app.id, appName: app.name })
-        }
-
-        if (applicationService.setPM2ProcessName) {
-          await applicationService.setPM2ProcessName(app.id, null)
-        } else if (repository && typeof repository.updatePM2ProcessName === 'function') {
-          await repository.updatePM2ProcessName(app.id, null)
-        }
-
-          // 🔔 广播WebSocket消息通知所有客户端应用已停止
-          try {
-            const wsManager = webSocketManager
-            if (wsManager) {
-              wsManager.broadcast({
-                type: 'app_status_changed',
-                payload: {
-                  appId: app.id,
-                  appName: app.name,
-                  state: 'stopped',
-                  deploymentMode: 'unknown',
-                  isRunning: false,
-                  timestamp: new Date().toISOString()
-                }
-              })
-              logger.info('已广播应用停止WebSocket消息', { 
-                appId: app.id, 
-                appName: app.name
-              })
-            }
-          } catch (wsError) {
-            logger.warn('广播WebSocket消息失败，但不影响PM2停止', {
-              appId: app.id,
-              error: wsError instanceof Error ? wsError.message : String(wsError)
-            })
-          }
+          await syncStoppedApplicationState(applicationService, app)
         }
       }
     } catch (stateError) {

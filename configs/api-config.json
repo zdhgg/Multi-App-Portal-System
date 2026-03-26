@@ -41,7 +41,7 @@
     "enabled": true,
     "includeExamples": true
   },
-  "version": "1.2.1",
+  "version": "1.2.2",
   "integration": {
     "monitor": true,
     "config": true,

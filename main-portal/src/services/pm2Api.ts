@@ -28,6 +28,7 @@ export interface PM2Process {
   uptime: number
   restarts: number
   script?: string
+  cwd?: string
   instances?: number | string
   exec_mode?: 'fork' | 'cluster'
   watch?: boolean
@@ -210,6 +211,13 @@ export class PM2ApiService {
    */
   async stopProcess(name: string): Promise<void> {
     await apiService.post(`/pm2/processes/${encodeURIComponent(name)}/stop`, undefined, this.withConfirmation())
+  }
+
+  /**
+   * 通过应用ID停止对应的PM2进程
+   */
+  async stopProcessByAppId(appId: string): Promise<void> {
+    await apiService.post(`/pm2/apps/${encodeURIComponent(appId)}/stop`, undefined, this.withConfirmation())
   }
 
   /**

@@ -2,6 +2,24 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.2.2] - 2026-03-26
+
+### Added
+
+- 新增按应用 ID 停止对应 PM2 进程的接口，管理页停止操作可直接命中真实进程，而不再依赖应用名与 PM2 进程名完全一致。
+- 新增前端 `pm2ProcessMatching` 工具与状态同步回归测试，覆盖共享工作区父目录误匹配场景。
+
+### Changed
+
+- 收紧 PM2 进程与应用的目录匹配规则，仅接受应用目录及其子目录，避免把共享工作区父目录错误识别为命中。
+- 优化 Windows 原生进程停止逻辑，优先终止完整进程树，并在必要时回退到信号式停止，提升端口释放稳定性。
+- 将根项目、前端、后端、系统配置、脚本模板和主要发布文档版本统一提升到 `1.2.2`。
+
+### Fixed
+
+- 修复应用名与 PM2 进程名不一致时，管理页和状态同步可能无法正确识别、停止或回填 `pm2ProcessName` 的问题。
+- 修复共享父目录导致的不相关 PM2 进程被误关联、误同步为运行态，甚至误停止的风险。
+
 ## [1.2.1] - 2026-03-25
 
 ### Changed
@@ -86,6 +104,7 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.2.2]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.2
 [1.2.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.0
 [1.2.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.1
 [1.1.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.1.1

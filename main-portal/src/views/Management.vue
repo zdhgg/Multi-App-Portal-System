@@ -664,6 +664,10 @@ import { usePortalStore } from '@/stores/portal'
 import { usePortMonitoringStore } from '@/stores/portMonitoring'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { debugInfo, debugLog } from '@/utils/debugControl'
+import {
+  findBestMatchedPM2Process,
+  isLikelyPM2ManagedApp
+} from '@/utils/pm2ProcessMatching'
 
 // 命令类型定义
 type StartCommand = 'native' | 'pm2-prod' | string
@@ -1267,59 +1271,32 @@ const getTechStackValue = (app: AppWithUIState): string => {
   // 优先使用 techStack（驼峰命名），后备使用 tech_stack（下划线命名）
   return app.techStack || app.tech_stack || '未知'
 }
-
-
-
 // 🎯 检测应用是否通过PM2运行
 const checkIfPM2Process = async (app: AppWithUIState): Promise<boolean> => {
-  // 方法1：检查数据库中的 deploymentMode
-  if (app.deploymentMode === 'production') {
-    debugLog('检测到生产模式标记，判定为PM2进程', { appName: app.name })
-    return true
-  }
-  
-  // 方法2：实时查询PM2进程列表
   try {
     const processes = await pm2ApiService.getProcessList()
-    const processName = app.name.toLowerCase().replace(/\s+/g, '-')
-    
-    const pm2Process = processes.find((p: any) => 
-      p.name === processName || 
-      p.name === app.name ||
-      p.name.toLowerCase().replace(/\s+/g, '-') === processName
-    )
-    
-    const isRunning = pm2Process?.status === 'online'
-    if (isRunning) {
-      debugLog('在PM2进程列表中找到运行中的进程', { 
-        appName: app.name, 
-        processName: pm2Process.name,
-        status: pm2Process.status
+    const matchedProcess = findBestMatchedPM2Process(app, processes)
+    const isPM2Managed = isLikelyPM2ManagedApp(app, processes)
+
+    if (isPM2Managed) {
+      debugLog('检测到PM2托管应用', {
+        appName: app.name,
+        appId: app.id,
+        processName: matchedProcess?.name || app.pm2ProcessName || null,
+        status: matchedProcess?.status || null
       })
     }
-    return isRunning
+
+    return isPM2Managed
   } catch (error) {
     console.error('检查PM2进程失败:', error)
-    return false
+    return app.deploymentMode === 'production' || Boolean(String(app.pm2ProcessName || '').trim())
   }
 }
 
 const findMatchedPM2Process = async (app: AppWithUIState) => {
   const processes = await pm2ApiService.getProcessList()
-  const candidateNames = [
-    app.pm2ProcessName || '',
-    app.name,
-    toSlugName(app.name)
-  ]
-    .map(name => String(name || '').trim())
-    .filter(Boolean)
-
-  return processes.find((process: any) => {
-    if (!process?.name) return false
-    const processName = String(process.name).trim()
-    const processSlug = toSlugName(processName)
-    return candidateNames.some(candidate => candidate === processName || toSlugName(candidate) === processSlug)
-  }) || null
+  return findBestMatchedPM2Process(app, processes)
 }
 
 const loadRuntimeLogs = async (opts: { silent?: boolean } = {}) => {
@@ -1501,10 +1478,14 @@ const toggleApp = async (app: AppWithUIState) => {
     
     if (isPM2Process) {
       // ✅ 使用PM2停止API
-      const processName = app.name.toLowerCase().replace(/\s+/g, '-')
-      debugLog('使用PM2停止进程', { appName: app.name, processName })
+      const matchedProcess = await findMatchedPM2Process(app)
+      debugLog('使用PM2停止进程', {
+        appName: app.name,
+        appId: app.id,
+        matchedProcessName: matchedProcess?.name || app.pm2ProcessName || null
+      })
       
-      await pm2ApiService.stopProcess(processName)
+      await pm2ApiService.stopProcessByAppId(app.id)
       
       app.status = 'offline'
       applyFilters()

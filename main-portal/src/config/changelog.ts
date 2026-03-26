@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.2.2',
+    date: '2026-03-26',
+    title: 'PM2 进程匹配修复与版本同步补丁',
+    items: [
+      { type: 'feature', description: '新增按应用 ID 停止对应 PM2 进程的路径，兼容应用名与 PM2 进程名不一致的场景' },
+      { type: 'fix', description: '修复共享工作区父目录被误判为 PM2 进程命中的问题，降低误同步和误停止风险' },
+      { type: 'fix', description: '管理页现在会结合进程名称与工作目录识别 PM2 应用，日志和停止操作更稳定' },
+      { type: 'improvement', description: 'Windows 原生进程停止改为优先终止完整进程树，并保留信号兜底，提升端口释放稳定性' },
+      { type: 'improvement', description: '将前后端包版本、系统配置、脚本模板和主要发布文档统一对齐到 1.2.2' }
+    ]
+  },
+  {
     version: '1.2.1',
     date: '2026-03-25',
     title: '门户交互修复与发布补丁',

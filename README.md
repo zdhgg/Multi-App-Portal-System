@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.2.1-success.svg)
+![Version](https://img.shields.io/badge/version-1.2.2-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.2.2-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.2.1`
-- **GitHub Release**: [v1.2.1: 门户交互修复与发布补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.1)
+- **当前版本**: `1.2.2`
+- **GitHub Release**: [v1.2.2: PM2 进程匹配修复与版本同步补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.2)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -245,6 +245,18 @@ VITE_WS_BASE=
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.2.2 (2026-03-26) — PM2 进程匹配修复与版本同步补丁
+- 🎯 **PM2 识别与停止链路修复**
+  - 新增按应用 ID 停止 PM2 进程的接口，管理页停止动作不再依赖应用名与 PM2 进程名完全一致
+  - 前端与后端统一改为结合进程名称和工作目录匹配 PM2 进程，`Teaching-inspection-system` 这类名称不一致场景也能正确命中
+- 🧯 **误匹配风险收敛**
+  - 收紧目录匹配规则，只接受应用目录及其子目录，避免 `D:\My Programs` 这类共享父目录误判为具体应用
+  - 补充回归测试，防止无关 PM2 进程被误同步为运行态或误停止
+- 🪟 **原生进程停止稳定性增强**
+  - Windows 下优先终止完整子进程树，失败时再回退到信号式停止，提升端口释放和异常退出处理稳定性
+- 🔢 **版本与发布资料同步**
+  - 前后端包版本、系统配置、脚本模板和主要发布文档统一提升到 `1.2.2`
+
 ### v1.2.1 (2026-03-25) — 门户交互修复与发布补丁
 - 🛠️ **门户交互修复**
   - 修复首页用户资料弹窗在特殊布局下可能跑到页面下方的问题
@@ -328,4 +340,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.2.1 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.2.2 - 让应用管理更简单、更智能！*
