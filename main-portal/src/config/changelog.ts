@@ -18,7 +18,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.2.2',
     date: '2026-03-26',
-    title: 'PM2 进程匹配修复与版本同步补丁',
+    title: 'PM2 进程识别与停止修复补丁',
     items: [
       { type: 'feature', description: '新增按应用 ID 停止对应 PM2 进程的路径，兼容应用名与 PM2 进程名不一致的场景' },
       { type: 'fix', description: '修复共享工作区父目录被误判为 PM2 进程命中的问题，降低误同步和误停止风险' },
@@ -30,7 +30,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.2.1',
     date: '2026-03-25',
-    title: '门户交互修复与发布补丁',
+    title: '门户交互与卡片一致性修复补丁',
     items: [
       { type: 'fix', description: '修复用户资料相关弹窗在门户首页特殊布局下可能被错误定位到页面下方的问题' },
       { type: 'improvement', description: '离线应用卡片保留“查看详情”主操作，并将次级操作改为直接可点击的“刷新”按钮' },
