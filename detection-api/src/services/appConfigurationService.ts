@@ -398,6 +398,24 @@ export class AppConfigurationService {
   }
 
   /**
+   * 获取全部应用配置
+   */
+  async getAllConfigurations(): Promise<AppConfiguration[]> {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT * FROM app_configurations
+        ORDER BY updated_at DESC, created_at DESC
+      `);
+
+      const rows = stmt.all() as any[];
+      return rows.map(row => this.mapRowToConfiguration(row));
+    } catch (error) {
+      logger.error('Failed to get all configurations', { error });
+      throw error;
+    }
+  }
+
+  /**
    * 更新配置
    */
   async updateConfiguration(id: string, updates: Partial<AppConfiguration>, updatedBy?: string): Promise<void> {

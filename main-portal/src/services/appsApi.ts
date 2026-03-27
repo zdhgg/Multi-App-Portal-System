@@ -80,12 +80,14 @@ export interface AppCreateRequest {
 export interface AppUpdateRequest {
   name?: string
   description?: string
+  directory?: string
   url?: string
   icon?: string
   color?: string
   tech_stack?: string
   access_path?: string
   accessPath?: string
+  build_script?: string
   status?: 'online' | 'offline' | 'error' | 'maintenance'
   frontend_port?: number
   backend_port?: number
@@ -588,11 +590,13 @@ function mapUpdateRequestToDto(request: AppUpdateRequest) {
 
   if (request.name !== undefined) payload.name = request.name
   if (request.description !== undefined) payload.description = request.description
+  if (request.directory !== undefined) payload.directory = request.directory
   if (request.icon !== undefined) payload.icon = request.icon
   if (request.color !== undefined) payload.color = request.color
   if (request.tech_stack !== undefined) payload.techStack = request.tech_stack
   if (request.access_path !== undefined) payload.accessPath = request.access_path
   if (request.accessPath !== undefined) payload.accessPath = request.accessPath
+  if (request.build_script !== undefined) payload.buildScript = request.build_script
 
   return payload
 }

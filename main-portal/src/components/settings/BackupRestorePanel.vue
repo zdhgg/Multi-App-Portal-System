@@ -1,7 +1,85 @@
 <template>
   <div class="backup-panel">
+    <el-alert
+      title="当前页面统一展示配置快照和文件归档备份。你可以在这里创建任一模式的备份，并对历史 ZIP 归档执行查看、恢复和清理。"
+      type="info"
+      show-icon
+      :closable="false"
+      class="backup-alert"
+    />
+
+    <div class="control-card">
+      <div class="control-card__header">
+        <div>
+          <div class="control-card__title">备份策略</div>
+          <div class="control-card__subtitle">这里调整自动备份计划、保留周期和存储路径，修改后使用页面顶部保存按钮生效。</div>
+        </div>
+        <el-tag size="small" :type="policySettings.enableAutoBackup ? 'success' : 'info'">
+          {{ policySettings.enableAutoBackup ? '自动备份已启用' : '自动备份已关闭' }}
+        </el-tag>
+      </div>
+
+      <el-form label-width="96px" class="control-form">
+        <div class="control-grid">
+          <el-form-item label="自动备份">
+            <el-switch v-model="policySettings.enableAutoBackup" />
+          </el-form-item>
+
+          <el-form-item label="执行周期">
+            <el-select v-model="policySettings.backupInterval" :disabled="!policySettings.enableAutoBackup">
+              <el-option label="每小时" value="hourly" />
+              <el-option label="每天" value="daily" />
+              <el-option label="每周" value="weekly" />
+              <el-option label="每月" value="monthly" />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="执行时间">
+            <el-time-select
+              v-model="policySettings.backupTime"
+              start="00:00"
+              step="00:30"
+              end="23:30"
+              format="HH:mm"
+              placeholder="选择时间"
+              :disabled="!policySettings.enableAutoBackup"
+            />
+          </el-form-item>
+
+          <el-form-item label="保留天数">
+            <el-input-number v-model="policySettings.retentionDays" :min="1" :max="365" />
+          </el-form-item>
+
+          <el-form-item label="存储路径" class="control-grid__path">
+            <el-input
+              v-model="policySettings.backupPath"
+              placeholder="./backups"
+              readonly
+              @click="pickBackupPath"
+            >
+              <template #append>
+                <el-button :loading="pickingBackupPath" @click.stop="pickBackupPath">选择目录</el-button>
+              </template>
+            </el-input>
+          </el-form-item>
+
+          <el-form-item label="用户数据">
+            <el-switch v-model="policySettings.includeUserData" />
+          </el-form-item>
+
+          <el-form-item label="归档日志">
+            <el-switch v-model="policySettings.includeLogs" />
+          </el-form-item>
+
+          <el-form-item label="压缩输出">
+            <el-switch v-model="policySettings.compressionEnabled" />
+          </el-form-item>
+        </div>
+      </el-form>
+    </div>
+
     <div class="toolbar">
-      <el-button type="primary" :loading="creating" @click="createBackup">创建备份</el-button>
+      <el-button type="primary" :loading="creating" @click="openCreateBackupDialog">创建备份</el-button>
       <el-upload :auto-upload="false" :show-file-list="false" accept=".json" @change="onUpload">
         <el-button>从文件导入</el-button>
       </el-upload>
@@ -9,8 +87,18 @@
       <el-input v-model="keyword" placeholder="搜索备份名称/ID" style="width: 220px" clearable />
     </div>
 
-    <el-table :data="filteredBackups" border size="small" v-loading="loading">
+    <el-table :data="pagedBackups" border size="small" v-loading="loading">
       <el-table-column prop="name" label="名称" min-width="200" />
+      <el-table-column label="来源" width="120">
+        <template #default="{ row }">
+          <el-tag size="small" :type="row.source === 'configuration-export' ? 'primary' : 'success'">
+            {{ row.source === 'configuration-export' ? '配置快照' : '脚本归档' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="类型" width="110">
+        <template #default="{ row }">{{ formatBackupType(row) }}</template>
+      </el-table-column>
       <el-table-column prop="id" label="ID" width="240" />
       <el-table-column prop="createdAt" label="创建时间" width="180">
         <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
@@ -18,9 +106,16 @@
       <el-table-column label="大小" width="100">
         <template #default="{ row }">{{ formatSize(row.size) }}</template>
       </el-table-column>
+      <el-table-column label="状态" width="110">
+        <template #default="{ row }">
+          <el-tag size="small" :type="row.available === false ? 'danger' : 'info'">
+            {{ row.available === false ? '文件缺失' : '可用' }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="240">
         <template #default="{ row }">
-          <el-button size="small" type="primary" @click="restore(row)" :loading="restoringId===row.id">恢复</el-button>
+          <el-button size="small" type="primary" @click="restore(row)" :loading="restoringId===row.id" :disabled="row.available === false">恢复</el-button>
           <el-button size="small" type="danger" @click="remove(row)" :loading="deletingId===row.id">删除</el-button>
           <el-button size="small" @click="view(row)">查看</el-button>
         </template>
@@ -38,6 +133,62 @@
       />
     </div>
 
+    <el-dialog v-model="createDialogVisible" title="创建备份" width="520px">
+      <el-form label-width="96px">
+        <el-form-item label="备份模式">
+          <el-radio-group v-model="createForm.mode">
+            <el-radio-button label="configuration">配置快照</el-radio-button>
+            <el-radio-button label="archive">文件归档</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item label="备份名称">
+          <el-input v-model="createForm.backupName" placeholder="留空时自动生成" clearable />
+        </el-form-item>
+
+        <el-form-item label="输出目录">
+          <el-input
+            v-model="createForm.outputDirectory"
+            placeholder="默认沿用当前备份策略里的存储路径"
+            readonly
+            @click="pickCreateOutputDirectory"
+          >
+            <template #append>
+              <el-button :loading="pickingCreateOutputDirectory" @click.stop="pickCreateOutputDirectory">选择目录</el-button>
+            </template>
+          </el-input>
+        </el-form-item>
+
+        <template v-if="createForm.mode === 'configuration'">
+          <el-form-item label="备份内容">
+            <el-checkbox v-model="createForm.includeEnvironments">环境配置</el-checkbox>
+            <el-checkbox v-model="createForm.includeTemplates">模板定义</el-checkbox>
+            <el-checkbox v-model="createForm.includeSensitiveData">敏感数据</el-checkbox>
+          </el-form-item>
+        </template>
+
+        <template v-else>
+          <el-form-item label="归档类型">
+            <el-select v-model="createForm.archiveType" style="width: 100%">
+              <el-option label="完整归档" value="full" />
+              <el-option label="配置归档" value="config" />
+              <el-option label="日志归档" value="logs" />
+              <el-option label="API归档" value="api" />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="压缩输出">
+            <el-switch v-model="createForm.compress" />
+          </el-form-item>
+        </template>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="createDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creating" @click="createBackup">确认创建</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="detail.visible" title="备份详情" width="560px">
       <pre class="json">{{ JSON.stringify(detail.data, null, 2) }}</pre>
       <template #footer><el-button @click="detail.visible=false">关闭</el-button></template>
@@ -46,9 +197,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, reactive } from 'vue'
 import { configExportApiService, type BackupInfo } from '@/services/configExportApi'
+import { ApiError } from '@/services/api'
+import { filesystemApiService } from '@/services/filesystemApi'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getNativeDirectoryPickerFailureMessage } from '@/utils/directoryPicker'
+import {
+  normalizeBackupSettings,
+  type BackupSettingsModel
+} from '@/utils/systemSettingsPayload'
+
+const props = defineProps<{
+  backupSettings: BackupSettingsModel
+}>()
+
+const emit = defineEmits<{
+  (e: 'update:backup-settings', value: BackupSettingsModel): void
+  (e: 'backup-settings-changed'): void
+}>()
 
 const backups = ref<BackupInfo[]>([])
 const loading = ref(false)
@@ -60,6 +227,21 @@ const page = ref(1)
 const pageSize = 10
 
 const detail = ref<{ visible: boolean; data: any }>({ visible: false, data: null })
+const createDialogVisible = ref(false)
+const pickingBackupPath = ref(false)
+const pickingCreateOutputDirectory = ref(false)
+const policySettings = reactive<BackupSettingsModel>(normalizeBackupSettings(props.backupSettings))
+const createForm = reactive({
+  mode: 'configuration' as 'configuration' | 'archive',
+  backupName: '',
+  outputDirectory: '',
+  archiveType: 'full' as 'full' | 'config' | 'logs' | 'api',
+  compress: true,
+  includeEnvironments: true,
+  includeTemplates: true,
+  includeSensitiveData: false
+})
+let syncingPolicySettings = false
 
 const handlePageChange = (p: number) => {
   page.value = p
@@ -70,16 +252,42 @@ const loadBackups = async () => {
   try {
     const resp = await configExportApiService.listBackups()
     backups.value = resp.data || []
+    const maxPage = Math.max(1, Math.ceil(filteredBackups.value.length / pageSize))
+    if (page.value > maxPage) {
+      page.value = maxPage
+    }
   } catch {
     ElMessage.error('获取备份列表失败')
   } finally { loading.value = false }
 }
 
 const filteredBackups = computed(() => {
-  const list = backups.value.filter(b => !keyword.value || b.name.includes(keyword.value) || b.id.includes(keyword.value))
+  const search = keyword.value.trim()
+  return backups.value.filter(b => !search || b.name.includes(search) || b.id.includes(search))
+})
+
+const pagedBackups = computed(() => {
+  const list = filteredBackups.value
   const start = (page.value - 1) * pageSize
   return list.slice(start, start + pageSize)
 })
+
+watch(keyword, () => {
+  page.value = 1
+})
+
+watch(() => props.backupSettings, (value) => {
+  syncingPolicySettings = true
+  Object.assign(policySettings, normalizeBackupSettings(value))
+  queueMicrotask(() => { syncingPolicySettings = false })
+}, { deep: true, immediate: true })
+
+watch(policySettings, (value) => {
+  if (syncingPolicySettings) return
+  const normalized = normalizeBackupSettings(value)
+  emit('update:backup-settings', normalized)
+  emit('backup-settings-changed')
+}, { deep: true })
 
 function formatSize(size: number) {
   if (size > 1024 * 1024) return (size / 1024 / 1024).toFixed(1) + ' MB'
@@ -87,32 +295,151 @@ function formatSize(size: number) {
   return size + ' B'
 }
 function formatTime(s: string | Date) { return new Date(s).toLocaleString() }
+function formatBackupType(backup: BackupInfo) {
+  const mapping: Record<string, string> = {
+    'config-export': '配置',
+    'config': '配置',
+    'full': '完整',
+    'incremental': '增量',
+    'logs': '日志',
+    'api': 'API',
+    'custom': '自定义'
+  }
+
+  return mapping[backup.backupType] || backup.backupType || '未知'
+}
+
+function openCreateBackupDialog() {
+  createForm.compress = policySettings.compressionEnabled
+  createForm.outputDirectory = policySettings.backupPath?.trim() || './backups'
+  createDialogVisible.value = true
+}
+
+async function selectDirectory(startPath?: string) {
+  try {
+    const response = await filesystemApiService.selectFolder(startPath, true)
+
+    if (!response.success || !response.data) {
+      throw new Error(response.message || '目录选择失败')
+    }
+
+    if (response.data.cancelled) {
+      return undefined
+    }
+
+    const selectedPath = typeof response.data.path === 'string' ? response.data.path.trim() : ''
+    if (!selectedPath) {
+      throw new Error('未获取到有效目录路径')
+    }
+
+    return selectedPath
+  } catch (error: any) {
+    const message = getNativeDirectoryPickerFailureMessage(error instanceof ApiError ? error : error)
+    ElMessage.error(message)
+    return null
+  }
+}
+
+async function pickBackupPath() {
+  if (pickingBackupPath.value) return
+
+  pickingBackupPath.value = true
+  try {
+    const selectedPath = await selectDirectory(policySettings.backupPath?.trim() || undefined)
+    if (selectedPath === undefined) {
+      ElMessage.info('已取消目录选择')
+      return
+    }
+    if (selectedPath === null) return
+
+    policySettings.backupPath = selectedPath
+    ElMessage.success(`已选择目录: ${selectedPath}`)
+  } finally {
+    pickingBackupPath.value = false
+  }
+}
+
+async function pickCreateOutputDirectory() {
+  if (pickingCreateOutputDirectory.value) return
+
+  pickingCreateOutputDirectory.value = true
+  try {
+    const selectedPath = await selectDirectory(
+      createForm.outputDirectory?.trim() || policySettings.backupPath?.trim() || undefined
+    )
+    if (selectedPath === undefined) {
+      ElMessage.info('已取消目录选择')
+      return
+    }
+    if (selectedPath === null) return
+
+    createForm.outputDirectory = selectedPath
+    ElMessage.success(`已选择输出目录: ${selectedPath}`)
+  } finally {
+    pickingCreateOutputDirectory.value = false
+  }
+}
 
 async function createBackup() {
   creating.value = true
   try {
-    const resp = await configExportApiService.createBackup({ includeEnvironments: true, includeTemplates: true })
+    const backupName = createForm.backupName.trim() || undefined
+    const outputDirectory = createForm.outputDirectory.trim() || undefined
+    const payload = createForm.mode === 'configuration'
+      ? {
+          mode: 'configuration' as const,
+          backupName,
+          outputDirectory,
+          includeEnvironments: createForm.includeEnvironments,
+          includeTemplates: createForm.includeTemplates,
+          includeSensitiveData: createForm.includeSensitiveData
+        }
+      : {
+          mode: 'archive' as const,
+          backupName,
+          outputDirectory,
+          archiveType: createForm.archiveType,
+          compress: createForm.compress
+        }
+
+    const resp = await configExportApiService.createBackup(payload)
     if (resp.success) {
-      ElMessage.success('备份创建成功')
+      ElMessage.success(resp.message || '备份创建成功')
+      createDialogVisible.value = false
       await loadBackups()
     } else { throw new Error() }
-  } catch { ElMessage.error('创建备份失败') } finally { creating.value = false }
+  } catch (error: any) { ElMessage.error(error?.message || '创建备份失败') } finally { creating.value = false }
 }
 
 async function restore(row: BackupInfo) {
+  if (row.available === false) {
+    ElMessage.warning('该备份文件当前不可用，无法恢复')
+    return
+  }
+
+  const restoreMessage = row.source === 'script-registry'
+    ? `确认从备份“${row.name}”恢复吗？这会覆盖备份包中的项目文件${row.backupType === 'full' ? '、日志和数据库文件' : ''}，并自动创建恢复前备份。`
+    : `确认从备份“${row.name}”恢复吗？当前配置将被覆盖（已自动创建恢复前备份）。`
+
   try {
-    await ElMessageBox.confirm(`确认从备份“${row.name}”恢复吗？当前配置将被覆盖（已自动创建恢复前备份）。`, '恢复确认', { type: 'warning' })
+    await ElMessageBox.confirm(restoreMessage, '恢复确认', { type: 'warning' })
   } catch { return }
   restoringId.value = row.id
   try {
     const resp = await configExportApiService.restoreBackup(row.id, { overwriteExisting: true, createBackup: true })
-    if (resp.success) ElMessage.success('恢复完成')
-    else ElMessage.warning(resp.error || '恢复完成但存在警告')
-  } catch { ElMessage.error('恢复失败') } finally { restoringId.value = null }
+    if (resp.success) ElMessage.success(resp.message || '恢复完成')
+    else ElMessage.warning(resp.message || resp.error || '恢复完成但存在警告')
+    await loadBackups()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '恢复失败')
+  } finally { restoringId.value = null }
 }
 
 async function remove(row: BackupInfo) {
-  try { await ElMessageBox.confirm(`确认删除备份“${row.name}”？`, '删除确认', { type: 'warning' }) } catch { return }
+  const removeMessage = row.available === false
+    ? `确认移除备份记录“${row.name}”？当前备份文件已缺失，将只清理记录。`
+    : `确认删除备份“${row.name}”？`
+  try { await ElMessageBox.confirm(removeMessage, '删除确认', { type: 'warning' }) } catch { return }
   deletingId.value = row.id
   try { await configExportApiService.deleteBackup(row.id); ElMessage.success('已删除'); await loadBackups() } catch { ElMessage.error('删除失败') } finally { deletingId.value = null }
 }
@@ -123,17 +450,66 @@ async function onUpload(fileEvent: any) {
   const raw: File | undefined = fileEvent?.raw
   if (!raw) return
   try { 
-    await configExportApiService.importFromFile(raw, { overwriteExisting: true, createBackup: true })
-    ElMessage.success('导入成功'); await loadBackups() 
-  } catch { ElMessage.error('导入失败') }
+    const resp = await configExportApiService.importFromFile(raw, { overwriteExisting: true, createBackup: true })
+    if (resp.success) ElMessage.success(resp.message || '导入成功')
+    else ElMessage.warning(resp.message || resp.error || '导入完成但存在警告')
+    await loadBackups()
+  } catch (error: any) { ElMessage.error(error?.message || '导入失败') }
 }
 
 onMounted(loadBackups)
 </script>
 
 <style scoped>
+.backup-alert { margin-bottom: 12px; }
+.control-card {
+  margin-bottom: 14px;
+  padding: 18px 18px 6px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+}
+.control-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.control-card__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+}
+.control-card__subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+.control-form {
+  width: 100%;
+}
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+.control-grid__path {
+  grid-column: 1 / -1;
+}
 .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .spacer { flex: 1 }
 .json { background: #0b1020; color: #d8e0ff; padding: 12px; border-radius: 8px; max-height: 420px; overflow: auto }
 .pager { display: flex; justify-content: flex-end; margin-top: 12px }
+
+@media (max-width: 900px) {
+  .control-card__header {
+    flex-direction: column;
+  }
+
+  .control-grid {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

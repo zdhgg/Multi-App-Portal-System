@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.2.2-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.2.2-success.svg)
+![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.3.0-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.2.2`
-- **GitHub Release**: [v1.2.2: PM2 进程识别与停止修复补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.2)
+- **当前版本**: `1.3.0`
+- **GitHub Release**: [v1.3.0: 备份中心与运维控制台增强](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.0)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -245,6 +245,17 @@ VITE_WS_BASE=
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.3.0 (2026-03-27) — 备份中心与运维控制台增强
+- 💾 **系统备份与恢复中心上线**
+  - 系统设置新增统一的备份中心，可在同一页面管理配置快照、文件归档、恢复前备份和历史记录清理
+  - 自动备份策略改为直接绑定系统设置，支持周期、时间、保留天数、日志/用户数据和输出路径联动
+- 🧭 **运维页面继续统一**
+  - 系统设置、应用管理、PM2 管理和端口管理进一步统一为状态页头 + 快照指标布局，降低多页面切换的理解成本
+  - 应用配置保存时会同步更新应用主记录，`external-exe` 目录和运行目标切换更可靠
+- 🩹 **发布前稳定性修正**
+  - 修复旧配置缺少 `backup` 段时，保存系统设置可能误关自动备份的问题
+  - 修复配置快照文件已丢失时，备份列表仍被误标记为可恢复的问题
+
 ### v1.2.2 (2026-03-26) — PM2 进程识别与停止修复补丁
 - 🎯 **PM2 识别与停止链路修复**
   - 新增按应用 ID 停止 PM2 进程的接口，管理页停止动作不再依赖应用名与 PM2 进程名完全一致
@@ -340,4 +351,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.2.2 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.3.0 - 让应用管理更简单、更智能！*

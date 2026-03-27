@@ -3,6 +3,7 @@ import { promises as fs } from 'fs'
 import { logger } from '../utils/logger'
 import { PasswordUtils } from '../utils/passwordUtils'
 import { ServiceContainer } from '../core/ServiceContainer'
+import { getGlobalBackupScheduler } from '../services/backupScheduler.js'
 import { getSystemConfigFilePath, writeSystemConfigFile } from '../utils/systemConfigPath.js'
 
 interface SystemSettingsResponse {
@@ -118,6 +119,7 @@ export class SystemSettingsController {
       })
 
       const updated = await this.writeToDisk(merged)
+      getGlobalBackupScheduler()?.refreshFromSettings()
 
       // 调试日志：写入磁盘后的数据
       logger.info('✅ 写入磁盘成功', {

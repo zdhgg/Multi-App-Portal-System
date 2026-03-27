@@ -8,15 +8,36 @@ export interface BackupInfo {
   createdAt: string
   size: number
   filePath: string
+  originalFilePath?: string
   includedApps: string[]
+  source: 'configuration-export' | 'script-registry'
+  backupType: string
+  format: 'json' | 'zip' | 'directory'
   metadata: {
     configurationsCount: number
     environmentsCount: number
     templatesCount: number
+    creator?: string
+    systemVersion?: string
+    version?: string
+    machine?: string
   }
+  status?: string
+  compressed?: boolean
+  checksum?: string
+  filesCount?: number
+  includedFiles?: string[]
+  available?: boolean
 }
 
 export interface BackupCreateOptions {
+  mode?: 'configuration' | 'archive'
+  backupName?: string
+  outputDirectory?: string
+  archiveType?: 'full' | 'incremental' | 'config' | 'logs' | 'api' | 'custom'
+  includePaths?: string[]
+  excludePaths?: string[]
+  compress?: boolean
   includeEnvironments?: boolean
   includeTemplates?: boolean
   includeSensitiveData?: boolean
@@ -49,4 +70,3 @@ class ConfigExportApiService {
 }
 
 export const configExportApiService = new ConfigExportApiService()
-

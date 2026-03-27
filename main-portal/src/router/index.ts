@@ -38,7 +38,7 @@ const router = createRouter({
           component: () => import('@/views/SystemSettings.vue'),
           meta: {
             title: '系统设置',
-            description: '用户管理、系统配置和偏好设置'
+            description: '统一管理用户、安全、日志与备份配置'
           }
         },
         {
@@ -83,7 +83,7 @@ const router = createRouter({
           component: () => import('@/views/Management.vue'),
           meta: {
             title: '应用管理',
-            description: '管理已检测到的Web应用'
+            description: '统一查看应用状态、运行控制与配置入口'
           }
         },
         {
@@ -112,7 +112,7 @@ const router = createRouter({
           component: () => import('@/views/PM2Management.vue'),
           meta: {
             title: 'PM2进程管理',
-            description: '管理PM2进程和配置'
+            description: '统一查看守护状态、进程运行与生命周期操作'
           }
         }
       ]
@@ -132,7 +132,7 @@ const router = createRouter({
           component: () => import('@/views/PortManagement.vue'),
           meta: {
             title: '端口管理',
-            description: '端口分配、监控和配置管理'
+            description: '统一查看端口占用、冲突风险与配置调整'
           }
         },
         {

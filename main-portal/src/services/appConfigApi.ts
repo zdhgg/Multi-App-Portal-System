@@ -248,9 +248,14 @@ export class AppConfigApiService {
   /**
    * 获取默认配置（基于技术栈）
    */
-  getDefaultConfiguration(techStack: string, appName: string, workingDirectory: string): AppConfiguration {
+  getDefaultConfiguration(
+    techStack: string,
+    appName: string,
+    workingDirectory: string,
+    appId = ''
+  ): AppConfiguration {
     const baseConfig: AppConfiguration = {
-      appId: '',
+      appId,
       name: `${appName} 配置`,
       description: `${appName} 的应用配置`,
       version: '1.0.0',

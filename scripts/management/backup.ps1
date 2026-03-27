@@ -51,7 +51,7 @@ param(
 # ============================================================================
 
 # 项目根目录
-$PROJECT_ROOT = Split-Path -Parent $MyInvocation.MyCommand.Path
+$PROJECT_ROOT = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 # 备份配置
 $BACKUP_CONFIG_DIR = Join-Path $PROJECT_ROOT "backups"

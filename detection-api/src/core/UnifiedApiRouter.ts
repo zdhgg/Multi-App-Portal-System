@@ -21,6 +21,7 @@ import legacyRoutes, { initLogService, initLogManagementService, initConfigServi
 import { initConfigExporter } from '../routes/configurationExport.js';
 import { LogManagementService } from '../services/logManagementService.js';
 import { initializeGlobalScheduler } from '../services/logCleanupScheduler.js';
+import { initializeGlobalBackupScheduler } from '../services/backupScheduler.js';
 import {
   LEGACY_APPS_MODE_ENV,
   LEGACY_APPS_MIGRATION_TARGET,
@@ -142,6 +143,9 @@ export class UnifiedApiRouter {
         const logMgmtService = new LogManagementService(database);
         initializeGlobalScheduler(logMgmtService);
         logger.info('✅ Log cleanup scheduler initialized');
+
+        initializeGlobalBackupScheduler(database);
+        logger.info('✅ Backup scheduler initialized');
       }
     } catch (error) {
       logger.error('❌ Failed to initialize services', { error });

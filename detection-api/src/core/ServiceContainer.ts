@@ -54,6 +54,7 @@ import { WebSocketManager } from '../services/websocket.js'
 import { websocketService } from '../services/websocketService.js'
 import { pm2Service } from '../services/pm2Service.js'
 import { PM2StateSyncService } from '../services/pm2StateSyncService.js'
+import { stopGlobalBackupScheduler } from '../services/backupScheduler.js'
 import {
   LEGACY_APPS_MODE_ENV,
   LEGACY_APPS_MIGRATION_TARGET,
@@ -847,6 +848,14 @@ export class ServiceContainer {
   }
 
   close(): void {
+    try {
+      stopGlobalBackupScheduler()
+    } catch (error) {
+      logger.error('Failed to stop backup scheduler', {
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+
     // 🔄 停止PM2状态同步服务
     try {
       const pm2StateSyncService = this.get<PM2StateSyncService>('pm2StateSyncService')

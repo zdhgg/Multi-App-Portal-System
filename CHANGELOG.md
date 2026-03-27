@@ -2,6 +2,26 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.3.0] - 2026-03-27
+
+### Added
+
+- 新增系统备份与恢复中心，统一展示配置快照与文件归档备份，并支持创建、查看、恢复、删除历史备份。
+- 新增自动备份调度器，可根据系统设置中的周期、时间、保留天数和输出路径动态重载备份计划。
+- 新增对旧版 `backups/backup-registry.json` 和历史归档路径的兼容读取与恢复能力，并补充对应后端回归测试。
+
+### Changed
+
+- 将系统设置、应用管理、PM2 管理和端口管理进一步收口为统一的运维页头与状态快照布局，减少多页面之间的信息割裂。
+- 扩展应用配置保存链路，保存配置时会同步更新应用主记录中的目录、访问路径以及 `external-exe` 运行目标。
+- 将根项目、前端、后端、系统配置、脚本模板和主要发布文档版本统一提升到 `1.3.0`。
+
+### Fixed
+
+- 修复系统设置缺少 `backup` 段时，前端保存其他设置可能把自动备份误关掉的问题。
+- 修复数据库中的配置快照在备份文件已缺失时仍被前端误显示为“可恢复”的问题。
+- 清理系统设置页调试日志与备份面板格式问题，确保发布前工作区通过 `git diff --check`。
+
 ## [1.2.2] - 2026-03-26
 
 ### Added
@@ -104,6 +124,7 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.3.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.0
 [1.2.2]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.2
 [1.2.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.0
 [1.2.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.1

@@ -9,8 +9,8 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import { existsSync, statSync } from 'fs'
-import { normalize, resolve } from 'path'
+import { existsSync, readdirSync, statSync } from 'fs'
+import { basename, join, normalize, resolve } from 'path'
 import type {
   Application,
   ApplicationService as IApplicationService,
@@ -183,12 +183,78 @@ export class ApplicationService implements IApplicationService {
     const nextAccessPath = input.accessPath === null
       ? undefined
       : (input.accessPath !== undefined ? input.accessPath : app.metadata.accessPath)
+    const nextDirectory = input.directory !== undefined
+      ? this.normalizeDirectoryPath(input.directory)
+      : app.directory
+    const explicitBuildScript = input.buildScript ?? input.build_script
+    const nextTechStack = input.techStack ? this.parseTechStack(input.techStack) : app.techStack
+    const normalizedNextTechStack = String(nextTechStack.name || '').trim().toLowerCase()
+
+    if (input.directory !== undefined) {
+      this.assertDirectoryPathUsable(nextDirectory)
+    }
+
+    let nextBuildScript = explicitBuildScript !== undefined
+      ? this.normalizeExecutablePath(explicitBuildScript)
+      : this.normalizeExecutablePath(app.buildScript ?? app.build_script)
+
+    if (explicitBuildScript !== undefined && !nextBuildScript) {
+      throw new ApplicationError(
+        'Invalid buildScript path',
+        'VALIDATION_ERROR',
+        { field: 'buildScript', value: explicitBuildScript }
+      )
+    }
+
+    if (
+      normalizedNextTechStack === 'external-exe' &&
+      input.directory !== undefined &&
+      explicitBuildScript === undefined
+    ) {
+      const autoResolvedBuildScript = this.resolveExternalExeBuildScriptForDirectory(
+        app.buildScript ?? app.build_script,
+        nextDirectory
+      )
+
+      if (autoResolvedBuildScript && autoResolvedBuildScript !== nextBuildScript) {
+        logger.info('Auto-remapped external-exe build script after directory update', {
+          appId: app.id,
+          appName: app.name,
+          previousBuildScript: app.buildScript ?? app.build_script,
+          nextBuildScript: autoResolvedBuildScript,
+          nextDirectory
+        })
+      }
+
+      nextBuildScript = autoResolvedBuildScript
+    }
+
+    if (normalizedNextTechStack === 'external-exe') {
+      if (!nextBuildScript) {
+        throw new ApplicationError(
+          'External executable applications require buildScript',
+          'VALIDATION_ERROR',
+          { field: 'buildScript', appId: app.id, appName: app.name, directory: nextDirectory }
+        )
+      }
+
+      this.assertExecutablePathUsable(nextBuildScript)
+    }
+
+    const runtimeTargetChanged =
+      nextDirectory !== app.directory ||
+      nextBuildScript !== this.normalizeExecutablePath(app.buildScript ?? app.build_script)
     
     // Create updated application
     const updatedApp: Application = {
       ...app,
       name: input.name ?? app.name,
-      techStack: input.techStack ? this.parseTechStack(input.techStack) : app.techStack,
+      directory: nextDirectory,
+      techStack: nextTechStack,
+      buildScript: nextBuildScript,
+      build_script: nextBuildScript,
+      deploymentMode: runtimeTargetChanged ? 'unknown' : (app.deploymentMode ?? 'unknown'),
+      pm2ProcessName: runtimeTargetChanged ? null : (app.pm2ProcessName ?? null),
       metadata: {
         ...app.metadata,
         description: input.description ?? app.metadata.description,
@@ -620,19 +686,62 @@ export class ApplicationService implements IApplicationService {
       input.techStack.trim().length > 0 &&
       input.techStack.trim() !== app.techStack.name
 
-    if (app.state === 'running' && changingTechStack) {
+    const requestedDirectory = typeof input.directory === 'string' && input.directory.trim().length > 0
+      ? this.normalizeDirectoryPath(input.directory)
+      : app.directory
+    const currentBuildScript = this.normalizeExecutablePath(app.buildScript ?? app.build_script)
+    const requestedBuildScriptRaw = input.buildScript ?? input.build_script
+    const requestedBuildScript = requestedBuildScriptRaw !== undefined
+      ? this.normalizeExecutablePath(requestedBuildScriptRaw)
+      : currentBuildScript
+    const changingRuntimeTarget =
+      requestedDirectory !== app.directory ||
+      requestedBuildScript !== currentBuildScript
+
+    if (app.state === 'running' && (changingTechStack || changingRuntimeTarget)) {
       throw new ApplicationError(
-        'Cannot change tech stack while application is running',
+        'Cannot change runtime target while application is running',
         'STATE_POLICY_VIOLATION',
         {
           appId: app.id,
           currentState: app.state,
-          requestedChange: 'techStack',
+          requestedChange: changingTechStack ? 'techStack' : 'runtimeTarget',
           currentTechStack: app.techStack.name,
-          targetTechStack: input.techStack
+          targetTechStack: input.techStack,
+          requestedDirectory,
+          requestedBuildScript
         }
       )
     }
+  }
+
+  private resolveExternalExeBuildScriptForDirectory(
+    currentBuildScript: string | undefined,
+    nextDirectory: string
+  ): string | undefined {
+    const normalizedCurrent = this.normalizeExecutablePath(currentBuildScript)
+    const currentBasename = normalizedCurrent ? basename(normalizedCurrent) : ''
+
+    if (currentBasename) {
+      const relocatedExecutable = this.normalizeExecutablePath(join(nextDirectory, currentBasename))
+      if (relocatedExecutable && existsSync(relocatedExecutable)) {
+        return relocatedExecutable
+      }
+    }
+
+    try {
+      const executableFiles = readdirSync(nextDirectory).filter(fileName => /\.exe$/i.test(fileName))
+      if (executableFiles.length === 1) {
+        return this.normalizeExecutablePath(join(nextDirectory, executableFiles[0]))
+      }
+    } catch (error) {
+      logger.warn('Failed to scan external-exe working directory while remapping build script', {
+        nextDirectory,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+
+    return normalizedCurrent
   }
 
   private enforceStartPolicy(app: Application): void {

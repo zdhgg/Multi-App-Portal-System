@@ -99,6 +99,9 @@ export interface UpdateApplicationInput {
   readonly techStack?: string
   readonly pinned?: boolean
   readonly accessPath?: string | null
+  readonly directory?: string
+  readonly buildScript?: string
+  readonly build_script?: string
 }
 
 // =============================================================================

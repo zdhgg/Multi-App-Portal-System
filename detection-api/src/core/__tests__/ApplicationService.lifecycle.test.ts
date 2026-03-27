@@ -354,6 +354,52 @@ describe('ApplicationService lifecycle policy', () => {
     }
   })
 
+  it('updates external-exe directory and remaps build_script to the executable in the new directory', async () => {
+    const oldDir = mkdtempSync(join(tmpdir(), 'external-exe-old-'))
+    const newDir = mkdtempSync(join(tmpdir(), 'external-exe-new-'))
+    const newExePath = join(newDir, 'cli-proxy-api.exe')
+    writeFileSync(newExePath, 'echo test')
+
+    const repository = new InMemoryApplicationRepository([
+      createBaseApp({
+        id: 'external-exe-update-test',
+        name: 'CLI Proxy API',
+        directory: oldDir,
+        techStack: { name: 'external-exe', category: 'backend', startCommand: join(oldDir, 'cli-proxy-api.exe') },
+        buildScript: join(oldDir, 'cli-proxy-api.exe'),
+        build_script: join(oldDir, 'cli-proxy-api.exe'),
+        deploymentMode: 'production',
+        pm2ProcessName: 'cli-proxy-api'
+      })
+    ])
+    const networkService = {
+      allocatePort: vi.fn(async () => 3320),
+      releasePort: vi.fn(async () => {}),
+      checkConflicts: vi.fn(async () => [])
+    }
+    const processManager = {
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {})
+    }
+
+    const service = new ApplicationService(repository as any, networkService as any, processManager as any)
+
+    try {
+      const updated = await service.update('external-exe-update-test', {
+        directory: newDir
+      })
+
+      expect(updated.directory.toLowerCase()).toBe(newDir.toLowerCase())
+      expect(String(updated.buildScript || '').toLowerCase()).toBe(newExePath.toLowerCase())
+      expect(String(updated.build_script || '').toLowerCase()).toBe(newExePath.toLowerCase())
+      expect(updated.deploymentMode).toBe('unknown')
+      expect(updated.pm2ProcessName).toBeNull()
+    } finally {
+      rmSync(oldDir, { recursive: true, force: true })
+      rmSync(newDir, { recursive: true, force: true })
+    }
+  })
+
   it('auto allocates fullstack secondary port from backend range', async () => {
     const repository = new InMemoryApplicationRepository([])
     const networkService = {

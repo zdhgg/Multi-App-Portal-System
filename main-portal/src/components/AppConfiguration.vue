@@ -518,6 +518,16 @@ const filteredTemplates = computed(() => {
   return templates.value.filter(t => t.techStack === selectedTechStack.value)
 })
 
+const applyDefaultConfiguration = (techStack: string) => {
+  const defaultConfig = appConfigApiService.getDefaultConfiguration(
+    techStack,
+    props.appName,
+    props.workingDirectory || '',
+    props.appId
+  )
+  Object.assign(configuration, defaultConfig)
+}
+
 // 监听器
 watch(() => props.visible, (newVal) => {
   if (newVal) {
@@ -528,12 +538,7 @@ watch(() => props.visible, (newVal) => {
 watch(() => props.techStack, (newVal) => {
   if (newVal && configuration.ports.length === 0) {
     // 根据技术栈设置默认配置
-    const defaultConfig = appConfigApiService.getDefaultConfiguration(
-      newVal,
-      props.appName,
-      props.workingDirectory || ''
-    )
-    Object.assign(configuration, defaultConfig)
+    applyDefaultConfiguration(newVal)
     applyInitialAccessPathFallback()
   }
 })
@@ -568,23 +573,13 @@ const initializeConfiguration = async () => {
       applyInitialAccessPathFallback()
     } else if (props.techStack) {
       // 使用默认配置
-      const defaultConfig = appConfigApiService.getDefaultConfiguration(
-        props.techStack,
-        props.appName,
-        props.workingDirectory || ''
-      )
-      Object.assign(configuration, defaultConfig)
+      applyDefaultConfiguration(props.techStack)
       applyInitialAccessPathFallback()
     }
   } catch (error) {
     console.warn('Failed to load existing configuration, using defaults:', error)
     if (props.techStack) {
-      const defaultConfig = appConfigApiService.getDefaultConfiguration(
-        props.techStack,
-        props.appName,
-        props.workingDirectory || ''
-      )
-      Object.assign(configuration, defaultConfig)
+      applyDefaultConfiguration(props.techStack)
       applyInitialAccessPathFallback()
     }
   }
@@ -673,16 +668,28 @@ const validateConfig = async () => {
   }
 }
 
-const syncAccessPathToApplication = async () => {
+const syncConfigurationToApplication = async () => {
   const normalizedPath = normalizeAccessPath(configuration.accessPath)
   configuration.accessPath = normalizedPath
 
-  const response = await appsApiService.updateApp(props.appId, {
+  const payload: Record<string, string> = {
     access_path: normalizedPath || ''
-  })
+  }
+
+  if (String(props.techStack || '').trim().toLowerCase() === 'external-exe') {
+    const workingDirectory = typeof configuration.workingDirectory === 'string'
+      ? configuration.workingDirectory.trim()
+      : ''
+
+    if (workingDirectory) {
+      payload.directory = workingDirectory
+    }
+  }
+
+  const response = await appsApiService.updateApp(props.appId, payload)
 
   if (!response.success) {
-    throw new Error(response.message || '前端绑定路径同步失败')
+    throw new Error(response.message || '应用主记录同步失败')
   }
 }
 
@@ -698,6 +705,8 @@ const saveConfiguration = async () => {
   
   saving.value = true
   try {
+    configuration.appId = props.appId
+
     let response
     if (configuration.id) {
       // 更新现有配置
@@ -713,10 +722,10 @@ const saveConfiguration = async () => {
       }
 
       try {
-        await syncAccessPathToApplication()
+        await syncConfigurationToApplication()
       } catch (syncError) {
-        console.warn('Failed to sync accessPath to application metadata:', syncError)
-        ElMessage.warning('配置已保存，但前端绑定路径同步失败，请稍后重试')
+        console.warn('Failed to sync configuration to application metadata:', syncError)
+        ElMessage.warning('配置已保存，但应用主记录同步失败，请稍后重试')
       }
 
       ElMessage.success('配置保存成功')

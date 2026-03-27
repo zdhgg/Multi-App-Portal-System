@@ -1,91 +1,44 @@
 <template>
   <div class="management-page">
     <div class="management-content">
-      <section class="management-hero">
-        <div class="management-hero-copy">
-          <span class="management-eyebrow">Application Operations</span>
-          <h1 class="management-title">应用管理中心</h1>
-          <p class="management-subtitle">
-            统一查看应用状态、访问入口与运行操作，让日常运维、配置调整和排障流程更集中。
-          </p>
-
-          <div class="management-meta">
-            <span class="management-chip">{{ currentViewMeta.title }}</span>
-            <span class="management-chip management-chip-muted">{{ managementScopeText }}</span>
-          </div>
+      <div class="management-toolbar">
+        <div class="management-toolbar-stats">
+          <article
+            v-for="snapshot in headerSnapshots"
+            :key="snapshot.label"
+            class="management-toolbar-stat"
+            :class="[`management-toolbar-stat-${snapshot.tone || 'default'}`]"
+          >
+            <div v-if="snapshot.icon" class="management-toolbar-stat-icon">
+              <component :is="snapshot.icon" />
+            </div>
+            <span class="management-toolbar-stat-label">{{ snapshot.label }}</span>
+            <strong class="management-toolbar-stat-value">
+              {{ formatHeaderMetricValue(snapshot.value) }}
+            </strong>
+          </article>
         </div>
 
-        <div class="management-hero-actions">
+        <div class="management-toolbar-actions">
           <el-button
             @click="refreshApps"
             :loading="loading"
-            class="management-action management-action-secondary"
+            class="management-action-secondary"
           >
             刷新状态
           </el-button>
           <el-button
             v-if="canCreateApp"
             type="primary"
-            class="management-action management-action-primary"
             @click="addApp"
           >
             添加应用
           </el-button>
         </div>
-      </section>
-
-      <section class="management-stats">
-        <article class="management-metric">
-          <span class="metric-label">应用总数</span>
-          <strong class="metric-value">{{ apps.length }}</strong>
-          <span class="metric-help">当前管理目录中可见的应用规模</span>
-        </article>
-        <article class="management-metric management-metric-highlight">
-          <span class="metric-label">当前显示</span>
-          <strong class="metric-value">{{ filteredApps.length }}</strong>
-          <span class="metric-help">已按筛选条件输出当前结果集</span>
-        </article>
-        <article class="management-metric management-metric-success">
-          <span class="metric-label">在线应用</span>
-          <strong class="metric-value">{{ onlineAppsCount }}</strong>
-          <span class="metric-help">可直接执行访问或停止操作</span>
-        </article>
-        <article class="management-metric">
-          <span class="metric-label">已选择</span>
-          <strong class="metric-value">{{ selectedApps.length }}</strong>
-          <span class="metric-help">{{ canBatchManage ? '支持批量启动、停止与删除' : '当前角色不支持批量操作' }}</span>
-        </article>
-      </section>
+      </div>
 
       <el-card class="management-card">
-        <template #header>
-          <div class="card-header">
-            <div class="card-heading">
-              <span class="card-eyebrow">Directory View</span>
-              <span class="card-title">应用列表</span>
-              <span class="card-subtitle">在同一视图中完成筛选、运行控制、配置编辑与诊断入口访问。</span>
-            </div>
-            <div class="header-indicator">
-              显示 {{ filteredApps.length }} / {{ apps.length }}
-            </div>
-          </div>
-        </template>
-        
         <div class="management-area">
-          <div class="view-summary-panel">
-            <div class="view-summary-copy">
-              <span class="view-summary-title">{{ currentViewMeta.title }}</span>
-              <p class="view-summary-description">{{ currentViewMeta.description }}</p>
-            </div>
-            <div class="view-summary-meta">
-              <span class="summary-pill">{{ onlineAppsCount }} 在线</span>
-              <span class="summary-pill summary-pill-muted">{{ apps.length - onlineAppsCount }} 离线</span>
-              <span v-if="selectedApps.length > 0" class="summary-pill summary-pill-active">
-                已选择 {{ selectedApps.length }} 项
-              </span>
-            </div>
-          </div>
-
           <!-- 搜索和筛选区域 -->
           <div class="filter-section" v-if="apps.length > 0">
             <div class="filter-row">
@@ -721,6 +674,16 @@ interface AppWithUIState extends Omit<App, 'status'> {
   }>
 }
 
+interface RemoveAppOptions {
+  skipConfirm?: boolean
+  silent?: boolean
+}
+
+interface RemoveAppResult {
+  success: boolean
+  error?: string
+}
+
 // 响应式数据
 const apps = ref<AppWithUIState[]>([])
 const selectedApps = ref<AppWithUIState[]>([])
@@ -739,27 +702,35 @@ const statusFilter = ref('')
 const techStackFilter = ref('')
 const filteredApps = ref<AppWithUIState[]>([])
 const selectAll = ref(false)
-const currentViewMeta = {
-  title: '应用管理视图',
-  description: '统一应用管理：应用目录、运行状态和配置操作按角色权限显示。',
-  alertType: 'info' as const
-}
 
 const onlineAppsCount = computed(() =>
   apps.value.filter(app => app.isRunning || app.status === 'online').length
 )
 
-const managementScopeText = computed(() => {
-  if (apps.value.length === 0) {
-    return '等待应用接入后自动展示'
-  }
-
-  if (searchQuery.value || statusFilter.value || techStackFilter.value) {
-    return `当前筛选结果 ${filteredApps.value.length} 项，便于快速聚焦目标应用`
-  }
-
-  return '集中执行启动、停止、配置与诊断操作'
+const headerSnapshots = computed<Array<{
+  label: string
+  value: string | number
+  icon: any
+  tone?: 'default' | 'highlight' | 'success' | 'warning' | 'danger'
+}>>(() => {
+  return [
+    {
+      label: '应用总数',
+      value: apps.value.length,
+      icon: Connection
+    },
+    {
+      label: '在线应用',
+      value: onlineAppsCount.value,
+      icon: VideoPlay,
+      tone: 'success'
+    }
+  ]
 })
+
+const formatHeaderMetricValue = (value: string | number) => (
+  typeof value === 'number' ? value.toLocaleString('zh-CN') : value
+)
 
 const queuePortMonitoringRefresh = (delays: number[], reason: string) => {
   delays.forEach((delay) => {
@@ -1161,9 +1132,11 @@ const batchDelete = async () => {
   }
   if (selectedApps.value.length === 0) return
 
+  const appsToDelete = [...selectedApps.value]
+
   try {
     await ElMessageBox.confirm(
-      `确定要删除选中的 ${selectedApps.value.length} 个应用吗？此操作不可恢复！`,
+      `确定要删除选中的 ${appsToDelete.length} 个应用吗？此操作不可恢复！`,
       '批量删除确认',
       {
         confirmButtonText: '确定',
@@ -1172,12 +1145,25 @@ const batchDelete = async () => {
       }
     )
 
-    const promises = selectedApps.value.map(app => removeApp(app))
-    await Promise.all(promises)
+    const results = await Promise.all(
+      appsToDelete.map(app => removeApp(app, { skipConfirm: true, silent: true }))
+    )
+    const successCount = results.filter(result => result.success).length
+    const failedCount = results.length - successCount
 
-    ElMessage.success(`批量删除完成，共删除 ${selectedApps.value.length} 个应用`)
-    selectedApps.value = []
-    selectAll.value = false
+    clearSelection()
+
+    if (failedCount === 0) {
+      ElMessage.success(`批量删除完成，共删除 ${successCount} 个应用`)
+      return
+    }
+
+    if (successCount > 0) {
+      ElMessage.warning(`批量删除部分完成，成功 ${successCount} 个，失败 ${failedCount} 个`)
+      return
+    }
+
+    ElMessage.error('批量删除失败')
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('批量删除失败')
@@ -2292,47 +2278,84 @@ const handleErrorAction = (action: string, params?: any) => {
 }
 
 // 删除应用
-const removeApp = async (app: AppWithUIState) => {
+const executeAppRemoval = async (
+  app: AppWithUIState,
+  options: RemoveAppOptions = {}
+): Promise<RemoveAppResult> => {
+  app._deleting = true
+
+  try {
+    // 调用删除API - 后端返回204 No Content，无响应体
+    await appsApiService.deleteApp(app.id)
+
+    // 如果没有抛出异常，说明删除成功
+    // 从列表中移除
+    const index = apps.value.findIndex(item => item.id === app.id)
+    if (index > -1) {
+      apps.value.splice(index, 1)
+    }
+
+    // 刷新过滤列表
+    applyFilters()
+
+    if (!options.silent) {
+      ElMessage.success('应用已删除')
+    }
+
+    return { success: true }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : '未知错误'
+
+    console.error('删除应用失败:', error)
+
+    if (!options.silent) {
+      ElMessage.error(`删除应用失败: ${errorMessage}`)
+    }
+
+    return {
+      success: false,
+      error: errorMessage
+    }
+  } finally {
+    app._deleting = false
+  }
+}
+
+const removeApp = async (
+  app: AppWithUIState,
+  options: RemoveAppOptions = {}
+): Promise<RemoveAppResult> => {
   if (!hasOperationPermission('delete')) {
     ElMessage.warning('当前账号没有删除应用权限')
-    return
+    return {
+      success: false,
+      error: '当前账号没有删除应用权限'
+    }
   }
 
   try {
-    await ElMessageBox.confirm(
-      `确定要删除应用 "${app.name}" 吗？此操作不可恢复！`,
-      '确认删除',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-
-    // 设置删除状态
-    app._deleting = true
-
-    try {
-      // 调用删除API - 后端返回204 No Content，无响应体
-      await appsApiService.deleteApp(app.id)
-
-      // 如果没有抛出异常，说明删除成功
-      // 从列表中移除
-      const index = apps.value.findIndex(item => item.id === app.id)
-      if (index > -1) {
-        apps.value.splice(index, 1)
-      }
-      // 刷新过滤列表
-      applyFilters()
-      ElMessage.success('应用已删除')
-    } catch (error) {
-      console.error('删除应用失败:', error)
-      ElMessage.error(`删除应用失败: ${error instanceof Error ? error.message : '未知错误'}`)
-    } finally {
-      app._deleting = false
+    if (!options.skipConfirm) {
+      await ElMessageBox.confirm(
+        `确定要删除应用 "${app.name}" 吗？此操作不可恢复！`,
+        '确认删除',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      )
     }
+
+    return await executeAppRemoval(app, options)
   } catch {
-    ElMessage.info('已取消删除')
+    if (!options.silent) {
+      ElMessage.info('已取消删除')
+    }
+
+    return {
+      success: false,
+      error: 'cancelled'
+    }
   }
 }
 
@@ -4544,6 +4567,9 @@ const getCategoryLabel = (category: string) => {
 }
 
 .management-content {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
   max-width: 1440px;
   margin: 0 auto;
 }
@@ -4647,6 +4673,84 @@ const getCategoryLabel = (category: string) => {
 .management-action-secondary {
   border-color: rgba(148, 163, 184, 0.22);
   background: rgba(255, 255, 255, 0.8);
+}
+
+.management-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 20px 24px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.06);
+}
+
+.management-toolbar-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.management-toolbar-stat {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 10px 14px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.05);
+}
+
+.management-toolbar-stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--primary-600);
+  font-size: 22px;
+}
+
+.management-toolbar-stat-label {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.management-toolbar-stat-value {
+  color: var(--text-strong);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.management-toolbar-stat-success .management-toolbar-stat-icon {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--success-600, #16a34a);
+}
+
+.management-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.management-toolbar-actions .el-button {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-weight: 700;
 }
 
 .management-stats {
@@ -4864,6 +4968,10 @@ const getCategoryLabel = (category: string) => {
     padding: 18px 14px;
   }
 
+  .management-content {
+    gap: 18px;
+  }
+
   .management-hero,
   .management-card :deep(.el-card__header),
   .management-card :deep(.el-card__body) {
@@ -4873,6 +4981,23 @@ const getCategoryLabel = (category: string) => {
 
   .management-stats {
     grid-template-columns: 1fr;
+  }
+
+  .management-toolbar {
+    padding: 18px;
+  }
+
+  .management-toolbar-stats {
+    width: 100%;
+  }
+
+  .management-toolbar-stat {
+    width: 100%;
+  }
+
+  .management-toolbar-actions,
+  .management-toolbar-actions .el-button {
+    width: 100%;
   }
 
   .management-hero-actions,

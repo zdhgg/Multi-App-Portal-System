@@ -1,5 +1,5 @@
-// 智能多Web应用门户系统 - PM2 配置模板
-// 版本: v1.2.2
+﻿// 智能多Web应用门户系统 - PM2 配置模板
+// 版本: v1.3.0
 // 复制此文件为 ecosystem.config.js 并根据实际环境修改配置
 
 module.exports = {

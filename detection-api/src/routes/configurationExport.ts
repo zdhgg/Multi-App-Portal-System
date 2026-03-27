@@ -4,7 +4,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { ConfigurationExporter, ExportOptions, ImportOptions } from '../services/configurationExporter';
+import { ConfigurationExporter, ExportOptions, ImportOptions, BackupCreateOptions } from '../services/configurationExporter';
 import { AppConfigurationService } from '../services/appConfigurationService';
 import { EnvironmentManager } from '../services/environmentManager';
 import { logger } from '../utils/logger';
@@ -79,6 +79,70 @@ function getConfigExporter(): ConfigurationExporter {
     throw new Error('Configuration exporter not initialized. Call initConfigExporter first.');
   }
   return configExporter;
+}
+
+function parseBooleanInput(value: unknown, defaultValue: boolean): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  }
+  return defaultValue;
+}
+
+function parseImportOptions(body: Record<string, unknown>): ImportOptions {
+  return {
+    overwriteExisting: parseBooleanInput(body.overwriteExisting, false),
+    validateBeforeImport: parseBooleanInput(body.validateBeforeImport, true),
+    mergeEnvironments: parseBooleanInput(body.mergeEnvironments, false),
+    createBackup: parseBooleanInput(body.createBackup, true)
+  };
+}
+
+function parseStringArrayInput(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string' && item.trim() !== '');
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    return trimmed.split(',').map(item => item.trim()).filter(Boolean);
+  }
+
+  return undefined;
+}
+
+function parseOptionalStringInput(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function parseBackupCreateOptions(body: Record<string, unknown>): BackupCreateOptions {
+  const mode = body.mode === 'archive' ? 'archive' : 'configuration';
+  const archiveType = typeof body.archiveType === 'string' ? body.archiveType : undefined;
+  const backupName = parseOptionalStringInput(body.backupName);
+
+  return {
+    mode,
+    includeEnvironments: parseBooleanInput(body.includeEnvironments, true),
+    includeTemplates: parseBooleanInput(body.includeTemplates, true),
+    includeSensitiveData: parseBooleanInput(body.includeSensitiveData, false),
+    format: 'json',
+    appIds: parseStringArrayInput(body.appIds),
+    archiveType: archiveType as BackupCreateOptions['archiveType'],
+    backupName: backupName || undefined,
+    outputDirectory: parseOptionalStringInput(body.outputDirectory),
+    includePaths: parseStringArrayInput(body.includePaths),
+    excludePaths: parseStringArrayInput(body.excludePaths),
+    compress: parseBooleanInput(body.compress, true)
+  };
 }
 
 /**
@@ -160,12 +224,7 @@ router.post('/import', upload.single('configFile'), validateConfigImportFile, as
       });
     }
 
-    const options: ImportOptions = {
-      overwriteExisting: req.body.overwriteExisting === 'true',
-      validateBeforeImport: req.body.validateBeforeImport !== 'false', // 默认为true
-      mergeEnvironments: req.body.mergeEnvironments === 'true',
-      createBackup: req.body.createBackup !== 'false' // 默认为true
-    };
+    const options = parseImportOptions(req.body as Record<string, unknown>);
 
     const exporter = getConfigExporter();
     const result = await exporter.importConfigurations(
@@ -245,21 +304,12 @@ router.post('/import-from-url', async (req: Request, res: Response) => {
  */
 router.post('/backup', async (req: Request, res: Response) => {
   try {
-    const options = req.body as ExportOptions;
-    
-    // 设置默认选项
-    const backupOptions: ExportOptions = {
-      includeEnvironments: options.includeEnvironments !== false,
-      includeTemplates: options.includeTemplates !== false,
-      includeSensitiveData: options.includeSensitiveData === true,
-      format: 'json',
-      appIds: options.appIds
-    };
+    const backupOptions = parseBackupCreateOptions(req.body as Record<string, unknown>);
 
     const exporter = getConfigExporter();
     const backupInfo = await exporter.createBackup(
       backupOptions,
-      undefined, // 让系统自动生成备份路径
+      undefined,
       req.headers['x-user-id'] as string
     );
 
@@ -329,33 +379,18 @@ router.delete('/backups/:backupId', async (req: Request, res: Response) => {
 router.post('/backups/:backupId/restore', async (req: Request, res: Response) => {
   try {
     const { backupId } = req.params;
-    const options: ImportOptions = {
-      overwriteExisting: req.body.overwriteExisting === 'true',
-      validateBeforeImport: req.body.validateBeforeImport !== 'false',
-      mergeEnvironments: req.body.mergeEnvironments === 'true',
-      createBackup: req.body.createBackup !== 'false'
-    };
+    const options = parseImportOptions(req.body as Record<string, unknown>);
 
-    // 获取备份信息
     const exporter = getConfigExporter();
-    const backups = await exporter.getBackups();
-    const backup = backups.find(b => b.id === backupId);
-    
-    if (!backup) {
-      return res.status(404).json({
-        success: false,
-        error: 'Backup not found'
-      });
-    }
-
-    // 执行还原
-    const result = await exporter.importConfigurations(
-      backup.filePath,
+    const result = await exporter.restoreBackup(
+      backupId,
       options,
       req.headers['x-user-id'] as string
     );
 
-    const statusCode = result.success ? 200 : (result.importedConfigurations > 0 || result.importedEnvironments > 0 ? 206 : 400);
+    const statusCode = result.success
+      ? 200
+      : (result.importedConfigurations > 0 || result.importedEnvironments > 0 || (result.restoredFiles || 0) > 0 ? 206 : 400);
     
     res.status(statusCode).json({
       success: result.success,
@@ -366,7 +401,8 @@ router.post('/backups/:backupId/restore', async (req: Request, res: Response) =>
     });
   } catch (error) {
     logger.error('Failed to restore backup', { error, backupId: req.params.backupId });
-    res.status(500).json({
+    const status = error instanceof Error && error.message === 'Backup not found' ? 404 : 500;
+    res.status(status).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to restore backup'
     });

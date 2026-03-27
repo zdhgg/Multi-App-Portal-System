@@ -1,21 +1,11 @@
 <template>
   <div class="pm2-management">
-    <section class="pm2-hero">
-      <div class="pm2-hero-copy">
-        <span class="pm2-eyebrow">Process Control</span>
-        <h1 class="pm2-title">PM2 进程管理</h1>
-        <p class="pm2-subtitle">集中查看 PM2 守护状态、进程运行情况与生产模式应用的生命周期控制入口。</p>
-
-        <div class="pm2-meta">
-          <span class="pm2-chip">{{ pm2StatusText }}</span>
-          <span class="pm2-chip" :class="{ 'pm2-chip-warning': autoRefresh }">
-            {{ autoRefresh ? '自动刷新已开启' : '自动刷新未开启' }}
-          </span>
-          <span class="pm2-chip pm2-chip-muted">{{ pm2SummaryText }}</span>
-        </div>
-      </div>
-
-      <div class="pm2-hero-side">
+    <OperationPageHeader
+      status-label="进程状态"
+      :chips="headerChips"
+      :snapshots="headerSnapshots"
+    >
+      <template #side>
         <PM2StatusAlert
           :status="pm2Status"
           :status-loaded="pm2StatusLoaded"
@@ -24,31 +14,8 @@
           @refresh="pm2Store.refreshStatus"
           @show-guide="showPM2ManualGuide"
         />
-      </div>
-    </section>
-
-    <section class="pm2-metrics">
-      <article class="pm2-metric">
-        <span class="metric-label">总进程</span>
-        <strong class="metric-value">{{ pm2Stats.total }}</strong>
-        <span class="metric-help">PM2 当前托管的全部进程数量</span>
-      </article>
-      <article class="pm2-metric pm2-metric-success">
-        <span class="metric-label">运行中</span>
-        <strong class="metric-value">{{ pm2Stats.online }}</strong>
-        <span class="metric-help">处于可服务状态的进程数量</span>
-      </article>
-      <article class="pm2-metric">
-        <span class="metric-label">已停止</span>
-        <strong class="metric-value">{{ pm2Stats.stopped }}</strong>
-        <span class="metric-help">可重新拉起或进入排查流程</span>
-      </article>
-      <article class="pm2-metric pm2-metric-danger">
-        <span class="metric-label">异常</span>
-        <strong class="metric-value">{{ pm2Stats.error }}</strong>
-        <span class="metric-help">建议优先进入诊断与日志查看</span>
-      </article>
-    </section>
+      </template>
+    </OperationPageHeader>
 
     <!-- PM2已启用时显示的内容 -->
     <template v-if="pm2StatusLoaded && pm2Status.enabled">
@@ -124,9 +91,11 @@ import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { ElMessageBox } from 'element-plus'
+import { Cpu, VideoPlay, SwitchButton, WarningFilled } from '@element-plus/icons-vue'
 import { usePM2Store } from '@/stores/pm2'
 import { wsManager } from '@/services/websocketApi'
 import type { PM2Process } from '@/services/pm2Api'
+import OperationPageHeader from '@/components/layout/OperationPageHeader.vue'
 
 // 导入子组件
 import {
@@ -174,6 +143,52 @@ const pm2SummaryText = computed(() => {
   if (pm2Stats.value.total === 0) return 'PM2 已启用，但当前还没有托管进程'
   return `当前托管 ${pm2Stats.value.total} 个进程，其中 ${pm2Stats.value.online} 个在线`
 })
+
+const headerChips = computed<Array<{ text: string; tone?: 'default' | 'muted' | 'warning' | 'success' }>>(() => [
+  {
+    text: pm2StatusText.value,
+    tone: pm2Status.value.enabled ? 'success' : 'warning'
+  },
+  {
+    text: autoRefresh.value ? '自动刷新已开启' : '自动刷新未开启',
+    tone: autoRefresh.value ? 'warning' : 'default'
+  },
+  {
+    text: pm2SummaryText.value,
+    tone: 'muted'
+  }
+])
+
+const headerSnapshots = computed<Array<{
+  label: string
+  value: string | number
+  icon: any
+  tone?: 'default' | 'highlight' | 'success' | 'warning' | 'danger'
+}>>(() => [
+  {
+    label: '总进程',
+    value: pm2Stats.value.total || 0,
+    icon: Cpu
+  },
+  {
+    label: '运行中',
+    value: pm2Stats.value.online || 0,
+    icon: VideoPlay,
+    tone: 'success'
+  },
+  {
+    label: '已停止',
+    value: pm2Stats.value.stopped || 0,
+    icon: SwitchButton,
+    tone: 'highlight'
+  },
+  {
+    label: '异常',
+    value: pm2Stats.value.error || 0,
+    icon: WarningFilled,
+    tone: pm2Stats.value.error > 0 ? 'danger' : 'warning'
+  }
+])
 
 // ===== 事件处理 =====
 const handleQuickEnable = async () => {
@@ -282,30 +297,15 @@ onUnmounted(() => {
 <style scoped>
 .pm2-management {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
   padding: 22px;
   background:
     radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 24%),
     linear-gradient(180deg, #eef4ff 0%, #f7f9fc 48%, #eef2f8 100%);
 }
 
-.pm2-hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 28px 30px;
-  border-radius: 28px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.84));
-  box-shadow: 0 24px 54px rgba(15, 23, 42, 0.08);
-}
-
-.pm2-hero-copy {
-  flex: 1;
-  min-width: 0;
-}
-
-.pm2-eyebrow,
 .content-eyebrow {
   display: inline-flex;
   align-items: center;
@@ -318,102 +318,6 @@ onUnmounted(() => {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-}
-
-.pm2-title {
-  margin-top: 14px;
-  color: var(--text-strong);
-  font-size: clamp(30px, 4vw, 42px);
-  line-height: 1.1;
-  letter-spacing: -0.04em;
-}
-
-.pm2-subtitle {
-  max-width: 760px;
-  margin-top: 12px;
-  color: var(--text-secondary);
-  font-size: 15px;
-  line-height: 1.7;
-}
-
-.pm2-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.pm2-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.pm2-chip-warning {
-  color: var(--warning-500);
-  background: rgba(217, 119, 6, 0.08);
-  border-color: rgba(217, 119, 6, 0.14);
-}
-
-.pm2-chip-muted {
-  color: var(--text-tertiary);
-}
-
-.pm2-hero-side {
-  width: min(360px, 100%);
-}
-
-.pm2-metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  margin: 18px 0;
-}
-
-.pm2-metric {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 18px 20px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.05);
-}
-
-.pm2-metric-success {
-  background: linear-gradient(180deg, rgba(236, 253, 245, 0.92), rgba(255, 255, 255, 0.88));
-}
-
-.pm2-metric-danger {
-  background: linear-gradient(180deg, rgba(254, 242, 242, 0.92), rgba(255, 255, 255, 0.88));
-}
-
-.metric-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-
-.metric-value {
-  color: var(--text-strong);
-  font-size: 28px;
-  line-height: 1;
-  letter-spacing: -0.04em;
-}
-
-.metric-help {
-  color: var(--text-secondary);
-  font-size: 13px;
 }
 
 .pm2-content-shell,
@@ -465,34 +369,21 @@ onUnmounted(() => {
 }
 
 @media (max-width: 980px) {
-  .pm2-hero,
   .content-heading {
     flex-direction: column;
-  }
-
-  .pm2-hero-side {
-    width: 100%;
-  }
-
-  .pm2-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 768px) {
   .pm2-management {
     padding: 16px 14px;
+    gap: 18px;
   }
 
-  .pm2-hero,
   .pm2-content-shell,
   .pm2-guide-shell {
     padding: 18px;
     border-radius: 24px;
-  }
-
-  .pm2-metrics {
-    grid-template-columns: 1fr;
   }
 }
 </style>

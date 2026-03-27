@@ -763,6 +763,62 @@ export class ApplicationsController {
         if (accessPathInput.provided) {
             result.accessPath = accessPathInput.value;
         }
+        if (Object.prototype.hasOwnProperty.call(body, 'directory')) {
+            const directory = typeof body.directory === 'string' ? body.directory.trim() : '';
+            if (!directory) {
+                throw new ApplicationError('directory must be a non-empty string', 'VALIDATION_ERROR', {
+                    field: 'directory'
+                });
+            }
+            const normalizedDirectory = this.normalizePath(directory);
+            const directoryValidation = this.validateDirectoryAccess(normalizedDirectory);
+            if (!directoryValidation.isValid) {
+                throw new ApplicationError(directoryValidation.message || 'Invalid application directory', directoryValidation.code || 'APPLICATION_DIRECTORY_NOT_FOUND', {
+                    ...directoryValidation.context,
+                    directory: normalizedDirectory
+                });
+            }
+            result.directory = directoryValidation.normalizedDirectory || normalizedDirectory;
+        }
+        const hasBuildScriptField = Object.prototype.hasOwnProperty.call(body, 'buildScript')
+            || Object.prototype.hasOwnProperty.call(body, 'build_script');
+        if (hasBuildScriptField) {
+            const rawBuildScript = typeof body.buildScript === 'string'
+                ? body.buildScript.trim()
+                : (typeof body.build_script === 'string' ? body.build_script.trim() : '');
+            if (!rawBuildScript) {
+                throw new ApplicationError('buildScript must be a non-empty string', 'VALIDATION_ERROR', {
+                    field: 'buildScript'
+                });
+            }
+            const normalizedBuildScript = this.normalizePath(rawBuildScript);
+            if (!normalizedBuildScript || !existsSync(normalizedBuildScript)) {
+                throw new ApplicationError('buildScript must point to an existing executable file', 'VALIDATION_ERROR', {
+                    field: 'buildScript',
+                    buildScript: rawBuildScript
+                });
+            }
+            try {
+                const scriptStat = statSync(normalizedBuildScript);
+                if (!scriptStat.isFile()) {
+                    throw new ApplicationError('buildScript must be a file path', 'VALIDATION_ERROR', {
+                        field: 'buildScript',
+                        buildScript: normalizedBuildScript
+                    });
+                }
+            }
+            catch (error) {
+                if (error instanceof ApplicationError) {
+                    throw error;
+                }
+                throw new ApplicationError('buildScript is not accessible', 'VALIDATION_ERROR', {
+                    field: 'buildScript',
+                    buildScript: normalizedBuildScript,
+                    reason: error instanceof Error ? error.message : String(error)
+                });
+            }
+            result.buildScript = normalizedBuildScript;
+        }
         if (Object.keys(result).length === 0) {
             throw new ApplicationError('No valid fields provided to update', 'VALIDATION_ERROR');
         }

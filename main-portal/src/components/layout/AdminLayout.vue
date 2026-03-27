@@ -172,11 +172,11 @@ const pageTitleMap: Record<string, PageConfig> = {
   },
   '/management': {
     title: '应用管理',
-    description: '管理已检测到的 Web 应用'
+    description: '统一查看应用状态、运行控制与配置入口'
   },
   '/admin': {
     title: '系统设置',
-    description: '端口配置和系统设置'
+    description: '统一管理用户、安全、日志与备份配置'
   },
   '/config': {
     title: '端口配置',
@@ -426,4 +426,3 @@ defineExpose({
   .page-title-section { border-bottom: none; padding: 0 0 20px 0; }
 }
 </style>
-

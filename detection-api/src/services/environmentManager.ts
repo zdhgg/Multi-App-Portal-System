@@ -437,6 +437,43 @@ export class EnvironmentManager {
   }
 
   /**
+   * 获取全部环境配置
+   */
+  async getAllProfiles(): Promise<EnvironmentProfile[]> {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT * FROM environment_profiles
+        ORDER BY app_id ASC, is_default DESC, created_at DESC
+      `);
+
+      const rows = stmt.all() as any[];
+      const profiles: EnvironmentProfile[] = [];
+
+      for (const row of rows) {
+        const variables = await this.loadVariablesWithSensitiveData(row.id, JSON.parse(row.variables_json));
+
+        profiles.push({
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          appId: row.app_id,
+          isDefault: row.is_default === 1,
+          variables,
+          parameters: JSON.parse(row.parameters_json),
+          createdAt: new Date(row.created_at),
+          updatedAt: new Date(row.updated_at),
+          createdBy: row.created_by
+        });
+      }
+
+      return profiles;
+    } catch (error) {
+      logger.error('Failed to get all environment profiles', { error });
+      return [];
+    }
+  }
+
+  /**
    * 更新环境配置文件
    */
   async updateProfile(id: string, updates: Partial<EnvironmentProfile>): Promise<void> {
