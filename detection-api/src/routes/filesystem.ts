@@ -9,10 +9,10 @@
 
 import { Router, Request, Response } from 'express'
 import { spawn } from 'child_process'
-import { existsSync, statSync, readFileSync } from 'fs'
+import { existsSync, statSync } from 'fs'
 import { resolve, normalize } from 'path'
 import { logger } from '../utils/logger'
-import { getSystemConfigFilePath } from '../utils/systemConfigPath.js'
+import { getSystemConfigFilePath, parseSystemConfigFileSync } from '../utils/systemConfigPath.js'
 
 const router = Router()
 const TRUTHY_VALUES = new Set(['1', 'true', 'on', 'yes'])
@@ -65,8 +65,7 @@ function loadSystemPathAccessSettings(): SystemPathAccessSettings {
       return systemPathAccessSettingsCache.data
     }
 
-    const content = readFileSync(settingsPath, 'utf8')
-    const settings = JSON.parse(content)
+    const settings = parseSystemConfigFileSync(settingsPath)
     const pathAccess = settings?.security?.pathAccess || {}
     const rawPaths = Array.isArray(pathAccess?.allowedBasePaths) ? pathAccess.allowedBasePaths : []
     const allowedBasePaths = parseAllowedPaths(...rawPaths.map((item: unknown) => String(item)))

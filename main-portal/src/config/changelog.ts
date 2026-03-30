@@ -16,6 +16,29 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.1',
+    date: '2026-03-30',
+    title: 'UTF-8 BOM 配置兼容性修复补丁',
+    items: [
+      { type: 'fix', description: '修复 system-config.json 以 UTF-8 BOM 保存时，系统设置、认证和路径访问配置读取可能失败的问题' },
+      { type: 'fix', description: '自动备份调度器现在可稳定读取带 BOM 的系统配置，不再因解析异常而漏载计划' },
+      { type: 'improvement', description: '统一后端 system-config 解析入口，并补充 BOM 兼容回归测试，降低后续配置读取分叉风险' },
+      { type: 'improvement', description: '将前后端包版本、系统配置、脚本模板和主要发布文档统一对齐到 1.3.1' }
+    ]
+  },
+  {
+    version: '1.3.0',
+    date: '2026-03-27',
+    title: '备份中心与运维控制台增强',
+    items: [
+      { type: 'feature', description: '新增系统备份与恢复中心，统一管理配置快照、文件归档备份、恢复前备份和历史清理' },
+      { type: 'feature', description: '新增自动备份调度器，支持直接从系统设置动态读取周期、时间、保留天数和输出路径' },
+      { type: 'improvement', description: '系统设置、应用管理、PM2 管理和端口管理进一步统一为状态页头与快照指标布局' },
+      { type: 'fix', description: '修复旧配置缺少 backup 段时，保存系统设置可能误关自动备份的问题' },
+      { type: 'fix', description: '修复备份文件已丢失时，配置快照仍被错误显示为可恢复的问题' }
+    ]
+  },
+  {
     version: '1.2.2',
     date: '2026-03-26',
     title: 'PM2 进程识别与停止修复补丁',

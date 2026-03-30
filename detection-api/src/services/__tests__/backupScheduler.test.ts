@@ -90,6 +90,32 @@ describe('BackupScheduler', () => {
 
     scheduler.stop()
   })
+
+  it('loads backup settings even when the config file starts with a BOM', async () => {
+    await writeFile(systemConfigPath, `\uFEFF${JSON.stringify({
+      backup: {
+        enableAutoBackup: true,
+        backupInterval: 'daily',
+        backupTime: '03:15',
+        retentionDays: 21,
+        includeUserData: true,
+        includeLogs: false,
+        compressionEnabled: true,
+        backupPath: './bom-backups'
+      }
+    }, null, 2)}`, 'utf-8')
+
+    const scheduler = new BackupScheduler(db)
+    scheduler.refreshFromSettings()
+
+    expect(scheduler.getStatus()).toEqual({
+      isRunning: true,
+      schedule: '15 3 * * *',
+      configPath: systemConfigPath
+    })
+
+    scheduler.stop()
+  })
 })
 
 async function writeSystemSettings(filePath: string, payload: Record<string, unknown>) {

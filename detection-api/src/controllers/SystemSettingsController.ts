@@ -4,7 +4,7 @@ import { logger } from '../utils/logger'
 import { PasswordUtils } from '../utils/passwordUtils'
 import { ServiceContainer } from '../core/ServiceContainer'
 import { getGlobalBackupScheduler } from '../services/backupScheduler.js'
-import { getSystemConfigFilePath, writeSystemConfigFile } from '../utils/systemConfigPath.js'
+import { getSystemConfigFilePath, parseSystemConfigFile, writeSystemConfigFile } from '../utils/systemConfigPath.js'
 
 interface SystemSettingsResponse {
   versionToken: string
@@ -41,9 +41,10 @@ export class SystemSettingsController {
 
   private async loadFromDisk(): Promise<SystemSettingsResponse> {
     const file = this.getSettingsFilePath()
-    const stat = await fs.stat(file)
-    const content = await fs.readFile(file, 'utf8')
-    const settings = JSON.parse(content)
+    const [stat, settings] = await Promise.all([
+      fs.stat(file),
+      parseSystemConfigFile(file)
+    ])
     const versionToken = `${stat.mtimeMs}:${stat.size}`
     return {
       versionToken,
@@ -63,7 +64,9 @@ export class SystemSettingsController {
       const data = await this.loadFromDisk()
       res.json({ success: true, data })
     } catch (error: any) {
-      logger.error('Failed to read system settings', { error })
+      logger.error('Failed to read system settings', {
+        error: error instanceof Error ? error.message : String(error)
+      })
       res.status(500).json({ success: false, error: error?.message || 'Failed to read settings' })
     }
   }
@@ -131,7 +134,9 @@ export class SystemSettingsController {
 
       res.json({ success: true, data: updated, message: 'Settings updated' })
     } catch (error: any) {
-      logger.error('Failed to update system settings', { error })
+      logger.error('Failed to update system settings', {
+        error: error instanceof Error ? error.message : String(error)
+      })
       res.status(500).json({ success: false, error: error?.message || 'Failed to update settings' })
     }
   }

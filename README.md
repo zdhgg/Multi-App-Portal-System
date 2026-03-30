@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.3.0-success.svg)
+![Version](https://img.shields.io/badge/version-1.3.1-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.3.1-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.3.0`
-- **GitHub Release**: [v1.3.0: 备份中心与运维控制台增强](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.0)
+- **当前版本**: `1.3.1`
+- **GitHub Release**: [v1.3.1: UTF-8 BOM 配置兼容性修复补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.1)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -245,6 +245,16 @@ VITE_WS_BASE=
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.3.1 (2026-03-30) — UTF-8 BOM 配置兼容性修复补丁
+- 🧩 **system-config 解析链路统一**
+  - 后端新增统一的 BOM 安全配置读取工具，认证、系统设置、文件系统白名单和路径安全模块改为复用同一解析入口
+  - 避免 `system-config.json` 被 Windows 编辑器保存为 UTF-8 BOM 后出现 `JSON.parse` 失败或配置读取不完整
+- 💾 **自动备份调度兼容性修复**
+  - 自动备份调度器现在可以稳定读取带 BOM 的系统配置，不再因为首字符异常导致计划未启动
+  - 补充对应回归测试，覆盖 BOM 文件下的备份时间、保留天数和输出路径读取
+- 🔢 **发布资料与版本对齐**
+  - 同步根项目、前后端包、系统配置、启动脚本、前端内置更新记录和主要发布文档到 `1.3.1`
+
 ### v1.3.0 (2026-03-27) — 备份中心与运维控制台增强
 - 💾 **系统备份与恢复中心上线**
   - 系统设置新增统一的备份中心，可在同一页面管理配置快照、文件归档、恢复前备份和历史记录清理
@@ -351,4 +361,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.3.0 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.3.1 - 让应用管理更简单、更智能！*

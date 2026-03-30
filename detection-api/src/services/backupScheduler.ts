@@ -6,7 +6,7 @@ import { Database } from 'better-sqlite3'
 import { ConfigurationExporter } from './configurationExporter.js'
 import { AppConfigurationService } from './appConfigurationService.js'
 import { EnvironmentManager } from './environmentManager.js'
-import { getSystemConfigFilePath, readSystemConfigFileSync } from '../utils/systemConfigPath.js'
+import { getSystemConfigFilePath, parseSystemConfigFileSync } from '../utils/systemConfigPath.js'
 import { logger } from '../utils/logger.js'
 
 interface BackupRuntimeSettings {
@@ -186,7 +186,7 @@ export class BackupScheduler {
   }
 
   private loadBackupSettings(): BackupRuntimeSettings {
-    const rawConfig = JSON.parse(readSystemConfigFileSync())
+    const rawConfig = parseSystemConfigFileSync()
     const backup = rawConfig?.backup || {}
 
     const time = typeof backup.backupTime === 'string' && /^\d{2}:\d{2}$/.test(backup.backupTime.trim())

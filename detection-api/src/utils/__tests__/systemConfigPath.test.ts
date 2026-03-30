@@ -2,7 +2,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createSystemConfigPaths, synchronizeSystemConfigFiles } from '../systemConfigPath.js'
+import {
+  createSystemConfigPaths,
+  parseSystemConfigFileSync,
+  readSystemConfigFileSync,
+  synchronizeSystemConfigFiles
+} from '../systemConfigPath.js'
 
 const createWorkspace = () => {
   const root = mkdtempSync(join(tmpdir(), 'system-config-path-'))
@@ -105,5 +110,20 @@ describe('systemConfigPath', () => {
       }
     })
     expect(statSync(workspace.canonicalPath).mtimeMs).toBeGreaterThanOrEqual(legacyMtime)
+  })
+
+  it('reads UTF-8 BOM config files without breaking JSON parsing', () => {
+    const workspace = createWorkspace()
+    workspaces.push(workspace.root)
+
+    mkdirSync(dirname(workspace.canonicalPath), { recursive: true })
+    writeFileSync(workspace.canonicalPath, '\uFEFF{"backup":{"enableAutoBackup":false}}', 'utf8')
+
+    expect(readSystemConfigFileSync(workspace.canonicalPath)).toBe('{"backup":{"enableAutoBackup":false}}')
+    expect(parseSystemConfigFileSync<{ backup: { enableAutoBackup: boolean } }>(workspace.canonicalPath)).toEqual({
+      backup: {
+        enableAutoBackup: false
+      }
+    })
   })
 })

@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 const SYSTEM_CONFIG_RELATIVE_PATH = join('configs', 'system-config.json')
+const UTF8_BOM = '\uFEFF'
 
 export interface SystemConfigPaths {
   activePath: string
@@ -25,9 +26,14 @@ const ensureParentDirectorySync = (filePath: string): void => {
   mkdirSync(dirname(filePath), { recursive: true })
 }
 
+// Windows editors may save UTF-8 JSON with BOM; strip it before parsing or syncing.
+export const stripUtf8Bom = (content: string): string => (
+  content.charCodeAt(0) === UTF8_BOM.charCodeAt(0) ? content.slice(1) : content
+)
+
 const readTextIfExists = (filePath: string): string | null => {
   if (!existsSync(filePath)) return null
-  return readFileSync(filePath, 'utf8')
+  return stripUtf8Bom(readFileSync(filePath, 'utf8'))
 }
 
 const writeMirrorIfChanged = (sourcePath: string, targetPath: string, reason: string): void => {
@@ -139,12 +145,24 @@ export const getSystemConfigFilePath = (): string => {
   return paths.activePath
 }
 
-export const readSystemConfigFile = async (): Promise<string> => {
-  return fs.readFile(getSystemConfigFilePath(), 'utf8')
+export const readSystemConfigFile = async (filePath: string = getSystemConfigFilePath()): Promise<string> => {
+  return stripUtf8Bom(await fs.readFile(filePath, 'utf8'))
 }
 
-export const readSystemConfigFileSync = (): string => {
-  return readFileSync(getSystemConfigFilePath(), 'utf8')
+export const readSystemConfigFileSync = (filePath: string = getSystemConfigFilePath()): string => {
+  return stripUtf8Bom(readFileSync(filePath, 'utf8'))
+}
+
+export const parseSystemConfigContent = <T = any>(content: string): T => {
+  return JSON.parse(stripUtf8Bom(content)) as T
+}
+
+export const parseSystemConfigFile = async <T = any>(filePath: string = getSystemConfigFilePath()): Promise<T> => {
+  return parseSystemConfigContent<T>(await readSystemConfigFile(filePath))
+}
+
+export const parseSystemConfigFileSync = <T = any>(filePath: string = getSystemConfigFilePath()): T => {
+  return parseSystemConfigContent<T>(readSystemConfigFileSync(filePath))
 }
 
 export const writeSystemConfigFile = async (content: string): Promise<string> => {

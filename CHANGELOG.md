@@ -2,6 +2,20 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.3.1] - 2026-03-30
+
+### Changed
+
+- 为 `system-config.json` 增加统一的 UTF-8 BOM 安全读取与解析工具，避免 Windows 编辑器保存带 BOM 时出现配置解析失败。
+- 将认证控制器、系统设置控制器、文件系统路径白名单、路径安全管理器和自动备份调度器统一切换到新的配置解析入口。
+- 将根项目、前端、后端、系统配置、脚本模板和主要发布文档版本统一提升到 `1.3.1`。
+
+### Fixed
+
+- 修复 `system-config.json` 首部带 UTF-8 BOM 时，系统设置、认证信息和路径访问配置可能无法正确读取的问题。
+- 修复自动备份调度器在 BOM 配置文件场景下可能无法加载备份计划的问题。
+- 补充 `systemConfigPath` 与 `backupScheduler` 回归测试，覆盖 BOM 兼容性场景。
+
 ## [1.3.0] - 2026-03-27
 
 ### Added
@@ -124,6 +138,7 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.3.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.1
 [1.3.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.0
 [1.2.2]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.2
 [1.2.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.0
