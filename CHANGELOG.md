@@ -2,6 +2,23 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.3.2] - 2026-03-31
+
+### Added
+
+- 新增内网环境回归测试方案文档，覆盖离线拷贝部署、端口冲突、PM2 权限异常、配置异常和重启恢复等高风险场景。
+
+### Changed
+
+- 将 `start-production.ps1` 升级为校验式启动流程，要求 PM2 在线、端口归属正确且 `/health` 连续通过后才视为启动成功。
+- 为 `Start-Portal.bat` 增加防火墙与 PM2 开机自启状态检测，并在状态页和重启入口中统一复用新的校验式启动链路。
+- 将 PM2 启动入口、后端日志镜像、系统配置、启动脚本模板和主要发布文档版本统一提升到 `1.3.2`。
+
+### Fixed
+
+- 修复 PM2 启动失败或应用秒退时，`pm2 logs portal-api` 可能缺少关键启动期日志的问题。
+- 修复端口 `8002` 被其他进程占用、PM2 进程已在线但监听未就绪时，脚本仍可能误判启动成功的问题。
+
 ## [1.3.1] - 2026-03-30
 
 ### Changed
@@ -138,6 +155,7 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.3.2]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.2
 [1.3.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.1
 [1.3.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.0
 [1.2.2]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.2.2

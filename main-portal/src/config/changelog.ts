@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.2',
+    date: '2026-03-31',
+    title: '启动校验与运维诊断增强补丁',
+    items: [
+      { type: 'improvement', description: '生产启动脚本升级为校验式启动，要求 PM2 在线、监听 PID 匹配且 /health 连续通过后才视为成功' },
+      { type: 'fix', description: '修复端口被其他进程占用或服务秒退时，启动脚本仍可能误判成功的问题' },
+      { type: 'improvement', description: 'Start-Portal.bat 新增防火墙与 PM2 开机自启状态检测，并统一复用新的校验式重启入口' },
+      { type: 'improvement', description: '同步前后端包、系统配置、脚本模板和主要发布文档到 1.3.2，并补充内网环境回归测试方案' }
+    ]
+  },
+  {
     version: '1.3.1',
     date: '2026-03-30',
     title: 'UTF-8 BOM 配置兼容性修复补丁',

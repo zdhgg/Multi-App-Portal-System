@@ -21,6 +21,7 @@ call :detect_pm2_state
 call :detect_port_owner
 call :detect_health
 call :detect_autostart
+call :detect_firewall
 cls
 echo ============================================================
 echo Portal System - One-Click Control
@@ -31,6 +32,7 @@ echo   PM2 portal-api: %PM2_STATE% ^(PID: %PM2_PID%^)
 echo   Port %PORTAL_PORT%: %PORT_OWNER_LABEL%
 echo   Health: %HEALTH_STATE%
 echo   PM2 Auto-Start: %AUTOSTART_STATE%
+echo   Firewall: %FIREWALL_STATE%
 echo.
 echo [1] Start
 echo [2] Restart
@@ -100,31 +102,16 @@ if /i "!PORT_OWNER_STATE!"=="external" (
     goto menu
   )
 )
-pm2 restart portal-api >nul 2>nul
-set "EXIT_CODE=%ERRORLEVEL%"
+call :run_verified_start -RestartIfRunning -NonInteractive
 if not "%EXIT_CODE%"=="0" (
-  echo [WARN] portal-api is not running. Trying start flow...
-  call :detect_pm2_state
-  call :detect_port_owner
-  if /i "!PORT_OWNER_STATE!"=="external" (
-    call :prompt_release_external_port
-    if errorlevel 1 (
-      pause
-      goto menu
-    )
-  )
-  "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-production.ps1"
-  set "EXIT_CODE=%ERRORLEVEL%"
-  if not "%EXIT_CODE%"=="0" (
-    if "%EXIT_CODE%"=="%PM2_PERMISSION_EXIT%" (
-      call :handle_pm2_permission_issue
-      goto menu
-    )
-    echo [ERROR] Restart/start failed with exit code %EXIT_CODE%.
-    echo Check logs with: pm2 logs portal-api
-    pause
+  if "%EXIT_CODE%"=="%PM2_PERMISSION_EXIT%" (
+    call :handle_pm2_permission_issue
     goto menu
   )
+  echo [ERROR] Restart/start failed with exit code %EXIT_CODE%.
+  echo Check logs with: pm2 logs portal-api
+  pause
+  goto menu
 )
 echo [OK] Restart completed.
 pm2 status
@@ -153,6 +140,8 @@ goto menu
 call :detect_pm2_state
 call :detect_port_owner
 call :detect_health
+call :detect_autostart
+call :detect_firewall
 if /i "%PM2_STATE%"=="permission issue" (
   call :handle_pm2_permission_issue
   goto menu
@@ -166,12 +155,22 @@ echo Summary:
 echo   PM2 portal-api: %PM2_STATE% ^(PID: %PM2_PID%^)
 echo   Port %PORTAL_PORT%: %PORT_OWNER_LABEL%
 echo   Health: %HEALTH_STATE%
+echo   Firewall: %FIREWALL_STATE%
+echo   PM2 Auto-Start: %AUTOSTART_STATE%
 echo.
 pm2 status
 echo.
 echo Health check:
 "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command ^
   "try { $r = Invoke-WebRequest -Uri 'http://localhost:8002/health' -UseBasicParsing -TimeoutSec 5; Write-Host ('[OK] /health HTTP ' + $r.StatusCode) } catch { Write-Host '[WARN] /health unavailable' }"
+if /i "%FIREWALL_STATE%"=="missing" (
+  echo [WARN] Firewall rule for LAN access is not configured.
+  echo [INFO] Run scripts\utilities\configure-firewall.ps1 as Administrator.
+)
+if /i "%AUTOSTART_STATE%"=="disabled" (
+  echo [WARN] PM2 auto-start is disabled.
+  echo [INFO] Run configure-startup.ps1 and then pm2 save.
+)
 pause
 goto menu
 
@@ -208,31 +207,16 @@ if not "%EXIT_CODE%"=="0" (
 
 echo [OK] Frontend build completed.
 echo.
-pm2 restart portal-api >nul 2>nul
-set "EXIT_CODE=%ERRORLEVEL%"
+call :run_verified_start -RestartIfRunning -NonInteractive
 if not "%EXIT_CODE%"=="0" (
-  echo [WARN] portal-api is not running. Trying start flow...
-  call :detect_pm2_state
-  call :detect_port_owner
-  if /i "!PORT_OWNER_STATE!"=="external" (
-    call :prompt_release_external_port
-    if errorlevel 1 (
-      pause
-      goto menu
-    )
-  )
-  "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-production.ps1"
-  set "EXIT_CODE=%ERRORLEVEL%"
-  if not "%EXIT_CODE%"=="0" (
-    if "%EXIT_CODE%"=="%PM2_PERMISSION_EXIT%" (
-      call :handle_pm2_permission_issue
-      goto menu
-    )
-    echo [ERROR] Restart/start failed with exit code %EXIT_CODE%.
-    echo Check logs with: pm2 logs portal-api
-    pause
+  if "%EXIT_CODE%"=="%PM2_PERMISSION_EXIT%" (
+    call :handle_pm2_permission_issue
     goto menu
   )
+  echo [ERROR] Restart/start failed with exit code %EXIT_CODE%.
+  echo Check logs with: pm2 logs portal-api
+  pause
+  goto menu
 )
 echo [OK] Backend restart completed.
 pm2 status
@@ -270,10 +254,15 @@ if not "%EXIT_CODE%"=="0" (
   ) else (
     echo [WARN] Setup completed but auto-start status is still unknown/disabled.
   )
-  echo Tip: Ensure app process is saved with "pm2 save".
+echo Tip: Ensure app process is saved with "pm2 save".
 )
 pause
 goto menu
+
+:run_verified_start
+"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-production.ps1" %*
+set "EXIT_CODE=%ERRORLEVEL%"
+exit /b 0
 
 :do_disable_autostart
 echo.
@@ -434,6 +423,14 @@ reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v PM2 >nul 2>nul
 if not errorlevel 1 (
   set "AUTOSTART_STATE=enabled"
 )
+exit /b 0
+
+:detect_firewall
+set "FIREWALL_STATE=unknown"
+for /f "usebackq delims=" %%A in (`"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "if (Get-NetFirewallRule -DisplayName 'Portal-System-Portal-Backend' -ErrorAction SilentlyContinue) { 'configured' } elseif (Get-NetFirewallRule -DisplayName 'Portal-Port-8002' -ErrorAction SilentlyContinue) { 'configured' } else { 'missing' }"`) do (
+  if not "%%~A"=="" set "FIREWALL_STATE=%%~A"
+)
+if not defined FIREWALL_STATE set "FIREWALL_STATE=unknown"
 exit /b 0
 
 :handle_pm2_permission_issue

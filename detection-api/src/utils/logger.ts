@@ -21,14 +21,25 @@ const logFormat = winston.format.combine(
 )
 
 // 控制台格式
-const consoleFormat = winston.format.combine(
-  winston.format.colorize(),
+const consoleFormatParts = [
   winston.format.timestamp({ format: 'HH:mm:ss' }),
   winston.format.printf(({ timestamp, level, message, ...meta }) => {
     const metaStr = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''
     return `[${timestamp}] ${level}: ${message} ${metaStr}`
   })
-)
+]
+
+if (process.stdout.isTTY && process.env.NO_COLOR !== '1') {
+  consoleFormatParts.unshift(winston.format.colorize())
+}
+
+const consoleFormat = winston.format.combine(...consoleFormatParts)
+
+// 在 PM2 中镜像日志到 stdout/stderr，避免启动失败时 PM2 日志为空。
+const shouldMirrorLogsToConsole =
+  process.env.NODE_ENV !== 'production' ||
+  process.env.PM2_ENABLED === '1' ||
+  process.env.LOG_TO_STDOUT === '1'
 
 // 创建logger实例
 export const logger = winston.createLogger({
@@ -51,10 +62,11 @@ export const logger = winston.createLogger({
   ],
 })
 
-// 开发环境添加控制台输出
-if (process.env.NODE_ENV !== 'production') {
+// 开发环境以及 PM2 场景下添加控制台输出，便于启动期诊断。
+if (shouldMirrorLogsToConsole) {
   logger.add(new winston.transports.Console({
-    format: consoleFormat
+    format: consoleFormat,
+    stderrLevels: ['error']
   }))
 }
 
