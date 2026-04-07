@@ -62,8 +62,8 @@ const router = createRouter({
           name: 'detection',
           component: () => import('@/views/Detection.vue'),
           meta: {
-            title: '应用检测',
-            description: '智能检测Web应用项目'
+            title: '批量导入',
+            description: '低频使用：批量发现并导入工作区项目'
           }
         }
       ]

@@ -29,6 +29,12 @@
           </el-button>
           <el-button
             v-if="canCreateApp"
+            @click="openBatchImport"
+          >
+            批量导入
+          </el-button>
+          <el-button
+            v-if="canCreateApp"
             type="primary"
             @click="addApp"
           >
@@ -138,10 +144,24 @@
             description="没有找到匹配的应用"
           />
 
-          <el-empty
-            v-else-if="apps.length === 0"
-            description="暂无应用数据"
-          />
+          <div v-else-if="apps.length === 0" class="management-empty-state">
+            <el-empty description="暂无应用数据">
+              <template #description>
+                <div class="management-empty-description">
+                  <p>先从“添加应用”接入单个项目，只有需要一次导入多个目录时再使用“批量导入”。</p>
+                </div>
+              </template>
+            </el-empty>
+
+            <div v-if="canCreateApp" class="management-empty-actions">
+              <el-button type="primary" @click="addApp">
+                添加应用
+              </el-button>
+              <el-button @click="openBatchImport">
+                批量导入
+              </el-button>
+            </div>
+          </div>
 
           <el-table
             v-else
@@ -588,9 +608,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, h } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { Connection, VideoPlay, VideoPause, Setting, Delete, Monitor, Document, ArrowDown, Cpu, Search, Upload, FolderOpened, Edit } from '@element-plus/icons-vue'
+import { useRoute, useRouter } from 'vue-router'
 import { appsApiService } from '@/services'
 import { pm2ApiService } from '@/services/pm2Api'
 import { buildApiService, buildExecutionApiService } from '@/services/buildApi'
@@ -694,7 +715,10 @@ const tableRef = ref() // Table引用，用于控制全选
 const authStore = useAuthStore()
 const portalStore = usePortalStore()
 const portMonitoringStore = usePortMonitoringStore()
+const route = useRoute()
+const router = useRouter()
 const pendingPortRefreshTimers = new Set<ReturnType<typeof setTimeout>>()
+let activePortConflictNotification: { close: () => void } | null = null
 
 // 搜索和过滤相关
 const searchQuery = ref('')
@@ -745,6 +769,13 @@ const queuePortMonitoringRefresh = (delays: number[], reason: string) => {
   })
 }
 
+const closePortConflictNotification = () => {
+  if (activePortConflictNotification) {
+    activePortConflictNotification.close()
+    activePortConflictNotification = null
+  }
+}
+
 const isPortConflictError = (error: any): boolean => {
   const code = String(error?.code || '').trim().toUpperCase()
   if (code === 'PORT_CONFLICTS' || code === 'PORT_CONFLICT') {
@@ -761,6 +792,148 @@ const isPortConflictError = (error: any): boolean => {
     .join(' ')
 
   return error?.status === 409 && /端口冲突|已被占用|port conflict|already in use/i.test(message)
+}
+
+const extractPortConflictPorts = (error: any): number[] => {
+  const collectPorts = (value: unknown) => {
+    const ports = new Set<number>()
+
+    const collect = (candidateValue: unknown) => {
+      if (typeof candidateValue === 'number' && Number.isInteger(candidateValue) && candidateValue > 0 && candidateValue <= 65535) {
+        ports.add(candidateValue)
+        return
+      }
+
+      if (Array.isArray(candidateValue)) {
+        candidateValue.forEach((item) => collect(item))
+        return
+      }
+
+      if (candidateValue && typeof candidateValue === 'object') {
+        collect((candidateValue as Record<string, unknown>).port)
+      }
+    }
+
+    collect(value)
+    return Array.from(ports).sort((a, b) => a - b)
+  }
+
+  const conflictPorts = collectPorts(error?.details?.conflicts)
+  if (conflictPorts.length > 0) {
+    return conflictPorts
+  }
+
+  const responseConflictPorts = collectPorts(error?.response?.data?.details?.conflicts)
+  if (responseConflictPorts.length > 0) {
+    return responseConflictPorts
+  }
+
+  const directPorts = collectPorts([
+    error?.details?.port,
+    error?.response?.data?.details?.port,
+    error?.response?.data?.port
+  ])
+  if (directPorts.length > 0) {
+    return directPorts
+  }
+
+  const declaredPorts = collectPorts(error?.details?.ports)
+  if (declaredPorts.length > 0) {
+    return declaredPorts
+  }
+
+  const responseDeclaredPorts = collectPorts(error?.response?.data?.details?.ports)
+  if (responseDeclaredPorts.length > 0) {
+    return responseDeclaredPorts
+  }
+
+  const fallbackPorts = new Set<number>()
+
+  const fallbackText = [
+    error?.message,
+    error?.details?.message,
+    error?.response?.data?.message,
+    error?.response?.data?.error?.message
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .join(' ')
+
+  const matches = fallbackText.match(/\b\d{2,5}\b/g) || []
+  matches
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0 && value <= 65535)
+    .forEach((value) => fallbackPorts.add(value))
+
+  return Array.from(fallbackPorts).sort((a, b) => a - b)
+}
+
+const extractPortConflictDetails = (error: any): string => {
+  const ports = extractPortConflictPorts(error)
+  const detail = [
+    error?.details?.message,
+    error?.response?.data?.details?.message,
+    error?.message,
+    error?.response?.data?.message
+  ].find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+
+  if (detail) {
+    return detail
+  }
+
+  return ports.length > 0
+    ? `检测到端口 ${ports.join('、')} 已被其他进程或应用占用。`
+    : '检测到目标端口已被其他进程或应用占用。'
+}
+
+const showPortConflictNotification = (app: AppWithUIState, error: any) => {
+  closePortConflictNotification()
+
+  const ports = extractPortConflictPorts(error)
+  const detail = extractPortConflictDetails(error)
+  const targetRoute = {
+    path: '/ports',
+    query: {
+      from: 'management',
+      ...(ports[0] ? { focusPort: String(ports[0]) } : {}),
+      ...(app.id ? { appId: app.id } : {})
+    }
+  }
+  const href = router.resolve(targetRoute).href
+  const summary = ports.length > 0
+    ? `端口 ${ports.join('、')} 已被占用`
+    : '检测到端口冲突，应用暂时无法启动'
+
+  activePortConflictNotification = ElNotification({
+    title: `启动 ${app.name} 失败`,
+    type: 'error',
+    duration: 0,
+    showClose: true,
+    message: h('div', {
+      style: 'display:flex;flex-direction:column;gap:8px;line-height:1.6;max-width:420px;'
+    }, [
+      h('div', {
+        style: 'font-size:14px;font-weight:600;color:#303133;'
+      }, summary),
+      h('div', {
+        style: 'font-size:13px;color:#606266;'
+      }, detail),
+      h('div', {
+        style: 'font-size:13px;color:#606266;'
+      }, '建议前往端口管理页面查看占用详情，并根据情况停止应用或释放端口。'),
+      h('a', {
+        href,
+        style: 'display:inline-flex;align-items:center;color:#409eff;font-size:13px;font-weight:600;text-decoration:none;',
+        onClick: (event: MouseEvent) => {
+          event.preventDefault()
+          closePortConflictNotification()
+          void router.push(targetRoute)
+        }
+      }, ports[0] ? `前往端口管理查看端口 ${ports[0]}` : '前往端口管理')
+    ]),
+    onClose: () => {
+      activePortConflictNotification = null
+    }
+  })
 }
 
 // 技术栈动态加载
@@ -871,6 +1044,7 @@ onMounted(() => {
 
 // 组件卸载时断开 WebSocket 连接
 onUnmounted(() => {
+  closePortConflictNotification()
   disconnect()
   stopRuntimeLogAutoRefresh()
   pendingPortRefreshTimers.forEach(timer => clearTimeout(timer))
@@ -1180,9 +1354,31 @@ const addApp = () => {
   showAddDialog.value = true
 }
 
+const openBatchImport = () => {
+  if (!hasOperationPermission('create')) {
+    ElMessage.warning('当前账号没有批量导入权限')
+    return
+  }
+
+  void router.push('/detection')
+}
+
 // 处理手动添加成功
 const handleAddSuccess = () => {
   loadApps() // 重新加载应用列表
+}
+
+const clearAddAppIntent = () => {
+  if (route.query.action !== 'add') {
+    return
+  }
+
+  const nextQuery = { ...route.query }
+  delete nextQuery.action
+  void router.replace({
+    path: route.path,
+    query: nextQuery
+  })
 }
 
 // 状态处理函数
@@ -1745,7 +1941,9 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
         // 生成生产环境PM2配置
         const pm2Config = generatePM2Config(app, true)
 
-        const response = await pm2ApiService.startProcessByAppId(app.id, pm2Config)
+        const response = await pm2ApiService.startProcessByAppId(app.id, pm2Config, {
+          showErrorMessage: false
+        })
         if (response) {
           ElMessage.success(`应用 ${app.name} PM2启动请求已发送（生产模式）`)
           const expectedName = response.pm2ProcessName || toSlugName(app.name)
@@ -1809,7 +2007,9 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
     }
 
     // 使用传统方式启动（开发模式）
-    const response = await appsApiService.startApp(app.id)
+    const response = await appsApiService.startApp(app.id, 'development', {
+      showErrorMessage: false
+    })
     if (response.success) {
       app.status = 'online'
       applyFilters() // 刷新过滤列表
@@ -1941,6 +2141,11 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
         )
       }
       return // 直接返回，不再执行后续的错误处理
+    }
+
+    if (isPortConflictError(error)) {
+      showPortConflictNotification(app, error)
+      return
     }
 
     // 🎯 检测全栈应用部署警告
@@ -2647,6 +2852,27 @@ const hasOperationPermission = (operation: string): boolean => {
   permissionCache.value.set(cacheKey, { hasPermission, timestamp: now })
   return hasPermission
 }
+
+const handleAddAppIntent = () => {
+  if (route.query.action !== 'add') {
+    return
+  }
+
+  addApp()
+  clearAddAppIntent()
+}
+
+watch(
+  () => route.query.action,
+  action => {
+    if (action !== 'add') {
+      return
+    }
+
+    handleAddAppIntent()
+  },
+  { immediate: true }
+)
 
 const canCreateApp = computed(() => hasOperationPermission('create'))
 const canDeleteApp = computed(() => hasOperationPermission('delete'))
@@ -4925,6 +5151,31 @@ const getCategoryLabel = (category: string) => {
   padding: 42px 0;
 }
 
+.management-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.management-empty-description {
+  max-width: 420px;
+  color: var(--text-secondary, #64748b);
+  line-height: 1.7;
+}
+
+.management-empty-description p {
+  margin: 0;
+}
+
+.management-empty-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .management-card :deep(.el-table) {
   --el-table-header-bg-color: rgba(248, 250, 252, 0.92);
   --el-table-row-hover-bg-color: rgba(37, 99, 235, 0.04);
@@ -4997,6 +5248,11 @@ const getCategoryLabel = (category: string) => {
 
   .management-toolbar-actions,
   .management-toolbar-actions .el-button {
+    width: 100%;
+  }
+
+  .management-empty-actions,
+  .management-empty-actions .el-button {
     width: 100%;
   }
 

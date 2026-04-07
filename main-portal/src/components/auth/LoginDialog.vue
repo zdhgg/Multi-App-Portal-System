@@ -84,7 +84,7 @@
               </el-button>
             </div>
             <p class="login-preferences__hint">
-              仅记录成功登录的用户名，并记住你上次的勾选选择。
+              仅预填成功登录的用户名，并记住你上次的勾选选择，不保存密码。
             </p>
           </div>
         </el-form-item>
@@ -118,6 +118,7 @@ import { useAuthStore } from '@/stores/auth'
 import { logLoginError, logLoginStart, logLoginSuccess } from '@/utils/loginDebug'
 import {
   clearRecentLoginUsernames,
+  readMostRecentLoginUsername,
   readRecentLoginUserSuggestions,
   saveRecentLoginUsername,
   type RecentLoginUserSuggestion
@@ -177,6 +178,12 @@ const syncRememberMePreference = () => {
 
 const refreshRecentUsernameSuggestions = () => {
   recentUsernameSuggestions.value = readRecentLoginUserSuggestions()
+}
+
+const syncRememberedUsername = () => {
+  loginForm.username = loginForm.rememberMe
+    ? readMostRecentLoginUsername({ persistentOnly: true }) || ''
+    : ''
 }
 
 const queryUsernameSuggestions = (
@@ -263,7 +270,9 @@ const resetForm = () => {
   }
 
   Object.assign(loginForm, {
-    username: '',
+    username: readRememberMePreference()
+      ? readMostRecentLoginUsername({ persistentOnly: true }) || ''
+      : '',
     password: '',
     rememberMe: readRememberMePreference()
   })
@@ -280,6 +289,7 @@ watch(visible, (newValue) => {
   if (newValue) {
     refreshRecentUsernameSuggestions()
     syncRememberMePreference()
+    syncRememberedUsername()
 
     setTimeout(() => {
       const usernameInput = document.querySelector('.el-input__inner[placeholder="用户名"]') as HTMLInputElement | null

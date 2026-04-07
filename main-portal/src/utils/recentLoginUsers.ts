@@ -128,6 +128,20 @@ export const readRecentLoginUserSuggestions = (): RecentLoginUserSuggestion[] =>
   return readRecentLoginUsernames().map(username => ({ value: username }))
 }
 
+export const readMostRecentLoginUsername = (
+  options: { persistentOnly?: boolean } = {}
+): string | null => {
+  const { persistentOnly = false } = options
+  const records = persistentOnly
+    ? readRecordsByStorage(true)
+    : dedupeAndSortRecords([
+        ...readRecordsByStorage(false),
+        ...readRecordsByStorage(true)
+      ])
+
+  return records[0]?.username || null
+}
+
 export const saveRecentLoginUsername = (username: string, persistent: boolean): string[] => {
   const normalizedUsername = normalizeUsername(username)
   if (!normalizedUsername) {

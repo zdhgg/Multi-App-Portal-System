@@ -33,15 +33,6 @@
       </div>
     </div>
 
-    <!-- 路径选择模式 -->
-    <div class="mode-selector">
-      <el-radio-group v-model="mode" @change="onModeChange">
-        <el-radio-button label="single">单个目录</el-radio-button>
-        <el-radio-button label="multiple">多个目录</el-radio-button>
-        <el-radio-button label="workspace">工作区扫描</el-radio-button>
-      </el-radio-group>
-    </div>
-
     <!-- 路径列表 -->
     <div class="path-list">
       <el-card v-for="(path, index) in paths" :key="index" shadow="hover" class="path-item">
@@ -69,14 +60,6 @@
               </el-button>
               <el-button 
                 size="small" 
-                :type="path.configExpanded ? 'info' : 'default'"
-                @click="toggleConfigExpand(index)"
-              >
-                <el-icon><Setting /></el-icon>
-                {{ path.configExpanded ? '收起配置' : '调整配置' }}
-              </el-button>
-              <el-button 
-                size="small" 
                 type="danger" 
                 @click="removePath(index)"
                 v-if="paths.length > 1"
@@ -86,152 +69,23 @@
             </div>
           </div>
         </template>
-
-        <!-- 路径配置 - 可折叠区域 -->
-        <el-collapse-transition>
-          <div v-show="path.configExpanded" class="path-config">
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item label="文件大小限制">
-                <el-select v-model="path.maxFileSize" size="small" style="width: 100%;">
-                  <el-option label="无限制" value="unlimited" />
-                  <el-option label="10MB" value="10MB" />
-                  <el-option label="50MB" value="50MB" />
-                  <el-option label="100MB" value="100MB" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="扫描优先级">
-                <el-select v-model="path.priority" size="small" style="width: 100%;">
-                  <el-option label="低" value="low" />
-                  <el-option label="中" value="medium" />
-                  <el-option label="高" value="high" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-          </el-row>
-
-          <!-- 排除模式 -->
-          <el-form-item label="排除模式">
-            <el-select 
-              v-model="path.excludePatterns" 
-              multiple 
-              filterable 
-              allow-create
-              size="small"
-              placeholder="选择或输入排除模式"
-            >
-              <el-option 
-                v-for="pattern in commonExcludePatterns" 
-                :key="pattern.value"
-                :label="pattern.label" 
-                :value="pattern.value"
-              />
-            </el-select>
-          </el-form-item>
-
-          <!-- 路径预览 -->
-          <div class="path-preview" v-if="path.path">
-            <el-descriptions :column="2" size="small" border>
-              <el-descriptions-item label="路径">{{ path.path }}</el-descriptions-item>
-              <el-descriptions-item label="状态">
-                <el-tag :type="path.accessible ? 'success' : 'danger'" size="small">
-                  {{ path.accessible ? '可访问' : '无法访问' }}
-                </el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="预估文件数">
-                {{ path.estimatedFiles || '计算中...' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="预估时间">
-                {{ path.estimatedTime || '计算中...' }}
-              </el-descriptions-item>
-            </el-descriptions>
-          </div>
-          </div>
-        </el-collapse-transition>
         
-        <!-- 简化的状态信息 - 配置折叠时显示 -->
-        <div v-show="!path.configExpanded && path.path" class="path-quick-info">
+        <div v-if="path.path" class="path-quick-info">
           <el-tag size="small" :type="path.accessible ? 'success' : 'warning'">
             {{ path.accessible ? '可访问' : '检查中...' }}
           </el-tag>
           <el-tag v-if="path.estimatedFiles" size="small">
             ~{{ path.estimatedFiles }} 文件
           </el-tag>
-          <el-tag v-if="path.maxFileSize && path.maxFileSize !== 'unlimited'" size="small" type="info">
-            限制: {{ path.maxFileSize }}
+          <el-tag v-if="path.estimatedTime" size="small" type="info">
+            预计 {{ path.estimatedTime }}
           </el-tag>
-          <el-tag v-if="path.excludePatterns?.length" size="small" type="info">
-            已排除 {{ path.excludePatterns.length }} 项
+          <el-tag size="small" type="info">
+            自动排除常见构建与依赖目录
           </el-tag>
         </div>
       </el-card>
     </div>
-
-    <!-- 扫描选项 -->
-    <el-card shadow="never" class="scan-options">
-      <template #header>
-        <span>扫描选项配置</span>
-      </template>
-      
-      <el-row :gutter="24">
-        <el-col :span="12">
-          <el-form-item label="智能过滤">
-            <el-switch 
-              v-model="globalConfig.smartFilter"
-              active-text="启用"
-              inactive-text="关闭"
-            />
-            <div class="form-hint">自动排除常见的无效目录</div>
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="实时预览">
-            <el-switch 
-              v-model="globalConfig.realTimePreview"
-              active-text="启用"
-              inactive-text="关闭"
-            />
-            <div class="form-hint">扫描过程中实时显示发现的应用</div>
-          </el-form-item>
-        </el-col>
-      </el-row>
-    </el-card>
-
-    <!-- 总览信息 -->
-    <el-card shadow="never" class="scan-summary" v-if="scanSummary.totalPaths > 0">
-      <template #header>
-        <span>扫描预览</span>
-      </template>
-      
-      <el-row :gutter="16" class="summary-stats">
-        <el-col :span="6">
-          <div class="stat-item">
-            <div class="stat-number">{{ scanSummary.totalPaths }}</div>
-            <div class="stat-label">扫描路径</div>
-          </div>
-        </el-col>
-        <el-col :span="6">
-          <div class="stat-item">
-            <div class="stat-number">{{ scanSummary.estimatedFiles }}</div>
-            <div class="stat-label">预计文件</div>
-          </div>
-        </el-col>
-        <el-col :span="6">
-          <div class="stat-item">
-            <div class="stat-number">{{ scanSummary.estimatedTime }}</div>
-            <div class="stat-label">预计时间</div>
-          </div>
-        </el-col>
-        <el-col :span="6">
-          <div class="stat-item">
-            <div class="stat-number">{{ scanSummary.estimatedApps }}</div>
-            <div class="stat-label">可能应用</div>
-          </div>
-        </el-col>
-      </el-row>
-    </el-card>
 
     <!-- 路径输入对话框 -->
     <el-dialog 
@@ -376,57 +230,37 @@ import {
   Delete,
   Edit,
   SuccessFilled,
-  WarningFilled,
-  Setting
+  WarningFilled
 } from '@element-plus/icons-vue'
 import { userSettingsApiService, filesystemApiService, type UserSettings, type PresetPath } from '@/services'
 import { getStoredAccessToken } from '@/utils/authStorage'
 import {
   canUseBrowserDirectoryPickerInCurrentContext,
   getDirectoryPickerCompatibilityDescription,
-  getNativeDirectoryPickerFailureMessage
+  getNativeDirectoryPickerFailureMessage,
+  selectDirectoryWithBestEffort
 } from '@/utils/directoryPicker'
 
 export interface PathConfig {
   path: string
-  maxDepth: number
-  maxFileSize: string
-  priority: 'low' | 'medium' | 'high'
-  excludePatterns: string[]
   accessible?: boolean
   estimatedFiles?: number
   estimatedTime?: string
   folderHandle?: any // File System Access API handle
   fileList?: FileList // webkitdirectory file list
-  configExpanded?: boolean // 是否展开配置面板
-}
-
-export interface GlobalConfig {
-  smartFilter: boolean
-  realTimePreview: boolean
-}
-
-interface ScanSummary {
-  totalPaths: number
-  estimatedFiles: number
-  estimatedTime: string
-  estimatedApps: number
 }
 
 const emit = defineEmits<{
   'update:paths': [paths: PathConfig[]]
-  'update:globalConfig': [config: GlobalConfig]
   'validate': [isValid: boolean]
 }>()
 
 const props = defineProps<{
   initialPaths?: PathConfig[]
-  initialGlobalConfig?: GlobalConfig
 }>()
 
 // 响应式数据
 const loading = ref(false)
-const mode = ref<'single' | 'multiple' | 'workspace'>('single')
 
 // 对话框状态
 const pathInputVisible = ref(false)
@@ -437,19 +271,9 @@ const isInitializing = ref(true)
 
 const paths = ref<PathConfig[]>([
   {
-    path: 'D:\\My Programs', // 设置默认的绝对路径
-    maxDepth: 3,
-    maxFileSize: '50MB',
-    priority: 'medium',
-    excludePatterns: ['node_modules', '.git', 'dist', 'build'],
-    configExpanded: false // 默认折叠配置
+    path: 'D:\\My Programs' // 设置默认的绝对路径
   }
 ])
-
-const globalConfig = ref<GlobalConfig>({
-  smartFilter: true,
-  realTimePreview: true
-})
 
 // 动态路径数据
 const presetPaths = ref<Array<{ path: string; description: string }>>([])
@@ -484,31 +308,6 @@ const pathTemplates = [
   }
 ]
 
-const commonExcludePatterns = [
-  { label: 'node_modules (Node.js依赖)', value: 'node_modules' },
-  { label: '.git (Git版本控制)', value: '.git' },
-  { label: 'dist (构建输出)', value: 'dist' },
-  { label: 'build (构建目录)', value: 'build' },
-  { label: '.next (Next.js)', value: '.next' },
-  { label: '.nuxt (Nuxt.js)', value: '.nuxt' },
-  { label: 'coverage (测试覆盖率)', value: 'coverage' },
-  { label: '.cache (缓存目录)', value: '.cache' },
-  { label: 'tmp (临时文件)', value: 'tmp' },
-  { label: 'logs (日志文件)', value: 'logs' }
-]
-
-// 计算属性
-const scanSummary = computed<ScanSummary>(() => {
-  const validPaths = paths.value.filter(p => p.path && p.accessible !== false)
-  
-  return {
-    totalPaths: validPaths.length,
-    estimatedFiles: validPaths.reduce((sum, p) => sum + (p.estimatedFiles || 0), 0),
-    estimatedTime: calculateTotalTime(validPaths),
-    estimatedApps: Math.ceil(validPaths.length * 0.3) // 粗略估计30%的路径包含应用
-  }
-})
-
 const browserSupportsFileSystemAccess = computed(() => {
   return canUseBrowserDirectoryPickerInCurrentContext()
 })
@@ -518,34 +317,10 @@ const browserDirectoryPickerDescription = computed(() => {
 })
 
 // 方法
-const onModeChange = (newMode: string) => {
-  if (newMode === 'single' && paths.value.length > 1) {
-    paths.value = [paths.value[0]]
-  } else if (newMode === 'workspace') {
-    // 工作区模式的特殊逻辑
-    ElMessage.info('工作区模式将扫描整个工作区，请确保路径正确')
-  }
-}
-
 const addPath = () => {
-  if (mode.value === 'single') {
-    ElMessage.warning('单个目录模式下只能添加一个路径')
-    return
-  }
-  
   paths.value.push({
-    path: '',
-    maxDepth: 3,
-    maxFileSize: '50MB',
-    priority: 'medium',
-    excludePatterns: ['node_modules', '.git', 'dist', 'build'],
-    configExpanded: false // 默认折叠
+    path: ''
   })
-}
-
-// 切换配置展开/折叠
-const toggleConfigExpand = (index: number) => {
-  paths.value[index].configExpanded = !paths.value[index].configExpanded
 }
 
 const removePath = (index: number) => {
@@ -622,19 +397,17 @@ const selectFolderFromExplorer = async (index: number) => {
     try {
       const currentPath = paths.value[index]?.path?.trim() || ''
       const startPath = isAbsolutePathFormat(currentPath) ? currentPath : undefined
-      const nativeResponse = await filesystemApiService.selectFolder(startPath, true)
+      const selection = await selectDirectoryWithBestEffort(startPath, true)
 
-      if (nativeResponse.success && nativeResponse.data) {
-        if (nativeResponse.data.cancelled) {
-          ElMessage.info('用户取消了文件夹选择')
-          return
-        }
+      if (selection.cancelled) {
+        ElMessage.info('用户取消了文件夹选择')
+        return
+      }
 
-        if (nativeResponse.data.path) {
-          selectedPath = nativeResponse.data.path.trim()
-          if (selectedPath) {
-            ElMessage.success(`文件夹选择成功: ${selectedPath}`)
-          }
+      if (selection.path) {
+        selectedPath = selection.path.trim()
+        if (selectedPath) {
+          ElMessage.success(`文件夹选择成功: ${selectedPath}`)
         }
       }
     } catch (nativeError) {
@@ -803,27 +576,6 @@ const validateAndEstimate = async (index: number) => {
   }
 }
 
-const calculateTotalTime = (validPaths: PathConfig[]): string => {
-  const totalSeconds = validPaths.reduce((sum, p) => {
-    const timeStr = p.estimatedTime || '0s'
-    const seconds = parseTimeToSeconds(timeStr)
-    return sum + seconds
-  }, 0)
-  
-  if (totalSeconds < 60) return `${totalSeconds}s`
-  if (totalSeconds < 3600) return `${Math.ceil(totalSeconds / 60)}m`
-  return `${Math.ceil(totalSeconds / 3600)}h`
-}
-
-const parseTimeToSeconds = (timeStr: string): number => {
-  const num = parseInt(timeStr)
-  if (timeStr.includes('h')) return num * 3600
-  if (timeStr.includes('m')) return num * 60
-  return num
-}
-
-// 改进的路径验证和估算函数
-
 const checkPathAccessible = async (path: string): Promise<boolean> => {
   // 实际的路径验证：通过后端API检查
   try {
@@ -938,33 +690,25 @@ const isValidPathFormat = (path: string): boolean => {
 }
 
 const estimateScanScope = async (pathConfig: PathConfig) => {
-  // 智能的扫描范围估算
   return new Promise<{files: number, time: string}>((resolve) => {
-    // 缩短延迟时间，提供更快的反馈
     setTimeout(() => {
-      // 根据扫描深度和排除模式进行更合理的估算
-      const depth = pathConfig.maxDepth || 3
-      const hasExcludes = pathConfig.excludePatterns && pathConfig.excludePatterns.length > 0
-      
-      // 基础文件数：深度越大，文件越多
-      let baseFiles = 200 * Math.pow(depth, 1.5)
-      
-      // 如果有排除模式，减少估算数量
-      if (hasExcludes) {
-        baseFiles = baseFiles * 0.6 // 减少40%
+      const normalizedPath = pathConfig.path.toLowerCase()
+      let baseFiles = 450
+
+      if (normalizedPath.includes('project') || normalizedPath.includes('workspace')) {
+        baseFiles = 900
+      } else if (normalizedPath.includes('program') || normalizedPath.includes('app')) {
+        baseFiles = 650
       }
-      
-      // 添加一些随机性使其更真实
+
       const files = Math.floor(baseFiles + Math.random() * 300)
-      
-      // 根据文件数量估算时间（假设每秒处理50个文件）
       const estimatedSeconds = Math.max(Math.ceil(files / 50), 5)
       const time = estimatedSeconds < 60 
         ? `${estimatedSeconds}s` 
         : `${Math.ceil(estimatedSeconds / 60)}m`
       
       resolve({ files, time })
-    }, 500) // 减少到500ms，提供更快的反馈
+    }, 500)
   })
 }
 
@@ -981,10 +725,6 @@ watch(paths, (newPaths) => {
   const isValid = newPaths.every(p => p.path && p.accessible !== false)
   emit('validate', isValid)
 }, { deep: true, immediate: false })
-
-watch(globalConfig, (newConfig) => {
-  emit('update:globalConfig', newConfig)
-}, { deep: true })
 
 // 加载用户设置
 const loadUserSettings = async () => {
@@ -1005,14 +745,6 @@ const loadUserSettings = async () => {
         const systemPaths = userSettingsApiService.getSystemRecommendedPaths()
         examplePaths.value = systemPaths.slice(0, 4).map(p => p.path)
       }
-
-      // 更新全局配置
-      if (response.data.preferences) {
-        globalConfig.value = {
-          ...globalConfig.value,
-          ...response.data.preferences
-        }
-      }
     }
   } catch (error) {
     console.warn('Failed to load user settings:', error)
@@ -1031,9 +763,6 @@ onMounted(async () => {
 
   if (props.initialPaths) {
     paths.value = props.initialPaths
-  }
-  if (props.initialGlobalConfig) {
-    globalConfig.value = props.initialGlobalConfig
   }
 
   // 自动验证默认路径
@@ -1081,10 +810,6 @@ onMounted(async () => {
   gap: 12px;
 }
 
-.mode-selector {
-  margin-bottom: 16px;
-}
-
 .path-list {
   margin-bottom: 16px;
 }
@@ -1118,58 +843,7 @@ onMounted(async () => {
 .path-actions {
   display: flex;
   gap: 8px;
-}
-
-.path-config {
-  padding-top: 16px;
-}
-
-.path-preview {
-  margin-top: 16px;
-}
-
-.scan-options {
-  margin-bottom: 16px;
-}
-
-.form-hint {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 4px;
-}
-
-.scan-summary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-}
-
-.scan-summary :deep(.el-card__header) {
-  background: rgba(255, 255, 255, 0.1);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.scan-summary :deep(.el-card__header span) {
-  color: white;
-  font-weight: 600;
-}
-
-.summary-stats {
-  text-align: center;
-}
-
-.stat-item {
-  padding: 16px;
-}
-
-.stat-number {
-  font-size: 24px;
-  font-weight: bold;
-  margin-bottom: 4px;
-}
-
-.stat-label {
-  font-size: 12px;
-  opacity: 0.8;
+  flex-wrap: wrap;
 }
 
 /* 新增对话框样式 */
@@ -1283,11 +957,5 @@ onMounted(async () => {
 
 .path-quick-info .el-tag {
   font-size: 12px;
-}
-
-/* 配置区域过渡效果 */
-.path-config {
-  padding-top: 16px;
-  border-top: 1px solid #ebeef5;
 }
 </style>

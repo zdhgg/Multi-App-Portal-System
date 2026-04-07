@@ -35,7 +35,7 @@ export interface HomeDirectory {
 export interface FolderSelectionResult {
   cancelled: boolean
   path?: string
-  source?: 'native'
+  source?: 'native' | 'web'
 }
 
 export interface ExeFileItem {

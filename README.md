@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.3.2-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.3.2-success.svg)
+![Version](https://img.shields.io/badge/version-1.3.3-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.3.3-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.3.2`
-- **GitHub Release**: [v1.3.2: 启动校验与运维诊断增强补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.2)
+- **当前版本**: `1.3.3`
+- **GitHub Release**: [v1.3.3: 目录选择兼容性与批量导入体验优化补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.3)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -245,6 +245,17 @@ VITE_WS_BASE=
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.3.3 (2026-04-07) — 目录选择兼容性与批量导入体验优化补丁
+- 🗂 **目录选择兼容性增强**
+  - 新增网页式服务器目录浏览器，在局域网远程访问时可替代后端原生目录选择
+  - 手动添加、批量导入、备份路径和路径白名单配置统一接入新的最佳努力目录选择链路
+- 🧭 **批量导入入口收口**
+  - 检测页明确调整为低频批量导入工具，首页、空状态和 404 推荐入口统一优先引导到“应用管理 > 添加应用”
+  - 批量发现流程精简为核心路径和扫描深度配置，减少把单应用接入误走成批量导入的情况
+- 🚦 **端口冲突与认证修复**
+  - 应用管理页在启动遇到端口冲突时，会给出可跳转到端口管理的提示，并自动聚焦冲突端口
+  - 修复 base64url 编码 JWT 无法恢复登录态、记住我用户名回填不稳定，以及 `/api/v1` 等版本化前缀被误改成 `/api` 的问题
+
 ### v1.3.2 (2026-03-31) — 启动校验与运维诊断增强补丁
 - 🚀 **校验式启动链路**
   - `start-production.ps1` 现在要求 PM2 在线、监听 PID 匹配且 `/health` 连续通过后才视为启动成功
@@ -372,4 +383,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.3.2 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.3.3 - 让应用管理更简单、更智能！*

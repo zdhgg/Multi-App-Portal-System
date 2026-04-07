@@ -222,7 +222,7 @@ class ConfigApiService {
    */
   private getDefaultSystemConfig(): SystemConfig {
     return {
-      version: '1.3.2',
+      version: '1.3.3',
       name: 'Intelligent Multi-App Portal System',
       features: {
         realTimeMonitoring: true,

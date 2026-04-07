@@ -200,9 +200,11 @@
 import { ref, computed, onMounted, watch, reactive } from 'vue'
 import { configExportApiService, type BackupInfo } from '@/services/configExportApi'
 import { ApiError } from '@/services/api'
-import { filesystemApiService } from '@/services/filesystemApi'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getNativeDirectoryPickerFailureMessage } from '@/utils/directoryPicker'
+import {
+  getNativeDirectoryPickerFailureMessage,
+  selectDirectoryWithBestEffort
+} from '@/utils/directoryPicker'
 import {
   normalizeBackupSettings,
   type BackupSettingsModel
@@ -317,17 +319,13 @@ function openCreateBackupDialog() {
 
 async function selectDirectory(startPath?: string) {
   try {
-    const response = await filesystemApiService.selectFolder(startPath, true)
+    const selection = await selectDirectoryWithBestEffort(startPath, true)
 
-    if (!response.success || !response.data) {
-      throw new Error(response.message || '目录选择失败')
-    }
-
-    if (response.data.cancelled) {
+    if (selection.cancelled) {
       return undefined
     }
 
-    const selectedPath = typeof response.data.path === 'string' ? response.data.path.trim() : ''
+    const selectedPath = typeof selection.path === 'string' ? selection.path.trim() : ''
     if (!selectedPath) {
       throw new Error('未获取到有效目录路径')
     }

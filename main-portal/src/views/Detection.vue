@@ -4,37 +4,31 @@
     <div class="detection-content">
       <!-- 配置阶段 -->
       <div v-if="currentStep === 'config'" class="config-stage">
-        <!-- 步骤导航 -->
-        <el-card class="steps-card" shadow="never">
-          <el-steps :active="configStep" align-center>
-            <el-step 
-              title="选择路径" 
-              description="配置扫描目录和范围"
-              icon="FolderOpened"
-            />
-            <el-step 
-              title="检测策略" 
-              description="设置检测模式和技术栈优先级"
-              icon="Setting"
-            />
-            <el-step 
-              title="确认开始" 
-              description="预览配置并启动检测"
-              icon="Search"
-            />
-          </el-steps>
-        </el-card>
+        <el-alert
+          class="compact-mode-alert"
+          title="推荐把这里当作低频批量导入工具使用"
+          type="info"
+          :closable="false"
+          show-icon
+        >
+          <template #default>
+            <div class="compact-mode-alert__content">
+              <span>单个应用请直接前往“应用管理 > 添加应用”，这里只有批量发现与批量导入保留下来。</span>
+              <el-button link type="primary" @click="goToManagementAdd">
+                前往添加应用
+              </el-button>
+            </div>
+          </template>
+        </el-alert>
 
-        <!-- 第1步：路径选择 -->
-        <div v-if="configStep === 0" class="config-step">
-          <!-- 快速开始区域 -->
+        <div class="config-step">
           <el-card class="quick-start-card" shadow="hover">
             <div class="quick-start-content">
               <div class="quick-start-left">
                 <div class="quick-start-icon">⚡</div>
                 <div class="quick-start-info">
-                  <h3>快速开始</h3>
-                  <p>使用推荐配置立即开始检测，适合大多数场景</p>
+                  <h3>批量发现</h3>
+                  <p>使用推荐配置快速扫描目录并生成可导入列表，适合低频批量接入</p>
                 </div>
               </div>
               <div class="quick-start-right">
@@ -61,19 +55,19 @@
                   :loading="isStarting"
                 >
                   <el-icon><Search /></el-icon>
-                  使用推荐配置开始
+                  直接开始批量发现
                 </el-button>
               </div>
             </div>
             <div class="quick-start-hint">
               <el-tag v-if="hasLastConfig" size="small" type="success">已加载上次配置</el-tag>
               <el-tag v-else size="small" type="info">当前配置</el-tag>
-              <span>扫描深度 {{ currentModeConfig.depth }} 层 | 自动排除 node_modules 等 | 智能端口分配</span>
+              <span>扫描深度 {{ currentModeConfig.depth }} 层 | 自动排除 node_modules 等常见目录 | 输出可批量导入结果</span>
             </div>
           </el-card>
 
           <el-divider>
-            <span class="divider-text">或者自定义配置</span>
+            <span class="divider-text">需要多个目录时，再使用自定义路径</span>
           </el-divider>
 
           <el-row :gutter="24">
@@ -83,9 +77,8 @@
                   <div class="config-header">
                     <span>
                       <el-icon><FolderOpened /></el-icon>
-                      扫描路径配置
+                      批量发现范围
                     </span>
-                    <el-tag type="primary" size="small">第 1 步</el-tag>
                   </div>
                 </template>
                 
@@ -103,7 +96,7 @@
                 <template #header>
                   <span>
                     <el-icon><Setting /></el-icon>
-                    扫描模式
+                    发现深度
                   </span>
                 </template>
                 
@@ -140,387 +133,49 @@
                     <el-descriptions-item label="预计速度">
                       {{ currentModeConfig.speed }}
                     </el-descriptions-item>
+                    <el-descriptions-item label="预计耗时">
+                      {{ estimatedTime }}
+                    </el-descriptions-item>
+                    <el-descriptions-item label="可能应用">
+                      {{ estimatedApps }} 个
+                    </el-descriptions-item>
                   </el-descriptions>
                 </div>
               </el-card>
             </el-col>
           </el-row>
-        </div>
 
-        <!-- 第2步：检测策略 -->
-        <div v-if="configStep === 1" class="config-step">
-          <el-row :gutter="24">
-            <el-col :span="14">
-              <el-card shadow="hover" class="main-config-card">
-                <template #header>
-                  <div class="config-header">
-                    <span>
-                      <el-icon><Setting /></el-icon>
-                      检测策略配置
-                    </span>
-                    <el-tag type="primary" size="small">第 2 步</el-tag>
-                  </div>
-                </template>
-                
-                <!-- 当前扫描配置概览 -->
-                <div class="config-section">
-                  <div class="current-config-summary">
-                    <el-alert type="info" :closable="false" show-icon>
-                      <template #title>
-                        <span>当前扫描模式：<strong>{{ scanModeOptions.find(m => m.value === selectedScanMode)?.title }}</strong></span>
-                      </template>
-                      <template #default>
-                        扫描深度 {{ currentModeConfig.depth }} 层 | 
-                        排除 {{ currentModeConfig.excludeCount }} 项 | 
-                        预计速度 {{ currentModeConfig.speed }}
-                        <el-button type="primary" link size="small" @click="configStep = 0" style="margin-left: 12px;">
-                          修改模式
-                        </el-button>
-                      </template>
-                    </el-alert>
-                  </div>
-                </div>
-                
-                <!-- 技术栈优先级 -->
-                <div class="config-section">
-                  <h4>🎯 技术栈检测优先级</h4>
-                  <div class="tech-priority-grid">
-                    <div 
-                      v-for="tech in techStackPriorities" 
-                      :key="tech.name"
-                      class="tech-item"
-                      :class="{ active: tech.enabled }"
-                      @click="toggleTechStack(tech.name)"
-                    >
-                      <div class="tech-icon">{{ tech.icon }}</div>
-                      <div class="tech-name">{{ tech.name }}</div>
-                      <div class="tech-priority">{{ tech.priority }}</div>
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- 端口分配策略 -->
-                <div class="config-section">
-                  <h4>🔗 端口分配策略</h4>
-                  <div class="port-strategy-container">
-                    <div 
-                      v-for="strategy in portStrategies" 
-                      :key="strategy.value"
-                      class="port-strategy-item"
-                      :class="{ active: portAllocationStrategy === strategy.value }"
-                      @click="portAllocationStrategy = strategy.value"
-                    >
-                      <div class="strategy-radio">
-                        <div class="radio-dot" :class="{ checked: portAllocationStrategy === strategy.value }"></div>
-                      </div>
-                      <div class="strategy-content">
-                        <div class="strategy-title">{{ strategy.icon }} {{ strategy.title }}</div>
-                        <div class="strategy-desc">{{ strategy.desc }}</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- 性能和资源配置 -->
-                <div class="config-section" v-if="selectedPreset === 'custom'">
-                  <h4>⚡ 性能配置</h4>
-                  <el-row :gutter="16">
-                    <el-col :span="12">
-                      <el-form-item label="并发检测数">
-                        <el-input-number 
-                          v-model="performanceConfig.concurrency" 
-                          :min="1" 
-                          :max="10"
-                        />
-                        <span class="form-help">同时检测的应用数量</span>
-                      </el-form-item>
-                    </el-col>
-                    <el-col :span="12">
-                      <el-form-item label="内存限制">
-                        <el-select v-model="performanceConfig.memoryLimit">
-                          <el-option label="512MB" value="512MB" />
-                          <el-option label="1GB" value="1GB" />
-                          <el-option label="2GB" value="2GB" />
-                          <el-option label="4GB" value="4GB" />
-                        </el-select>
-                        <span class="form-help">检测过程内存使用上限</span>
-                      </el-form-item>
-                    </el-col>
-                  </el-row>
-                </div>
-                
-                <!-- 高级配置入口 -->
-                <div class="config-section">
-                  <el-button 
-                    type="primary" 
-                    @click="showAdvancedConfig"
-                    :icon="Tools"
-                  >
-                    打开高级配置
-                  </el-button>
-                  <span class="form-help">配置过滤规则、输出格式等高级选项</span>
-                </div>
-              </el-card>
-            </el-col>
-            
-            <el-col :span="10">
-              <el-card shadow="hover" class="preview-card">
-                <template #header>
-                  <span>
-                    <el-icon><View /></el-icon>
-                    策略预览
-                  </span>
-                </template>
-                
-                <div class="strategy-preview">
-                  <div class="preview-section">
-                    <h4>📁 扫描范围</h4>
-                    <div class="preview-item">
-                      <el-tag size="small">{{ selectedPaths.length }} 个路径</el-tag>
-                      <div class="path-list">
-                        <div v-for="path in selectedPaths.slice(0, 2)" :key="path" class="path-item">
-                          {{ path }}
-                        </div>
-                        <div v-if="selectedPaths.length > 2" class="path-more">
-                          还有 {{ selectedPaths.length - 2 }} 个路径...
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div class="preview-section">
-                    <h4>🎯 检测策略</h4>
-                    <el-descriptions :column="1" size="small">
-                      <el-descriptions-item label="预设模式">
-                        {{ presetLabels[selectedPreset] }}
-                      </el-descriptions-item>
-                      <el-descriptions-item label="端口策略">
-                        {{ portStrategyLabels[portAllocationStrategy] }}
-                      </el-descriptions-item>
-                      <el-descriptions-item label="技术栈">
-                        {{ enabledTechStacks.length }} 个已启用
-                      </el-descriptions-item>
-                      <el-descriptions-item label="并发数" v-if="selectedPreset === 'custom'">
-                        {{ performanceConfig.concurrency }} 个
-                      </el-descriptions-item>
-                    </el-descriptions>
-                  </div>
-                  
-                  <div class="preview-section">
-                    <h4>📊 预估效果</h4>
-                    <div class="estimation-grid">
-                      <div class="estimation-item">
-                        <span class="estimation-value">{{ estimatedFiles }}</span>
-                        <span class="estimation-label">预计文件</span>
-                      </div>
-                      <div class="estimation-item">
-                        <span class="estimation-value">{{ estimatedTime }}</span>
-                        <span class="estimation-label">预计耗时</span>
-                      </div>
-                      <div class="estimation-item">
-                        <span class="estimation-value">{{ estimatedApps }}</span>
-                        <span class="estimation-label">可能应用</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <!-- 快速开始区域 -->
-                  <div class="preview-section quick-start-section">
-                    <h4>🚀 准备就绪</h4>
-                    <el-button 
-                      type="success" 
-                      size="large"
-                      @click="skipToStartDetection"
-                      :disabled="!isPathValid"
-                      :loading="isStarting"
-                      style="width: 100%;"
-                    >
-                      <el-icon><Search /></el-icon>
-                      跳过确认，直接开始检测
-                    </el-button>
-                    <div class="form-help" style="text-align: center; margin-top: 8px;">
-                      或点击"下一步"查看完整配置预览
-                    </div>
-                  </div>
-                </div>
-              </el-card>
-            </el-col>
-          </el-row>
-        </div>
-
-        <!-- 第3步：确认开始（可选） -->
-        <div v-if="configStep === 2" class="config-step">
-          <el-row :gutter="24" justify="center">
-            <el-col :span="16">
-              <el-card shadow="hover" class="confirm-card">
-                <template #header>
-                  <div class="config-header">
-                    <span>
-                      <el-icon><Search /></el-icon>
-                      确认配置并开始检测
-                    </span>
-                    <el-tag type="primary" size="small">第 3 步</el-tag>
-                  </div>
-                </template>
-                
-                <div class="confirm-content">
-                  <!-- 配置总览 -->
-                  <div class="config-summary">
-                    <h3>🎯 本次扫描配置总览</h3>
-                    
-                    <el-row :gutter="16">
-                      <el-col :span="8">
-                        <div class="summary-card">
-                          <div class="summary-icon">📁</div>
-                          <div class="summary-content">
-                            <div class="summary-title">扫描路径</div>
-                            <div class="summary-value">{{ selectedPaths.length }} 个目录</div>
-                            <div class="summary-detail">{{ getTotalPathSize() }}</div>
-                          </div>
-                        </div>
-                      </el-col>
-                      
-                      <el-col :span="8">
-                        <div class="summary-card">
-                          <div class="summary-icon">⚙️</div>
-                          <div class="summary-content">
-                            <div class="summary-title">检测模式</div>
-                            <div class="summary-value">{{ presetLabels[selectedPreset] }}</div>
-                            <div class="summary-detail">{{ performanceConfig.concurrency || 3 }} 并发检测</div>
-                          </div>
-                        </div>
-                      </el-col>
-                      
-                      <el-col :span="8">
-                        <div class="summary-card">
-                          <div class="summary-icon">🚀</div>
-                          <div class="summary-content">
-                            <div class="summary-title">性能配置</div>
-                            <div class="summary-value">{{ performanceConfig.concurrency || 3 }} 并发</div>
-                            <div class="summary-detail">{{ portStrategyLabels[portAllocationStrategy] }}</div>
-                          </div>
-                        </div>
-                      </el-col>
-                    </el-row>
-                  </div>
-                  
-                  <!-- 预期结果 -->
-                  <div class="expected-results">
-                    <h4>📊 预期检测结果</h4>
-                    <div class="result-preview">
-                      <div class="result-item">
-                        <el-statistic 
-                          title="预计扫描文件" 
-                          :value="estimatedFiles"
-                          :value-style="{ color: '#409EFF' }"
-                        >
-                          <template #suffix>个</template>
-                        </el-statistic>
-                      </div>
-                      <div class="result-item">
-                        <el-statistic 
-                          title="预计检测时间" 
-                          :value="estimatedTimeSeconds"
-                          :value-style="{ color: '#67C23A' }"
-                        >
-                          <template #suffix>秒</template>
-                        </el-statistic>
-                      </div>
-                      <div class="result-item">
-                        <el-statistic 
-                          title="可能发现应用" 
-                          :value="estimatedApps"
-                          :value-style="{ color: '#E6A23C' }"
-                        >
-                          <template #suffix>个</template>
-                        </el-statistic>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <!-- 提醒信息 -->
-                  <div class="detection-alerts">
-                    <el-alert
-                      v-if="!isPathValid"
-                      title="⚠️ 路径配置问题"
-                      description="请返回第1步检查路径配置，确保所有路径都可访问"
-                      type="warning"
-                      show-icon
-                      :closable="false"
-                    />
-                    
-                    <el-alert
-                      v-else-if="estimatedTimeSeconds > 300"
-                      title="⏰ 检测时间较长"
-                      description="本次检测预计需要较长时间，建议在空闲时进行或调整并发数"
-                      type="info"
-                      show-icon
-                      :closable="false"
-                    />
-                    
-                    <el-alert
-                      v-else
-                      title="✅ 配置检查通过"
-                      description="所有配置项均正常，可以开始智能检测"
-                      type="success"
-                      show-icon
-                      :closable="false"
-                    />
-                  </div>
-                  
-                  <!-- 开始按钮 -->
-                  <div class="start-action">
-                    <el-button 
-                      type="primary" 
-                      size="large"
-                      @click="startDetection"
-                      :disabled="!isPathValid"
-                      :loading="isStarting"
-                    >
-                      <el-icon><Search /></el-icon>
-                      开始智能检测
-                    </el-button>
-                  </div>
-                </div>
-              </el-card>
-            </el-col>
-          </el-row>
-        </div>
-
-        <!-- 步骤导航按钮 -->
-        <div class="step-navigation">
-          <el-button 
-            v-if="configStep > 0"
-            @click="prevStep"
-            :icon="ArrowLeft"
-          >
-            上一步
-          </el-button>
-          
-          <el-button 
-            v-if="configStep < 2"
-            type="primary"
-            @click="nextStep"
-            :disabled="!canProceedToNextStep"
-            :icon="ArrowRight"
-          >
-            下一步
-          </el-button>
+          <el-card shadow="never" class="compact-action-card">
+            <div class="compact-action-content">
+              <div class="compact-action-copy">
+                <h3>准备开始批量导入扫描</h3>
+                <p>主流程只保留路径与扫描深度两项核心配置；单个应用建议直接手动添加。</p>
+              </div>
+              <div class="compact-primary-actions">
+                <el-button @click="goToManagementAdd">
+                  单个应用直接添加
+                </el-button>
+                <el-button
+                  type="primary"
+                  :loading="isStarting"
+                  :disabled="!canStartCompactImport"
+                  @click="startCompactImport"
+                >
+                  <el-icon><Search /></el-icon>
+                  开始批量发现
+                </el-button>
+              </div>
+            </div>
+          </el-card>
         </div>
       </div>
 
       <!-- 扫描阶段 -->
       <div v-if="currentStep === 'scanning'" class="scanning-stage">
         <ProgressMonitor
-          ref="progressMonitorRef"
           :is-scanning="isDetecting"
           :scan-id="currentScanId"
-          :show-logs="true"
-          @pause="pauseDetection"
           @cancel="cancelDetection"
-          @export-results="exportResults"
-          @export-logs="exportLogs"
-          @preview-apps="previewApps"
         />
       </div>
 
@@ -531,16 +186,12 @@
             <div class="results-header">
               <span>
                 <el-icon><SuccessFilled /></el-icon>
-                检测结果 ({{ detectedApps.length }} 个应用)
+                批量发现结果 ({{ detectedApps.length }} 个应用)
               </span>
               <div class="results-actions">
                 <el-button @click="refreshAddedStatus">
                   <el-icon><Refresh /></el-icon>
                   刷新状态
-                </el-button>
-                <el-button @click="exportResults">
-                  <el-icon><Download /></el-icon>
-                  导出结果
                 </el-button>
                 <el-button @click="startNewScan">
                   <el-icon><RefreshRight /></el-icon>
@@ -627,7 +278,7 @@
                 @click="batchAddApps"
                 :disabled="availableForBatchAdd.length === 0"
               >
-                批量添加 ({{ availableForBatchAdd.length }})
+                批量导入 ({{ availableForBatchAdd.length }})
               </el-button>
 
               <el-button
@@ -761,25 +412,6 @@
         </el-card>
       </div>
     </div>
-
-    <!-- 高级配置对话框 -->
-    <el-dialog 
-      v-model="advancedConfigVisible"
-      title="高级配置"
-      width="80%"
-      :close-on-click-modal="false"
-    >
-      <AdvancedConfig
-        ref="advancedConfigRef"
-        @config-change="onAdvancedConfigChange"
-        @apply-config="applyAdvancedConfig"
-      />
-      
-      <template #footer>
-        <el-button @click="advancedConfigVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveAdvancedConfig">保存配置</el-button>
-      </template>
-    </el-dialog>
 
     <!-- 应用预览对话框 -->
     <el-dialog
@@ -923,17 +555,12 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Search,
-  Clock,
   QuestionFilled,
   FolderOpened,
   Setting,
-  Tools,
   SuccessFilled,
-  Download,
   RefreshRight,
   View,
-  ArrowLeft,
-  ArrowRight,
   Check,
   ArrowDown,
   Refresh
@@ -944,7 +571,6 @@ import PathSelector from '@/components/detection/PathSelector.vue'
 // 导入 store
 import { usePortConfigStore } from '@/stores/portConfig'
 import ProgressMonitor from '@/components/detection/ProgressMonitor.vue'
-import AdvancedConfig from '@/components/detection/AdvancedConfig.vue'
 
 // 导入服务
 import { smartPortAllocator } from '@/services/smartPortAllocator'
@@ -953,7 +579,10 @@ import type { ImportCandidate, BatchImportResult } from '@/services/appsApi'
 import { filesystemApiService } from '@/services'
 import { getPortTypeColor, getPortTypeIcon } from '@/types/app'
 import { getStoredAccessToken } from '@/utils/authStorage'
-import { getNativeDirectoryPickerFailureMessage } from '@/utils/directoryPicker'
+import {
+  getNativeDirectoryPickerFailureMessage,
+  selectDirectoryWithBestEffort
+} from '@/utils/directoryPicker'
 
 // 路由相关
 const router = useRouter()
@@ -1228,12 +857,10 @@ interface DetectionResults {
 
 // 响应式数据
 const currentStep = ref<'config' | 'scanning' | 'results'>('config')
-const configStep = ref(0) // 配置阶段的步骤：0-路径选择, 1-检测配置, 2-确认开始
 const isDetecting = ref(false)
 const isStarting = ref(false)
 const isPathValid = ref(false)
 const currentScanId = ref('')
-const mode = ref<'single' | 'multiple' | 'workspace'>('multiple') // 扫描模式
 
 // 快速开始相关
 const quickStartPath = ref('D:\\My Programs') // 快速开始路径，默认值
@@ -1294,112 +921,12 @@ const currentModeConfig = computed(() => {
 // 选择扫描模式
 const selectScanMode = (mode: string) => {
   selectedScanMode.value = mode as 'shallow' | 'fast' | 'standard' | 'full'
-  // 根据模式更新基础配置
   const modeConfig = scanModeOptions.find(m => m.value === mode)
-  if (modeConfig) {
-    basicConfig.value.defaultMaxDepth = modeConfig.depth
-  }
   ElMessage.success(`已切换到${modeConfig?.title || '标准扫描'}模式`)
 }
 
-// 配置数据
-const selectedPreset = ref('balanced')
 const selectedPaths = ref<string[]>([])
-const basicConfig = ref({
-  portStrategy: 'smart',
-  concurrency: 3,
-  defaultMaxDepth: 4 // 默认扫描深度，用于估算计算
-})
-
-// 新增配置数据
-const portAllocationStrategy = ref('smart')
-const performanceConfig = ref({
-  concurrency: 3,
-  memoryLimit: '1GB'
-})
-
-const presetOptions = ref([
-  {
-    value: 'performance',
-    title: '性能优先',
-    desc: '高并发快速检测，适合大型项目扫描',
-    icon: '🚀',
-    specs: ['并发数: 5个', '智能端口分配', '实时预览结果']
-  },
-  {
-    value: 'accuracy',
-    title: '精确检测',
-    desc: '详细分析每个应用，确保检测准确性',
-    icon: '🎯',
-    specs: ['并发数: 2个', '深度技术栈分析', '完整依赖检查']
-  },
-  {
-    value: 'balanced',
-    title: '平衡模式',
-    desc: '兼顾速度和准确性的最佳选择',
-    icon: '⚖️',
-    specs: ['并发数: 3个', '智能优先级', '适中检测时间']
-  },
-  {
-    value: 'custom',
-    title: '自定义配置',
-    desc: '完全自定义检测策略和参数',
-    icon: '🛠️',
-    specs: ['所有参数可调', '高级选项开放', '专业用户推荐']
-  }
-])
-
-const techStackPriorities = ref([
-  { name: 'React', icon: '⚛️', priority: '高', enabled: true },
-  { name: 'Vue', icon: '🟢', priority: '高', enabled: true },
-  { name: 'Angular', icon: '🔺', priority: '中', enabled: true },
-  { name: 'Node.js', icon: '📗', priority: '高', enabled: true },
-  { name: 'Express', icon: '⚡', priority: '中', enabled: true },
-  { name: 'Next.js', icon: '▲', priority: '中', enabled: true },
-  { name: 'Nuxt.js', icon: '💚', priority: '中', enabled: true },
-  { name: 'Svelte', icon: '🧡', priority: '低', enabled: false },
-  { name: 'Django', icon: '🐍', priority: '中', enabled: true },
-  { name: 'Spring', icon: '🌱', priority: '低', enabled: false }
-])
-
-const portStrategies = ref([
-  {
-    value: 'smart',
-    icon: '🧠',
-    title: '智能分配 (推荐)',
-    desc: '根据技术栈自动选择最佳端口'
-  },
-  {
-    value: 'sequential',
-    icon: '📋',
-    title: '顺序分配',
-    desc: '按顺序分配可用端口'
-  },
-  {
-    value: 'range',
-    icon: '📊',
-    title: '范围分配',
-    desc: '在指定端口范围内分配'
-  }
-])
-
-// 标签映射
-const presetLabels: Record<string, string> = {
-  performance: '性能优先',
-  accuracy: '精确检测',
-  balanced: '平衡模式',
-  custom: '自定义配置'
-}
-
-const portStrategyLabels: Record<string, string> = {
-  smart: '🧠 智能分配',
-  sequential: '📋 顺序分配',
-  range: '📊 范围分配'
-}
-
-// 高级配置
-const advancedConfigVisible = ref(false)
-const advancedConfigRef = ref()
+const DEFAULT_BATCH_SCAN_CONCURRENCY = 3
 
 // 检测结果
 const detectedApps = ref<DetectedAppResult[]>([])
@@ -1424,8 +951,7 @@ const estimatedFiles = computed(() => {
   // 根据路径数量和深度估算文件数
   if (selectedPaths.value.length === 0) return 0
   
-  // 获取平均扫描深度（从第一步路径配置中获取，如果没有则使用默认值）
-  const avgDepth = basicConfig.value.defaultMaxDepth || 4
+  const avgDepth = currentModeConfig.value.depth || 3
   const baseFiles = selectedPaths.value.length * 500
   const depthMultiplier = Math.pow(avgDepth, 1.2)
   return Math.round(baseFiles * depthMultiplier)
@@ -1440,44 +966,20 @@ const estimatedTime = computed(() => {
 })
 
 const estimatedTimeSeconds = computed(() => {
-  // 根据文件数量和并发数估算时间
   const files = estimatedFiles.value
   if (files === 0) return 5
   
-  const concurrency = performanceConfig.value.concurrency || 3
-  const filesPerSecond = concurrency * 50
+  const filesPerSecond = DEFAULT_BATCH_SCAN_CONCURRENCY * 50
   return Math.max(Math.ceil(files / filesPerSecond), 5)
 })
 
 const estimatedApps = computed(() => {
-  // 估算可能发现的应用数量
   const files = estimatedFiles.value
   if (files === 0) return 0
   
-  // 基于路径数量和启用的技术栈数量估算
   const pathCount = selectedPaths.value.length || 1
-  const enabledTechCount = enabledTechStacks.value.length || 1
-  
-  // 每个路径预计1-3个应用，取决于启用的技术栈数量
-  const appsPerPath = Math.min(Math.ceil(enabledTechCount / 2), 3)
+  const appsPerPath = Math.min(Math.max(currentModeConfig.value.depth - 1, 1), 3)
   return Math.max(pathCount * appsPerPath, 1)
-})
-
-const canProceedToNextStep = computed(() => {
-  switch (configStep.value) {
-    case 0: // 路径选择步骤
-      return isPathValid.value && selectedPaths.value.length > 0
-    case 1: // 检测配置步骤
-      return true // 配置步骤总是可以继续
-    case 2: // 确认开始步骤
-      return isPathValid.value
-    default:
-      return false
-  }
-})
-
-const enabledTechStacks = computed(() => {
-  return techStackPriorities.value.filter(tech => tech.enabled)
 })
 
 const filteredApps = computed(() => {
@@ -1507,6 +1009,10 @@ const availableForBatchAdd = computed(() => {
   return selectedApps.value.filter(app => !app.isAdded)
 })
 
+const canStartCompactImport = computed(() => {
+  return isPathValid.value || selectedPaths.value.length > 0
+})
+
 // 方法
 const onPathValidate = (isValid: boolean) => {
   isPathValid.value = isValid
@@ -1526,82 +1032,22 @@ const updateSelectedPaths = (paths: any[]) => {
   console.log('PathSelector更新路径:', extractedPaths)
 }
 
-const selectPreset = (preset: string) => {
-  selectedPreset.value = preset
-  applyPreset(preset)
+const goToManagementAdd = () => {
+  void router.push({
+    path: '/management',
+    query: { action: 'add' }
+  })
 }
 
-const applyPreset = (preset: string) => {
-  switch (preset) {
-    case 'performance':
-      // 性能优先：高并发，智能端口分配
-      basicConfig.value.portStrategy = 'smart'
-      basicConfig.value.concurrency = 5
-      performanceConfig.value.concurrency = 5
-      performanceConfig.value.memoryLimit = '2GB'
-      // 启用主流高优先级技术栈
-      techStackPriorities.value.forEach(tech => {
-        tech.enabled = ['React', 'Vue', 'Node.js', 'Next.js'].includes(tech.name)
-      })
-      break
-    case 'accuracy':
-      // 精确检测：低并发，深度分析
-      basicConfig.value.portStrategy = 'smart'
-      basicConfig.value.concurrency = 2
-      performanceConfig.value.concurrency = 2
-      performanceConfig.value.memoryLimit = '4GB'
-      // 启用所有技术栈
-      techStackPriorities.value.forEach(tech => {
-        tech.enabled = true
-      })
-      break
-    case 'balanced':
-      // 平衡模式：中等并发，智能优先级
-      basicConfig.value.portStrategy = 'smart'
-      basicConfig.value.concurrency = 3
-      performanceConfig.value.concurrency = 3
-      performanceConfig.value.memoryLimit = '1GB'
-      // 启用高和中优先级技术栈
-      techStackPriorities.value.forEach(tech => {
-        tech.enabled = tech.priority !== '低'
-      })
-      break
-    case 'custom':
-      // 自定义配置：不做任何修改
-      break
+const startCompactImport = async () => {
+  if (!canStartCompactImport.value) {
+    ElMessage.warning('请先配置有效的扫描路径')
+    return
   }
-}
 
-const toggleTechStack = (techName: string) => {
-  const tech = techStackPriorities.value.find(t => t.name === techName)
-  if (tech) {
-    tech.enabled = !tech.enabled
-  }
-}
-
-const applyPresetToPaths = () => {
-  if (selectedPreset.value === 'custom') return
-  
-  // 这里应该调用PathSelector组件的方法来批量更新路径配置
-  // 由于我们需要与PathSelector组件通信，这里只是演示逻辑
-  ElMessage.success(`已将${presetLabels[selectedPreset.value]}应用到所有路径`)
-}
-
-const showAdvancedConfig = () => {
-  advancedConfigVisible.value = true
-}
-
-const onAdvancedConfigChange = (config: any) => {
-  console.log('Advanced config changed:', config)
-}
-
-const applyAdvancedConfig = (config: any) => {
-  console.log('Applied advanced config:', config)
-}
-
-const saveAdvancedConfig = () => {
-  advancedConfigVisible.value = false
-  ElMessage.success('高级配置已保存')
+  saveLastConfig()
+  ElMessage.info('开始批量发现目录中的应用...')
+  await startDetection()
 }
 
 const isAbsolutePathFormat = (path: string): boolean => {
@@ -1617,20 +1063,18 @@ const selectQuickStartFolder = async () => {
     // 优先使用后端原生目录选择（可直接返回绝对路径）
     try {
       const startPath = isAbsolutePathFormat(quickStartPath.value) ? quickStartPath.value.trim() : undefined
-      const nativeResponse = await filesystemApiService.selectFolder(startPath, true)
+      const selection = await selectDirectoryWithBestEffort(startPath, true)
 
-      if (nativeResponse.success && nativeResponse.data) {
-        if (nativeResponse.data.cancelled) {
-          ElMessage.info('用户取消了文件夹选择')
-          return
-        }
+      if (selection.cancelled) {
+        ElMessage.info('用户取消了文件夹选择')
+        return
+      }
 
-        const nativePath = String(nativeResponse.data.path || '').trim()
-        if (isAbsolutePathFormat(nativePath)) {
-          quickStartPath.value = nativePath
-          ElMessage.success(`已选择文件夹: ${nativePath}`)
-          return
-        }
+      const selectedPath = String(selection.path || '').trim()
+      if (isAbsolutePathFormat(selectedPath)) {
+        quickStartPath.value = selectedPath
+        ElMessage.success(`已选择文件夹: ${selectedPath}`)
+        return
       }
     } catch (nativeError) {
       console.warn('后端原生文件夹选择失败:', nativeError)
@@ -1645,22 +1089,6 @@ const selectQuickStartFolder = async () => {
   }
 }
 
-// 跳过第3步确认，直接开始检测
-const skipToStartDetection = async () => {
-  if (!isPathValid.value && selectedPaths.value.length === 0) {
-    ElMessage.warning('请先配置有效的扫描路径')
-    return
-  }
-  
-  // 保存配置
-  saveLastConfig()
-  
-  ElMessage.info('跳过确认步骤，直接开始检测...')
-  
-  // 直接开始检测
-  await startDetection()
-}
-
 // 快速开始 - 使用当前扫描模式配置立即开始检测
 const quickStart = async () => {
   if (!quickStartPath.value) {
@@ -1668,23 +1096,13 @@ const quickStart = async () => {
     return
   }
   
-  // 使用当前选择的扫描模式配置
   selectedPaths.value = [quickStartPath.value]
-  selectedPreset.value = 'balanced'
-  portAllocationStrategy.value = 'smart'
-  performanceConfig.value = {
-    concurrency: 3,
-    memoryLimit: '1GB'
-  }
-  // 使用当前扫描模式的深度配置
-  basicConfig.value.defaultMaxDepth = currentModeConfig.value.depth
   isPathValid.value = true
   
-  // 保存到本地存储（配置记忆）
   saveLastConfig()
   
   const modeName = scanModeOptions.find(m => m.value === selectedScanMode.value)?.title || '标准扫描'
-  ElMessage.info(`使用${modeName}模式开始检测（深度${currentModeConfig.value.depth}层）...`)
+  ElMessage.info(`使用${modeName}模式开始批量发现（深度${currentModeConfig.value.depth}层）...`)
   
   // 直接开始检测
   await startDetection()
@@ -1708,7 +1126,7 @@ const startDetection = async () => {
     await performRealDetection()
     
     currentStep.value = 'results'
-    ElMessage.success('应用检测完成！')
+    ElMessage.success('批量发现完成！')
     
   } catch (error) {
     ElMessage.error('检测过程中出现错误')
@@ -1741,8 +1159,8 @@ const performRealDetection = async (): Promise<void> => {
         },
         body: JSON.stringify({
           paths: pathsToScan.map(p => p.replace(/\\/g, '/')),
-          mode: mode.value,
-          maxConcurrency: performanceConfig.value.concurrency || 3,
+          mode: 'multiple',
+          maxConcurrency: DEFAULT_BATCH_SCAN_CONCURRENCY,
           commonConfig: {
             maxDepth: currentModeConfig.value.depth,  // 使用当前扫描模式的深度
             excludePatterns: ['node_modules', '.git', 'dist', 'build', '.next', '.nuxt', 'coverage'],
@@ -2102,10 +1520,6 @@ const performRealDetection = async (): Promise<void> => {
   }
 }
 
-const pauseDetection = () => {
-  ElMessage.info('扫描已暂停')
-}
-
 const cancelDetection = async () => {
   const result = await ElMessageBox.confirm(
     '确定要取消当前扫描吗？',
@@ -2120,18 +1534,6 @@ const cancelDetection = async () => {
     currentStep.value = 'config'
     ElMessage.warning('扫描已取消')
   }
-}
-
-const exportResults = () => {
-  ElMessage.success('结果导出功能开发中')
-}
-
-const exportLogs = () => {
-  ElMessage.success('日志导出功能开发中')
-}
-
-const previewApps = (apps: any[]) => {
-  ElMessage.info(`预览 ${apps.length} 个应用`)
 }
 
 const startNewScan = () => {
@@ -2747,14 +2149,6 @@ const getAppColor = (techStack: string): string => {
   return '#667eea' // 默认颜色
 }
 
-const showHistory = () => {
-  ElMessage.info('历史记录功能开发中')
-}
-
-const showHelp = () => {
-  ElMessage.info('帮助功能开发中')
-}
-
 // 端口选择对话框相关状态
 const portSelectionVisible = ref(false)
 const portSelectionApp = ref<DetectedAppResult | null>(null)
@@ -2896,40 +2290,6 @@ const onPortChange = () => {
     checkPortConflicts()
   }, 500)
 }
-
-
-
-// 步骤导航方法
-const nextStep = () => {
-  if (configStep.value < 2 && canProceedToNextStep.value) {
-    configStep.value++
-  }
-}
-
-const prevStep = () => {
-  if (configStep.value > 0) {
-    configStep.value--
-  }
-}
-
-// 辅助方法
-const getTotalPathSize = () => {
-  // 基于选择的路径数量和类型估算大小
-  if (selectedPaths.value.length === 0) {
-    return '未知'
-  }
-
-  // 简单估算：每个路径平均500MB-2GB
-  const avgSizePerPath = 1.2 // GB
-  const estimatedSize = selectedPaths.value.length * avgSizePerPath
-
-  if (estimatedSize < 1) {
-    return `~${Math.round(estimatedSize * 1000)}MB`
-  } else {
-    return `~${estimatedSize.toFixed(1)}GB`
-  }
-}
-
 // 辅助函数：将项目转换为DetectedAppResult格式
 const convertProjectToDetectedApp = (project: any, index: number): DetectedAppResult => {
   const ports: Array<{
@@ -3049,9 +2409,7 @@ const DETECTION_CONFIG_KEY = 'detection_last_config'
 
 interface SavedConfig {
   quickStartPath: string
-  selectedPaths: string[]
-  selectedPreset: string
-  portAllocationStrategy: string
+  selectedScanMode: 'shallow' | 'fast' | 'standard' | 'full'
   timestamp: number
 }
 
@@ -3060,9 +2418,7 @@ const saveLastConfig = () => {
   try {
     const config: SavedConfig = {
       quickStartPath: quickStartPath.value,
-      selectedPaths: selectedPaths.value,
-      selectedPreset: selectedPreset.value,
-      portAllocationStrategy: portAllocationStrategy.value,
+      selectedScanMode: selectedScanMode.value,
       timestamp: Date.now()
     }
     localStorage.setItem(DETECTION_CONFIG_KEY, JSON.stringify(config))
@@ -3082,11 +2438,7 @@ const loadLastConfig = () => {
       const isExpired = Date.now() - config.timestamp > 7 * 24 * 60 * 60 * 1000
       if (!isExpired) {
         quickStartPath.value = config.quickStartPath || quickStartPath.value
-        if (config.selectedPaths?.length) {
-          selectedPaths.value = config.selectedPaths
-        }
-        selectedPreset.value = config.selectedPreset || 'balanced'
-        portAllocationStrategy.value = config.portAllocationStrategy || 'smart'
+        selectedScanMode.value = config.selectedScanMode || 'standard'
         hasLastConfig.value = true
         console.log('已加载上次配置:', config)
         return true
@@ -3120,6 +2472,46 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.compact-mode-alert {
+  margin-bottom: 16px;
+}
+
+.compact-mode-alert__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.compact-action-card {
+  margin-top: 16px;
+}
+
+.compact-action-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.compact-action-copy h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  color: #1f2d3d;
+}
+
+.compact-action-copy p {
+  margin: 0;
+  color: #606266;
+}
+
+.compact-primary-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 /* 快速开始区域样式 */
 .quick-start-card {
   margin-bottom: 16px;
@@ -3260,23 +2652,6 @@ onMounted(async () => {
   color: #606266;
 }
 
-/* 第2步快速开始区域 */
-.quick-start-section {
-  background: linear-gradient(135deg, #f0f9ff 0%, #e8f5e8 100%);
-  padding: 16px;
-  border-radius: 8px;
-  margin-top: 16px;
-}
-
-.quick-start-section h4 {
-  margin-bottom: 12px !important;
-  color: #67C23A;
-}
-
-.current-config-summary {
-  margin-bottom: 8px;
-}
-
 .detection-page {
   padding: 24px;
   background: #f0f2f5;
@@ -3302,76 +2677,6 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   font-weight: 600;
-}
-
-.side-config-card {
-  margin-bottom: 16px;
-}
-
-.quick-presets {
-  margin-bottom: 24px;
-}
-
-.quick-presets h4 {
-  margin: 0 0 12px 0;
-  color: #303133;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.basic-config {
-  margin-bottom: 20px;
-}
-
-.basic-config h4 {
-  margin: 0 0 16px 0;
-  color: #303133;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.advanced-toggle {
-  text-align: center;
-}
-
-.action-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-}
-
-.action-card :deep(.el-card__body) {
-  padding: 24px;
-}
-
-.scan-action {
-  text-align: center;
-}
-
-.scan-info {
-  margin-bottom: 20px;
-}
-
-.scan-stats {
-  display: flex;
-  justify-content: center;
-  gap: 32px;
-  margin-bottom: 16px;
-}
-
-.stat-item {
-  text-align: center;
-}
-
-.stat-number {
-  display: block;
-  font-size: 24px;
-  font-weight: bold;
-  margin-bottom: 4px;
-}
-
-.stat-label {
-  font-size: 12px;
-  opacity: 0.8;
 }
 
 .scanning-stage {
@@ -3421,132 +2726,8 @@ onMounted(async () => {
   margin-left: 8px;
 }
 
-/* 新增样式 */
-.steps-card {
-  margin-bottom: 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-}
-
-.steps-card :deep(.el-steps) {
-  color: white;
-}
-
-.steps-card :deep(.el-step__title) {
-  color: white;
-}
-
-.steps-card :deep(.el-step__description) {
-  color: rgba(255, 255, 255, 0.8);
-}
-
 .config-step {
   margin-bottom: 24px;
-}
-
-.guide-card {
-  height: fit-content;
-}
-
-.guide-content {
-  padding: 0;
-}
-
-.guide-item {
-  margin-bottom: 16px;
-}
-
-.guide-item h4 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.guide-item p {
-  margin: 0;
-  font-size: 12px;
-  color: #909399;
-  line-height: 1.4;
-}
-
-.guide-tips h4 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.guide-tips ul {
-  margin: 0;
-  padding-left: 16px;
-  font-size: 12px;
-  color: #606266;
-}
-
-.guide-tips li {
-  margin-bottom: 4px;
-}
-
-.config-section {
-  margin-bottom: 32px;
-  padding-bottom: 20px;
-}
-
-.config-section:not(:last-child) {
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.config-section h4 {
-  margin: 0 0 20px 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  padding-bottom: 8px;
-  border-bottom: 2px solid #409EFF;
-  display: inline-block;
-}
-
-.preset-option {
-  text-align: center;
-  padding: 8px;
-}
-
-.preset-title {
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.preset-desc {
-  font-size: 12px;
-  color: #909399;
-}
-
-.form-help {
-  display: block;
-  font-size: 12px;
-  color: #909399;
-  margin-top: 4px;
-  line-height: 1.4;
-}
-
-.preview-card {
-  height: fit-content;
-}
-
-.config-preview {
-  padding: 0;
-}
-
-.preview-section {
-  margin-bottom: 20px;
-}
-
-.preview-section h4 {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
 }
 
 .path-list {
@@ -3566,363 +2747,6 @@ onMounted(async () => {
   font-size: 12px;
   color: #909399;
   font-style: italic;
-}
-
-.estimation-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-
-.estimation-item {
-  text-align: center;
-  padding: 12px;
-  background: #f8f9fa;
-  border-radius: 6px;
-}
-
-.estimation-value {
-  display: block;
-  font-size: 18px;
-  font-weight: bold;
-  color: #409EFF;
-  margin-bottom: 4px;
-}
-
-.estimation-label {
-  font-size: 12px;
-  color: #909399;
-}
-
-.confirm-card {
-  min-height: 600px;
-}
-
-.confirm-content {
-  padding: 8px 0;
-}
-
-.config-summary {
-  margin-bottom: 32px;
-}
-
-.config-summary h3 {
-  margin: 0 0 20px 0;
-  color: #303133;
-  font-size: 18px;
-  text-align: center;
-}
-
-.summary-card {
-  display: flex;
-  align-items: center;
-  padding: 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 8px;
-  color: white;
-  margin-bottom: 16px;
-}
-
-.summary-icon {
-  font-size: 24px;
-  margin-right: 12px;
-}
-
-.summary-content {
-  flex: 1;
-}
-
-.summary-title {
-  font-size: 12px;
-  opacity: 0.8;
-  margin-bottom: 4px;
-}
-
-.summary-value {
-  font-size: 16px;
-  font-weight: bold;
-  margin-bottom: 2px;
-}
-
-.summary-detail {
-  font-size: 11px;
-  opacity: 0.7;
-}
-
-.expected-results {
-  margin-bottom: 24px;
-}
-
-.expected-results h4 {
-  margin: 0 0 16px 0;
-  color: #303133;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.result-preview {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.result-item {
-  text-align: center;
-  padding: 16px;
-  background: #f8f9fa;
-  border-radius: 8px;
-}
-
-.detection-alerts {
-  margin-bottom: 32px;
-}
-
-.start-action {
-  text-align: center;
-}
-
-.step-navigation {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  margin-top: 24px;
-}
-
-/* 第2步新增样式 */
-.preset-description {
-  background: #f8f9fa;
-  padding: 12px;
-  border-radius: 6px;
-  margin-bottom: 16px;
-}
-
-.preset-description p {
-  margin: 0;
-  font-size: 13px;
-  color: #606266;
-  line-height: 1.5;
-}
-
-.preset-options {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.preset-card-wrapper {
-  width: 100%;
-  cursor: pointer;
-}
-
-.preset-card-wrapper.active .preset-card {
-  border-color: #409EFF;
-  background: linear-gradient(135deg, #e7f3ff 0%, #f0f8ff 100%);
-  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.2);
-}
-
-.preset-card {
-  display: flex;
-  align-items: flex-start;
-  padding: 16px;
-  border: 2px solid #e4e7ed;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  background: white;
-  min-height: 80px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.preset-card:hover {
-  border-color: #409EFF;
-  background: #f0f8ff;
-}
-
-.preset-icon {
-  font-size: 24px;
-  margin-right: 12px;
-  min-width: 30px;
-}
-
-.preset-content {
-  flex: 1;
-}
-
-.preset-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 4px;
-}
-
-.preset-desc {
-  font-size: 12px;
-  color: #606266;
-  margin-bottom: 8px;
-  line-height: 1.4;
-}
-
-.preset-specs {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-top: 8px;
-}
-
-.preset-specs span {
-  font-size: 11px;
-  color: #909399;
-  line-height: 1.3;
-}
-
-/* 选中状态的额外视觉反馈 */
-.preset-card-wrapper.active .preset-card .preset-title {
-  color: #409EFF;
-  font-weight: 700;
-}
-
-.preset-card-wrapper.active .preset-card .preset-icon {
-  transform: scale(1.1);
-}
-
-.tech-priority-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.tech-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 12px 8px;
-  border: 2px solid #e4e7ed;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  background: white;
-  min-height: 80px;
-  box-sizing: border-box;
-  position: relative;
-}
-
-.tech-item:hover {
-  border-color: #409EFF;
-  background: #f0f8ff;
-}
-
-.tech-item.active {
-  border-color: #67C23A;
-  background: linear-gradient(135deg, #f0f9ff 0%, #e8f5e8 100%);
-}
-
-.tech-icon {
-  font-size: 20px;
-  margin-bottom: 4px;
-}
-
-.tech-name {
-  font-size: 11px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 2px;
-  text-align: center;
-  line-height: 1.2;
-}
-
-.tech-priority {
-  font-size: 10px;
-  color: #909399;
-  text-align: center;
-}
-
-.port-strategy-container {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.port-strategy-item {
-  display: flex;
-  align-items: flex-start;
-  padding: 16px;
-  border: 2px solid #e4e7ed;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  background: white;
-  position: relative;
-}
-
-.port-strategy-item:hover {
-  border-color: #409EFF;
-  background: #f8f9fa;
-}
-
-.port-strategy-item.active {
-  border-color: #409EFF;
-  background: #f0f8ff;
-  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.2);
-}
-
-.strategy-radio {
-  margin-right: 12px;
-  margin-top: 2px;
-  flex-shrink: 0;
-}
-
-.radio-dot {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #dcdfe6;
-  border-radius: 50%;
-  background: white;
-  position: relative;
-  transition: all 0.2s ease;
-}
-
-.radio-dot.checked {
-  border-color: #409EFF;
-  background: #409EFF;
-}
-
-.radio-dot.checked::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: white;
-}
-
-.strategy-content {
-  flex: 1;
-}
-
-.strategy-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 4px;
-}
-
-.strategy-desc {
-  font-size: 12px;
-  color: #606266;
-  line-height: 1.4;
-}
-
-.strategy-preview {
-  padding: 0;
 }
 
 /* 端口显示样式 */
@@ -3959,44 +2783,9 @@ onMounted(async () => {
 }
 
 /* 响应式设计 */
-@media (max-width: 1400px) {
-  .tech-priority-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
-}
-
 @media (max-width: 1200px) {
   .config-stage .el-col:first-child {
     margin-bottom: 16px;
-  }
-  
-  .estimation-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .result-preview {
-    grid-template-columns: 1fr;
-  }
-  
-  .preset-options {
-    flex-direction: column;
-    gap: 10px;
-  }
-  
-  .tech-priority-grid {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-  }
-  
-  .tech-item {
-    min-height: 70px;
-    padding: 10px 6px;
-  }
-}
-
-@media (max-width: 900px) {
-  .tech-priority-grid {
-    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -4004,76 +2793,19 @@ onMounted(async () => {
   .detection-page {
     padding: 16px;
   }
-  
-  .header-content {
+
+  .compact-mode-alert__content,
+  .compact-action-content {
     flex-direction: column;
-    gap: 16px;
-    text-align: center;
+    align-items: flex-start;
   }
-  
-  .scan-stats {
-    flex-direction: column;
-    gap: 16px;
+
+  .compact-primary-actions {
+    width: 100%;
   }
-  
-  .preset-option {
-    padding: 12px 8px;
-  }
-  
-  .summary-card {
-    flex-direction: column;
-    text-align: center;
-  }
-  
-  .summary-icon {
-    margin-right: 0;
-    margin-bottom: 8px;
-  }
-  
-  .preset-options {
-    flex-direction: column;
-    gap: 8px;
-  }
-  
-  .tech-priority-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-  }
-  
-  .tech-item {
-    min-height: 60px;
-    padding: 8px 4px;
-  }
-  
-  .tech-name {
-    font-size: 10px;
-  }
-  
-  .tech-priority {
-    font-size: 9px;
-  }
-  
-  .config-section {
-    margin-bottom: 24px;
-    padding-bottom: 16px;
-  }
-  
-  .preset-card {
-    min-height: 70px;
-    padding: 12px;
-  }
-  
-  .preset-icon {
-    font-size: 20px;
-    margin-right: 10px;
-  }
-  
-  .preset-title {
-    font-size: 13px;
-  }
-  
-  .preset-desc {
-    font-size: 11px;
+
+  .compact-primary-actions .el-button {
+    width: 100%;
   }
 }
 

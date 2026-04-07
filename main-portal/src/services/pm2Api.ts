@@ -289,13 +289,21 @@ export class PM2ApiService {
   /**
    * 通过应用ID启动PM2进程（自动创建配置）
    */
-  async startProcessByAppId(appId: string, config?: Partial<PM2Config>): Promise<{
+  async startProcessByAppId(
+    appId: string,
+    config?: Partial<PM2Config>,
+    requestConfig: RequestConfig = {}
+  ): Promise<{
     appId: string
     appName: string
     pm2ProcessName: string
     config: PM2Config
   }> {
-    const response = await apiService.post(`/pm2/apps/${appId}/start`, { config }, this.withConfirmation())
+    const response = await apiService.post(
+      `/pm2/apps/${appId}/start`,
+      { config },
+      this.withConfirmation(requestConfig)
+    )
     return response as any
   }
 

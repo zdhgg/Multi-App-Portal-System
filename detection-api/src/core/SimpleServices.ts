@@ -7,7 +7,7 @@
 
 import { readdir, stat, writeFile, copyFile, unlink } from 'fs/promises'
 import { join, basename } from 'path'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, readdirSync } from 'fs'
 import { spawn, ChildProcess } from 'child_process'
 import ConfigService from '../services/configService'
 import type {
@@ -1530,9 +1530,11 @@ export class SimpleProcessManager implements ProcessManager {
           ...fullStackConfig.frontendConfig.environmentVariables
         }
 
-        // 🌐 使用相对路径 /api，让 Vite proxy 自动处理
-        // 这样无论是 localhost 还是局域网 IP 访问都能正常工作
-        const backendUrl = '/api'  // 使用相对路径，由 Vite proxy 代理
+        // 🌐 优先保留应用原有的 API 前缀，再切换到相对路径，避免把 /api/v1 误改成 /api
+        const backendUrl = this.resolveRelativeApiBasePath(
+          fullStackConfig.frontendConfig.workingDirectory,
+          frontendEnvVars
+        )
         const backendPort = fullStackConfig.backendConfig.port
 
         // 设置所有可能的前端API环境变量
@@ -1841,6 +1843,152 @@ export class SimpleProcessManager implements ProcessManager {
     } catch (error) {
       logger.error('Failed to create Vite proxy config', { error, workingDir, backendPort })
     }
+  }
+
+  private resolveRelativeApiBasePath(
+    workingDir: string,
+    environmentVariables: Record<string, string | undefined> = {}
+  ): string {
+    const apiEnvVarNames = [
+      'VITE_API_URL',
+      'VITE_API_BASE_URL',
+      'REACT_APP_API_URL',
+      'REACT_APP_API_BASE_URL',
+      'VUE_APP_API_URL',
+      'VUE_APP_API_BASE_URL',
+      'API_BASE_URL',
+      'API_URL',
+      'NEXT_PUBLIC_API_URL',
+      'NUXT_PUBLIC_API_BASE'
+    ]
+
+    for (const varName of apiEnvVarNames) {
+      const detectedPath = this.extractRelativeApiBasePath(environmentVariables[varName])
+      if (detectedPath) {
+        return detectedPath
+      }
+    }
+
+    return this.detectRelativeApiBasePathFromFiles(workingDir) ?? '/api'
+  }
+
+  private extractRelativeApiBasePath(value?: string | null): string | null {
+    if (typeof value !== 'string') {
+      return null
+    }
+
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return null
+    }
+
+    const matchApiPrefix = (input: string): string | null => {
+      const match = input.match(/\/api(?:\/v\d+)?/i)
+      return match ? match[0].toLowerCase() : null
+    }
+
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      try {
+        return matchApiPrefix(new URL(trimmed).pathname)
+      } catch {
+        return matchApiPrefix(trimmed)
+      }
+    }
+
+    return matchApiPrefix(trimmed)
+  }
+
+  private detectRelativeApiBasePathFromFiles(workingDir: string): string | null {
+    const candidateScores = new Map<string, number>()
+    const supportedExtensions = new Set([
+      '.js',
+      '.jsx',
+      '.ts',
+      '.tsx',
+      '.vue',
+      '.mjs',
+      '.cjs',
+      '.json',
+      '.env'
+    ])
+    const skipDirs = new Set(['node_modules', 'dist', 'build', '.git', '.next', '.nuxt', 'coverage'])
+    const maxDepth = 3
+    const maxFileSizeBytes = 256 * 1024
+
+    const visit = (dirPath: string, depth: number) => {
+      if (depth > maxDepth || !existsSync(dirPath)) {
+        return
+      }
+
+      let entries: Array<{
+        name: string
+        isDirectory(): boolean
+      }>
+      try {
+        entries = readdirSync(dirPath, { withFileTypes: true, encoding: 'utf8' }) as Array<{
+          name: string
+          isDirectory(): boolean
+        }>
+      } catch {
+        return
+      }
+
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          if (!skipDirs.has(entry.name)) {
+            visit(join(dirPath, entry.name), depth + 1)
+          }
+          continue
+        }
+
+        const extension = entry.name.startsWith('.env')
+          ? '.env'
+          : (entry.name.includes('.') ? entry.name.slice(entry.name.lastIndexOf('.')).toLowerCase() : '')
+
+        if (!supportedExtensions.has(extension)) {
+          continue
+        }
+
+        const filePath = join(dirPath, entry.name)
+        let content = ''
+        try {
+          const fileContent = readFileSync(filePath, 'utf8')
+          if (Buffer.byteLength(fileContent, 'utf8') > maxFileSizeBytes) {
+            continue
+          }
+          content = fileContent
+        } catch {
+          continue
+        }
+
+        const matches = content.match(/\/api(?:\/v\d+)?/gi) ?? []
+        for (const rawMatch of matches) {
+          const normalizedMatch = rawMatch.toLowerCase()
+          candidateScores.set(normalizedMatch, (candidateScores.get(normalizedMatch) ?? 0) + 1)
+        }
+      }
+    }
+
+    visit(workingDir, 0)
+
+    const rankedCandidates = [...candidateScores.entries()].sort((left, right) => {
+      const [leftValue, leftScore] = left
+      const [rightValue, rightScore] = right
+      const leftDepth = leftValue.split('/').filter(Boolean).length
+      const rightDepth = rightValue.split('/').filter(Boolean).length
+
+      if (rightDepth !== leftDepth) {
+        return rightDepth - leftDepth
+      }
+
+      if (rightScore !== leftScore) {
+        return rightScore - leftScore
+      }
+
+      return rightValue.length - leftValue.length
+    })
+
+    return rankedCandidates[0]?.[0] ?? null
   }
 
   private buildViteProxyConfigContent(backendTarget: string, baseConfigFileName: string | null): string {

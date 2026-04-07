@@ -197,7 +197,6 @@ const aboutDialogVisible = ref(false)
 
 // Phase 1 RBAC: 管理员菜单（全部功能）
 const adminMenuItems: MenuItem[] = [
-  { path: '/detection',  title: '应用检测', icon: '🔍', description: '智能检测 Web 应用' },
   { path: '/management', title: '应用管理', icon: '🧩', description: '管理已检测应用' },
   { path: '/ports',      title: '端口管理', icon: '⚙️', description: '端口分配、规则与配置' },
   { path: '/pm2',        title: 'PM2 管理', icon: '🧭', description: 'PM2 进程管理与可视化' },
@@ -206,7 +205,6 @@ const adminMenuItems: MenuItem[] = [
 
 // Phase 1 RBAC: 操作员菜单（不含系统设置）
 const operatorMenuItems: MenuItem[] = [
-  { path: '/detection',  title: '应用检测', icon: '🔍', description: '智能检测 Web 应用' },
   { path: '/management', title: '应用管理', icon: '🧩', description: '管理已检测应用（只读+操作）' },
   { path: '/ports',      title: '端口管理', icon: '⚙️', description: '端口状态查看（只读）' },
   { path: '/pm2',        title: 'PM2 管理', icon: '🧭', description: 'PM2 进程查看（只读）' }
@@ -296,7 +294,7 @@ onMounted(() => {
   margin-right: 0;
 }
 
-.admin-sidebar.collapsed { width: 72px; }
+.admin-sidebar.collapsed { width: 88px; }
 
 /* 头部 */
 .sidebar-header {
@@ -397,7 +395,105 @@ onMounted(() => {
 
 /* 收起态样式覆盖（桌面端） */
 @media (min-width: 769px) {
-  .admin-sidebar.collapsed .nav-item { justify-content: center; padding: 12px 0; margin: 0; }
-  .admin-sidebar.collapsed .nav-icon { width: 24px; text-align: center; }
+  .admin-sidebar.collapsed .sidebar-header {
+    padding: 16px 10px 18px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .admin-sidebar.collapsed .logo-area {
+    flex: none;
+    justify-content: center;
+  }
+
+  .admin-sidebar.collapsed .logo-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 14px;
+    box-shadow: 0 10px 22px rgba(102, 126, 234, 0.22);
+  }
+
+  .admin-sidebar.collapsed .collapse-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 8px 18px rgba(148, 163, 184, 0.18);
+  }
+
+  .admin-sidebar.collapsed .sidebar-nav {
+    padding: 18px 0 20px;
+  }
+
+  .admin-sidebar.collapsed .nav-section {
+    margin-bottom: 18px;
+    padding: 0 10px;
+  }
+
+  .admin-sidebar.collapsed .nav-item {
+    width: 56px;
+    min-height: 56px;
+    justify-content: center;
+    padding: 0;
+    margin: 0 auto 10px;
+    border-radius: 16px;
+  }
+
+  .admin-sidebar.collapsed .nav-item:last-child {
+    margin-bottom: 0;
+  }
+
+  .admin-sidebar.collapsed .nav-item:hover {
+    transform: translateY(-1px);
+  }
+
+  .admin-sidebar.collapsed .nav-icon {
+    width: auto;
+    font-size: 20px;
+    text-align: center;
+  }
+
+  .admin-sidebar.collapsed .user-section {
+    padding-top: 16px;
+  }
+
+  .admin-sidebar.collapsed .user-info {
+    width: 56px;
+    min-height: 56px;
+    padding: 0;
+    margin: 0 auto 12px;
+    justify-content: center;
+    border-radius: 16px;
+    box-shadow: 0 8px 18px rgba(148, 163, 184, 0.12);
+  }
+
+  .admin-sidebar.collapsed .user-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 14px;
+  }
+
+  .admin-sidebar.collapsed .user-actions {
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .admin-sidebar.collapsed .action-btn {
+    width: 56px;
+    min-height: 48px;
+    justify-content: center;
+    padding: 0;
+    margin: 0 auto;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.76);
+    border: 1px solid rgba(226, 232, 240, 0.9);
+  }
+
+  .admin-sidebar.collapsed .action-btn:hover {
+    transform: translateY(-1px);
+  }
 }
 </style>

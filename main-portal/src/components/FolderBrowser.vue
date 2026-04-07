@@ -92,14 +92,21 @@
       <div class="browser-footer">
         <div class="selected-path">
           <strong>已选择:</strong> 
-          <span>{{ selectedPath || '未选择' }}</span>
+          <span>{{ effectiveSelectedPath || '未选择' }}</span>
         </div>
         <div class="footer-actions">
+          <button
+            @click="selectCurrentDirectory"
+            class="btn btn-secondary"
+            :disabled="loading || !currentData?.currentPath"
+          >
+            选择当前目录
+          </button>
           <button @click="closeModal" class="btn btn-secondary">取消</button>
           <button 
             @click="confirmSelection" 
             class="btn btn-primary"
-            :disabled="!selectedPath || loading"
+            :disabled="!effectiveSelectedPath || loading"
           >
             确认选择
           </button>
@@ -150,6 +157,10 @@ const filteredItems = computed(() => {
     
     return true
   })
+})
+
+const effectiveSelectedPath = computed(() => {
+  return selectedPath.value || currentData.value?.currentPath || ''
 })
 
 // 方法
@@ -214,6 +225,12 @@ const selectItem = (item: any) => {
   }
 }
 
+const selectCurrentDirectory = () => {
+  if (currentData.value?.currentPath) {
+    selectedPath.value = currentData.value.currentPath
+  }
+}
+
 const navigateToItem = async (item: any) => {
   if (item.type === 'directory' && item.hasPermission) {
     await loadDirectory(item.path)
@@ -221,13 +238,15 @@ const navigateToItem = async (item: any) => {
 }
 
 const confirmSelection = async () => {
-  if (selectedPath.value) {
+  const targetPath = effectiveSelectedPath.value
+
+  if (targetPath) {
     // 在确认选择前再次验证路径
     try {
-      const response = await filesystemApiService.validatePath(selectedPath.value)
+      const response = await filesystemApiService.validatePath(targetPath)
       if (response.success && response.data) {
         if (response.data.isValid) {
-          emit('select', selectedPath.value)
+          emit('select', targetPath)
         } else {
           error.value = `所选路径无效: ${response.data.errorMessage}`
         }
@@ -261,7 +280,12 @@ const formatFileSize = (size?: number): string => {
 
 // 生命周期
 onMounted(() => {
-  loadDirectory(props.initialPath)
+  if (props.initialPath) {
+    loadDirectory(props.initialPath)
+    return
+  }
+
+  goToHome()
 })
 
 // 监听路径变化
@@ -283,7 +307,7 @@ watch(() => props.initialPath, (newPath) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 4000;
 }
 
 .folder-browser {

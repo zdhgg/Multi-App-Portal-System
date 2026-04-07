@@ -2,6 +2,25 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.3.3] - 2026-04-07
+
+### Added
+
+- 新增网页式服务器目录浏览器，在局域网远程访问时可替代后端原生目录选择，并统一接入手动添加、批量导入、备份路径和路径白名单配置。
+- 新增应用管理到端口管理的冲突定位提示，启动失败时可直接跳转并聚焦冲突端口。
+
+### Changed
+
+- 将检测页进一步收口为低频批量导入工具，首页、空状态和 404 推荐入口统一优先引导到“应用管理 > 添加应用”。
+- 将根项目、前端、后端、系统配置、启动脚本模板和主要发布文档版本统一提升到 `1.3.3`。
+
+### Fixed
+
+- 修复 base64url 编码 JWT 无法正确恢复登录态，导致“记住我”场景下认证状态丢失的问题。
+- 修复“记住我”仅应回填最近一次持久化用户名，但登录弹窗有时不会稳定预填的问题。
+- 修复为全栈应用生成 Vite 代理配置时，原有 `/api/v1` 等版本化前缀可能被误改为 `/api` 的问题。
+- 修复网页目录浏览器默认目录仅检查白名单、不检查实际可读性，可能落入不可访问目录的问题。
+
 ## [1.3.2] - 2026-03-31
 
 ### Added
@@ -155,6 +174,7 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.3.3]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.3
 [1.3.2]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.2
 [1.3.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.1
 [1.3.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.0

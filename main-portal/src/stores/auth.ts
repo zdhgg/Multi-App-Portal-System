@@ -11,6 +11,7 @@ import {
   updateStoredTokens,
   updateStoredUserData
 } from '@/utils/authStorage'
+import { decodeJwtPayload } from '@/utils/jwt'
 
 // 用户信息接口
 export interface User {
@@ -130,21 +131,22 @@ const restoreAuthData = async (): Promise<boolean> => {
       try {
         const tokenParts = token.split('.')
         if (tokenParts.length === 3) {
-          try {
-            const payload = JSON.parse(atob(tokenParts[1]))
-            const now = Math.floor(Date.now() / 1000)
+          const payload = decodeJwtPayload<{ exp?: number }>(token)
 
-            if (payload.exp) {
-              tokenExpiresAt.value = new Date(payload.exp * 1000)
-            }
-
-            if (payload.exp && (now - payload.exp) > 3600) {
-              console.warn('JWT Token已过期超过1小时，清除认证数据')
-              clearAuthData()
-              return false
-            }
-          } catch (jwtError) {
+          if (!payload) {
             console.warn('JWT Token格式无效，清除认证数据')
+            clearAuthData()
+            return false
+          }
+
+          const now = Math.floor(Date.now() / 1000)
+
+          if (payload.exp) {
+            tokenExpiresAt.value = new Date(payload.exp * 1000)
+          }
+
+          if (payload.exp && (now - payload.exp) > 3600) {
+            console.warn('JWT Token已过期超过1小时，清除认证数据')
             clearAuthData()
             return false
           }

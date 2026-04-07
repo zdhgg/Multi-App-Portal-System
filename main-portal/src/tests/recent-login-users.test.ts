@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   MAX_RECENT_LOGIN_USERS,
   clearRecentLoginUsernames,
+  readMostRecentLoginUsername,
   readRecentLoginUserSuggestions,
   readRecentLoginUsernames,
   saveRecentLoginUsername
@@ -49,6 +50,19 @@ describe('recentLoginUsers', () => {
       { value: 'operator' },
       { value: 'admin' }
     ])
+  })
+
+  it('应支持读取最近一次持久化登录用户名用于记住我回填', () => {
+    vi.useFakeTimers()
+
+    vi.setSystemTime(new Date(2026, 3, 6, 9, 0, 0))
+    saveRecentLoginUsername('session-user', false)
+
+    vi.setSystemTime(new Date(2026, 3, 6, 9, 1, 0))
+    saveRecentLoginUsername('remembered-admin', true)
+
+    expect(readMostRecentLoginUsername()).toBe('remembered-admin')
+    expect(readMostRecentLoginUsername({ persistentOnly: true })).toBe('remembered-admin')
   })
 
   it('清空历史后应不再返回任何建议', () => {

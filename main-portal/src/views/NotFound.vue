@@ -85,10 +85,10 @@
               <el-button
                 link
                 type="primary"
-                @click="$router.push('/detection')"
+                @click="$router.push({ path: '/management', query: { action: 'add' } })"
               >
                 <el-icon><Search /></el-icon>
-                应用检测 - 检测新应用
+                添加应用 - 手动接入新应用
               </el-button>
 
               <el-button

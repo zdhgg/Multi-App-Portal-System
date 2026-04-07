@@ -46,8 +46,10 @@
 import { reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ApiError } from '@/services/api'
-import { filesystemApiService } from '@/services/filesystemApi'
-import { getNativeDirectoryPickerFailureMessage } from '@/utils/directoryPicker'
+import {
+  getNativeDirectoryPickerFailureMessage,
+  selectDirectoryWithBestEffort
+} from '@/utils/directoryPicker'
 
 type PathAccessSettings = {
   allowWorkspaceParent: boolean
@@ -117,17 +119,13 @@ const pickFolder = async (index: number) => {
   pickingIndex.value = index
   try {
     const currentPath = model.allowedBasePaths[index]?.trim()
-    const response = await filesystemApiService.selectFolder(currentPath || undefined, true)
-
-    if (!response.success || !response.data) {
-      throw new Error(response.message || '目录选择失败')
-    }
-    if (response.data.cancelled) {
+    const selection = await selectDirectoryWithBestEffort(currentPath || undefined, true)
+    if (selection.cancelled) {
       ElMessage.info('已取消目录选择')
       return
     }
 
-    const selectedPath = typeof response.data.path === 'string' ? response.data.path.trim() : ''
+    const selectedPath = typeof selection.path === 'string' ? selection.path.trim() : ''
     if (!selectedPath) {
       throw new Error('未获取到有效目录路径')
     }
@@ -150,17 +148,13 @@ const addPathByPicker = async () => {
 
   try {
     const fallbackStartPath = model.allowedBasePaths.find(item => item.trim().length > 0)?.trim()
-    const response = await filesystemApiService.selectFolder(fallbackStartPath || undefined, true)
-
-    if (!response.success || !response.data) {
-      throw new Error(response.message || '目录选择失败')
-    }
-    if (response.data.cancelled) {
+    const selection = await selectDirectoryWithBestEffort(fallbackStartPath || undefined, true)
+    if (selection.cancelled) {
       ElMessage.info('已取消目录选择')
       return
     }
 
-    const selectedPath = typeof response.data.path === 'string' ? response.data.path.trim() : ''
+    const selectedPath = typeof selection.path === 'string' ? selection.path.trim() : ''
     if (!selectedPath) {
       throw new Error('未获取到有效目录路径')
     }

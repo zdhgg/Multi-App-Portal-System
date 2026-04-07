@@ -167,8 +167,8 @@ const isMobile = ref(false)
 // 页面标题映射
 const pageTitleMap: Record<string, PageConfig> = {
   '/detection': {
-    title: '应用检测',
-    description: '智能检测 Web 应用'
+    title: '批量导入',
+    description: '低频使用：批量发现并导入工作区项目'
   },
   '/management': {
     title: '应用管理',
@@ -201,7 +201,7 @@ const breadcrumbItems = computed((): BreadcrumbItem[] => {
   const path = route.path
 
   if (path.startsWith('/detection')) {
-    items.push({ title: '应用检测', path: '/detection' })
+    items.push({ title: '批量导入', path: '/detection' })
   } else if (path.startsWith('/management')) {
     items.push({ title: '应用管理', path: '/management' })
   } else if (path.startsWith('/admin') || path.startsWith('/config')) {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SimpleProcessManager } from '../SimpleServices'
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -68,5 +68,41 @@ describe('SimpleProcessManager environment handling', () => {
     } finally {
       await rm(tempDir, { recursive: true, force: true })
     }
+  })
+
+  it('preserves versioned API prefixes discovered from frontend source files', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'portal-api-prefix-source-'))
+
+    try {
+      await mkdir(join(tempDir, 'src', 'utils'), { recursive: true })
+      await writeFile(
+        join(tempDir, 'src', 'utils', 'request.js'),
+        [
+          'import axios from "axios";',
+          'export default axios.create({',
+          '  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8003/api/v1",',
+          '  timeout: 10000',
+          '});',
+          ''
+        ].join('\n'),
+        'utf-8'
+      )
+
+      const manager = new SimpleProcessManager()
+      const resolvedBasePath = (manager as any).resolveRelativeApiBasePath(tempDir, {})
+
+      expect(resolvedBasePath).toBe('/api/v1')
+    } finally {
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it('normalizes absolute API env vars to relative proxy paths', () => {
+    const manager = new SimpleProcessManager()
+    const resolvedBasePath = (manager as any).resolveRelativeApiBasePath(process.cwd(), {
+      VITE_API_BASE_URL: 'http://localhost:8123/api/v2'
+    })
+
+    expect(resolvedBasePath).toBe('/api/v2')
   })
 })

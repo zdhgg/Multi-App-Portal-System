@@ -19,6 +19,7 @@
         </div>
 
         <div class="list-header-actions">
+          <span v-if="focusedPortText" class="header-pill header-pill-focus">聚焦端口 {{ focusedPortText }}</span>
           <span class="header-pill">{{ occupiedPorts.length }} 个端口</span>
           <el-button
             size="small"
@@ -32,15 +33,20 @@
       </div>
 
       <el-table
+        ref="tableRef"
         :data="occupiedPorts"
         size="small"
         v-loading="loading.refresh"
         empty-text="暂无占用端口数据"
         class="port-table"
+        :row-class-name="getRowClassName"
       >
         <el-table-column prop="port" label="端口" width="100">
           <template #default="{ row }">
-            <span class="port-number-pill">{{ row.port }}</span>
+            <div class="port-cell">
+              <span class="port-number-pill" :class="{ 'port-number-pill-focused': isFocusedPort(row) }">{{ row.port }}</span>
+              <span v-if="isFocusedPort(row)" class="focus-port-badge">焦点</span>
+            </div>
           </template>
         </el-table-column>
 
@@ -124,7 +130,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, onMounted, onUnmounted } from 'vue'
+import { computed, reactive, onMounted, onUnmounted, nextTick, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { portRealtimeWebSocket, type PortStatistics } from '@/services/portManagementApi'
@@ -132,7 +138,12 @@ import { appsApiService } from '@/services/appsApi'
 import { usePortMonitoringStore } from '@/stores/portMonitoring'
 import { getStoredAccessToken } from '@/utils/authStorage'
 
+const props = defineProps<{
+  focusPort?: number | null
+}>()
+
 const portStore = usePortMonitoringStore()
+const tableRef = ref<{ $el?: HTMLElement } | null>(null)
 
 const loading = reactive({
   refresh: false,
@@ -148,6 +159,37 @@ const occupiedPorts = computed(() => {
     return a.port - b.port
   })
 })
+
+const focusedPortText = computed(() => (
+  typeof props.focusPort === 'number' && props.focusPort > 0
+    ? String(props.focusPort)
+    : ''
+))
+
+const isFocusedPort = (row: { port: number }) => (
+  typeof props.focusPort === 'number' &&
+  props.focusPort > 0 &&
+  row.port === props.focusPort
+)
+
+const getRowClassName = ({ row }: { row: { port: number } }) => (
+  isFocusedPort(row) ? 'port-row-focused' : ''
+)
+
+const scrollToFocusedPort = async () => {
+  if (!focusedPortText.value) {
+    return
+  }
+
+  await nextTick()
+
+  const root = tableRef.value?.$el
+  const rowElement = root?.querySelector('.el-table__body tr.port-row-focused') as HTMLElement | null
+  rowElement?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'center'
+  })
+}
 
 const isManagedAppPort = (row: { appId?: string }) => Boolean(row.appId && row.appId !== 'system')
 
@@ -278,10 +320,21 @@ defineExpose({
 
 onMounted(() => {
   refreshPortStatus()
+  void scrollToFocusedPort()
 
   portRealtimeWebSocket.on('port_statistics', handleRealtimeStatistics)
   portRealtimeWebSocket.on('port_allocation', handlePortAllocation)
 })
+
+watch(
+  () => `${focusedPortText.value}|${occupiedPorts.value.map((row) => row.port).join(',')}`,
+  () => {
+    void scrollToFocusedPort()
+  },
+  {
+    flush: 'post'
+  }
+)
 
 onUnmounted(() => {
   portRealtimeWebSocket.off('port_statistics', handleRealtimeStatistics)
@@ -361,6 +414,12 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
+.header-pill-focus {
+  border-color: rgba(245, 158, 11, 0.24);
+  background: rgba(255, 247, 237, 0.9);
+  color: var(--warning-500);
+}
+
 .header-refresh {
   min-height: 38px;
   border-radius: 999px;
@@ -385,6 +444,18 @@ onUnmounted(() => {
   padding-bottom: 14px;
 }
 
+.port-table :deep(.el-table__body tr.port-row-focused > td.el-table__cell) {
+  background: rgba(255, 247, 237, 0.82);
+}
+
+.port-table :deep(.el-table__body tr.port-row-focused > td.el-table__cell:first-child) {
+  box-shadow: inset 4px 0 0 rgba(245, 158, 11, 0.9);
+}
+
+.port-table :deep(.el-table__body tr.port-row-focused:hover > td.el-table__cell) {
+  background: rgba(255, 247, 237, 0.92);
+}
+
 .port-number-pill {
   display: inline-flex;
   align-items: center;
@@ -395,6 +466,30 @@ onUnmounted(() => {
   color: var(--primary-600);
   font-family: var(--font-number);
   font-size: 13px;
+  font-weight: 700;
+}
+
+.port-number-pill-focused {
+  background: rgba(245, 158, 11, 0.16);
+  color: #b45309;
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.24);
+}
+
+.port-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.focus-port-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--warning-500);
+  font-size: 11px;
   font-weight: 700;
 }
 

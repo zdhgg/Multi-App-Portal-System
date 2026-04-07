@@ -6,7 +6,8 @@
 import { Router, Request, Response } from 'express'
 import { existsSync, accessSync, constants, statSync } from 'fs'
 import { readdir, stat } from 'fs/promises'
-import { normalize, join, extname, basename } from 'path'
+import { normalize, join, extname, basename, dirname } from 'path'
+import { homedir } from 'os'
 import { spawn } from 'child_process'
 import { logger } from '../../utils/logger.js'
 import { pathSecurityManager } from '../../core/security/PathSecurityManager.js'
@@ -22,8 +23,11 @@ export class FilesystemController {
   private setupRoutes(): void {
     // 检查路径可访问性
     this.router.post('/check-path', this.checkPath.bind(this))
+    this.router.post('/validate', this.validatePath.bind(this))
 
     // 浏览目录
+    this.router.get('/home', this.getHomeDirectory.bind(this))
+    this.router.get('/browse', this.browseDirectory.bind(this))
     this.router.post('/browse', this.browseDirectory.bind(this))
 
     // 原生目录选择（Windows）
@@ -39,13 +43,27 @@ export class FilesystemController {
       const script = [
         "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
         "Add-Type -AssemblyName System.Windows.Forms",
+        "Add-Type -AssemblyName System.Drawing",
+        "$owner = New-Object System.Windows.Forms.Form",
+        "$owner.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual",
+        "$owner.Location = New-Object System.Drawing.Point(-32000, -32000)",
+        "$owner.Size = New-Object System.Drawing.Size(1, 1)",
+        "$owner.ShowInTaskbar = $false",
+        "$owner.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedToolWindow",
+        "$owner.TopMost = $true",
+        "$owner.Opacity = 0",
+        "$owner.Show()",
+        "$owner.Activate()",
+        "[System.Windows.Forms.Application]::DoEvents()",
         "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
         "$dialog.Description = '请选择扫描目录'",
         '$dialog.ShowNewFolderButton = $false',
         "$dialog.RootFolder = [System.Environment+SpecialFolder]::MyComputer",
         `$initialPath = '${escapedStartPath}'`,
         "if ($initialPath -and (Test-Path -LiteralPath $initialPath)) { $dialog.SelectedPath = $initialPath }",
-        "$result = $dialog.ShowDialog()",
+        "$result = $dialog.ShowDialog($owner)",
+        "$owner.Close()",
+        "$owner.Dispose()",
         "if ($result -eq [System.Windows.Forms.DialogResult]::OK -and $dialog.SelectedPath) {",
         "  (@{ cancelled = $false; path = $dialog.SelectedPath } | ConvertTo-Json -Compress) | Write-Output",
         "} else {",
@@ -106,12 +124,154 @@ export class FilesystemController {
     })
   }
 
+  private buildAccessRequest(
+    req: Request,
+    path: string,
+    operation: 'read' | 'write' | 'execute' | 'list',
+    requestId: string
+  ) {
+    return {
+      path,
+      operation,
+      user: {
+        id: 'filesystem-controller',
+        role: 'system',
+        permissions: ['file:read', 'file:write', 'file:execute', 'file:list'] as string[]
+      },
+      context: {
+        requestId,
+        ip: req.ip,
+        userAgent: req.headers['user-agent']
+      }
+    }
+  }
+
+  private getDefaultBrowsePath(): string {
+    const candidates = [
+      process.env.DEFAULT_WORKSPACE_PATH?.trim(),
+      process.cwd(),
+      homedir()
+    ].filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+
+    for (const candidate of candidates) {
+      const normalizedCandidate = normalize(candidate)
+      if (existsSync(normalizedCandidate)) {
+        return normalizedCandidate
+      }
+    }
+
+    return process.cwd()
+  }
+
+  private async evaluatePathState(
+    req: Request,
+    rawPath: string | undefined,
+    operation: 'read' | 'write' | 'execute' | 'list',
+    requestId: string
+  ): Promise<{
+    normalizedPath: string
+    exists: boolean
+    isDirectory: boolean
+    isFile: boolean
+    accessible: boolean
+    policyAllowed: boolean
+    policyReason?: string
+    errorMessage?: string
+  }> {
+    const normalizedPath = normalize((rawPath || '').trim())
+
+    if (!normalizedPath) {
+      return {
+        normalizedPath: '',
+        exists: false,
+        isDirectory: false,
+        isFile: false,
+        accessible: false,
+        policyAllowed: false,
+        errorMessage: '路径参数不能为空'
+      }
+    }
+
+    const exists = existsSync(normalizedPath)
+    if (!exists) {
+      return {
+        normalizedPath,
+        exists: false,
+        isDirectory: false,
+        isFile: false,
+        accessible: false,
+        policyAllowed: false,
+        errorMessage: '路径不存在'
+      }
+    }
+
+    let isDirectory = false
+    let isFile = false
+    let fsAccessible = false
+
+    try {
+      const stats = statSync(normalizedPath)
+      isDirectory = stats.isDirectory()
+      isFile = stats.isFile()
+      accessSync(normalizedPath, constants.R_OK)
+      fsAccessible = true
+    } catch (error) {
+      logger.warn('路径无法访问:', { path: normalizedPath, error })
+    }
+
+    const policyCheck = await pathSecurityManager.checkAccess(
+      this.buildAccessRequest(req, normalizedPath, operation, requestId)
+    )
+
+    const accessible = fsAccessible && policyCheck.allowed
+
+    return {
+      normalizedPath,
+      exists: true,
+      isDirectory,
+      isFile,
+      accessible,
+      policyAllowed: policyCheck.allowed,
+      policyReason: policyCheck.reason
+    }
+  }
+
+  async getHomeDirectory(req: Request, res: Response): Promise<void> {
+    try {
+      const directory = this.getDefaultBrowsePath()
+      const pathState = await this.evaluatePathState(req, directory, 'list', 'filesystem-home')
+
+      if (!pathState.exists || !pathState.policyAllowed || !pathState.accessible) {
+        res.status(403).json({
+          success: false,
+          error: pathState.policyReason || '默认目录不可访问'
+        })
+        return
+      }
+
+      res.json({
+        success: true,
+        data: {
+          path: pathState.normalizedPath,
+          name: basename(pathState.normalizedPath) || pathState.normalizedPath
+        }
+      })
+    } catch (error) {
+      logger.error('获取默认浏览目录失败:', error)
+      res.status(500).json({
+        success: false,
+        error: '获取默认目录失败',
+        details: error instanceof Error ? error.message : '未知错误'
+      })
+    }
+  }
+
   /**
    * 检查路径是否可访问
    */
   async checkPath(req: Request, res: Response): Promise<void> {
     try {
-      const { path } = req.body
+      const path = typeof req.body?.path === 'string' ? req.body.path.trim() : ''
 
       if (!path) {
         res.status(400).json({
@@ -121,71 +281,31 @@ export class FilesystemController {
         return
       }
 
-      // 规范化路径
-      const normalizedPath = normalize(path)
+      const pathState = await this.evaluatePathState(req, path, 'execute', 'filesystem-check-path')
 
-      // 检查路径是否存在
-      const exists = existsSync(normalizedPath)
-
-      if (!exists) {
+      if (!pathState.exists) {
         res.json({
           success: false,
           data: {
             accessible: false,
             exists: false,
-            path: normalizedPath,
-            reason: '路径不存在'
+            path: pathState.normalizedPath,
+            reason: pathState.errorMessage || '路径不存在'
           }
         })
         return
       }
 
-      // 检查是否可访问
-      let accessible = false
-      let isDirectory = false
-      let isFile = false
-      let policyAllowed = true
-      let policyReason = ''
-
-      try {
-        accessSync(normalizedPath, constants.R_OK)
-        accessible = true
-
-        const stats = statSync(normalizedPath)
-        isDirectory = stats.isDirectory()
-        isFile = stats.isFile()
-      } catch (error) {
-        logger.warn('路径无法访问:', { path: normalizedPath, error })
-      }
-
-      // 与 PM2 相同的路径白名单策略，避免“检测可访问但启动失败”的体验
-      if (accessible) {
-        const policyCheck = await pathSecurityManager.checkAccess({
-          path: normalizedPath,
-          operation: 'execute',
-          user: {
-            id: 'filesystem-controller',
-            role: 'system',
-            permissions: ['file:read', 'file:write', 'file:execute']
-          },
-          context: { requestId: 'filesystem-check-path', ip: req.ip, userAgent: req.headers['user-agent'] }
-        })
-
-        policyAllowed = policyCheck.allowed
-        policyReason = policyCheck.reason || ''
-        accessible = accessible && policyAllowed
-      }
-
       res.json({
         success: true,
         data: {
-          accessible,
+          accessible: pathState.accessible,
           exists: true,
-          isDirectory,
-          isFile,
-          path: normalizedPath,
-          policyAllowed,
-          policyReason: policyAllowed ? undefined : policyReason
+          isDirectory: pathState.isDirectory,
+          isFile: pathState.isFile,
+          path: pathState.normalizedPath,
+          policyAllowed: pathState.policyAllowed,
+          policyReason: pathState.policyAllowed ? undefined : pathState.policyReason
         }
       })
     } catch (error) {
@@ -193,6 +313,41 @@ export class FilesystemController {
       res.status(500).json({
         success: false,
         error: '检查路径失败',
+        details: error instanceof Error ? error.message : '未知错误'
+      })
+    }
+  }
+
+  async validatePath(req: Request, res: Response): Promise<void> {
+    try {
+      const path = typeof req.body?.path === 'string' ? req.body.path.trim() : ''
+
+      if (!path) {
+        res.status(400).json({
+          success: false,
+          error: '路径参数不能为空'
+        })
+        return
+      }
+
+      const pathState = await this.evaluatePathState(req, path, 'list', 'filesystem-validate')
+
+      res.json({
+        success: true,
+        data: {
+          path: pathState.normalizedPath,
+          exists: pathState.exists,
+          isDirectory: pathState.isDirectory,
+          isAccessible: pathState.accessible,
+          isValid: pathState.exists && pathState.isDirectory && pathState.accessible,
+          errorMessage: pathState.errorMessage || (!pathState.policyAllowed ? pathState.policyReason : undefined)
+        }
+      })
+    } catch (error) {
+      logger.error('验证路径失败:', error)
+      res.status(500).json({
+        success: false,
+        error: '验证路径失败',
         details: error instanceof Error ? error.message : '未知错误'
       })
     }
@@ -281,30 +436,37 @@ export class FilesystemController {
    */
   async browseDirectory(req: Request, res: Response): Promise<void> {
     try {
-      const { path } = req.body
+      const rawPath =
+        typeof req.query?.path === 'string' ? req.query.path :
+        typeof req.body?.path === 'string' ? req.body.path :
+        ''
+      const showHiddenRaw =
+        typeof req.query?.showHidden === 'string' ? req.query.showHidden :
+        typeof req.body?.showHidden === 'string' ? req.body.showHidden :
+        typeof req.body?.showHidden === 'boolean' ? String(req.body.showHidden) :
+        'false'
+      const showHidden = ['1', 'true', 'on', 'yes'].includes(showHiddenRaw.trim().toLowerCase())
 
-      if (!path) {
-        res.status(400).json({
-          success: false,
-          error: '路径参数不能为空'
-        })
-        return
-      }
+      const targetPath = rawPath.trim() || this.getDefaultBrowsePath()
+      const pathState = await this.evaluatePathState(req, targetPath, 'list', 'filesystem-browse')
 
-      // 规范化路径
-      const normalizedPath = normalize(path)
-
-      // 检查路径是否存在且为目录
-      if (!existsSync(normalizedPath)) {
+      if (!pathState.exists) {
         res.status(404).json({
           success: false,
-          error: '目录不存在'
+          error: pathState.errorMessage || '目录不存在'
         })
         return
       }
 
-      const stats = statSync(normalizedPath)
-      if (!stats.isDirectory()) {
+      if (!pathState.policyAllowed || !pathState.accessible) {
+        res.status(403).json({
+          success: false,
+          error: pathState.policyReason || '目录不可访问'
+        })
+        return
+      }
+
+      if (!pathState.isDirectory) {
         res.status(400).json({
           success: false,
           error: '指定路径不是目录'
@@ -312,13 +474,84 @@ export class FilesystemController {
         return
       }
 
-      // TODO: 实现目录内容读取和返回
+      const directoryEntries = await readdir(pathState.normalizedPath, { withFileTypes: true })
+      const items: Array<{
+        name: string
+        path: string
+        type: 'file' | 'directory'
+        size?: number
+        lastModified?: string
+        isHidden: boolean
+        hasPermission: boolean
+      }> = []
+
+      for (const entry of directoryEntries) {
+        const itemPath = normalize(join(pathState.normalizedPath, entry.name))
+        const isHidden = entry.name.startsWith('.')
+
+        if (!showHidden && isHidden) {
+          continue
+        }
+
+        let entryStat
+        try {
+          entryStat = await stat(itemPath)
+        } catch {
+          continue
+        }
+
+        let hasPermission = true
+        try {
+          accessSync(itemPath, constants.R_OK)
+        } catch {
+          hasPermission = false
+        }
+
+        if (hasPermission) {
+          const policyCheck = await pathSecurityManager.checkAccess(
+            this.buildAccessRequest(
+              req,
+              itemPath,
+              entry.isDirectory() ? 'list' : 'read',
+              'filesystem-browse-item'
+            )
+          )
+          hasPermission = policyCheck.allowed
+        }
+
+        items.push({
+          name: entry.name,
+          path: itemPath,
+          type: entry.isDirectory() ? 'directory' : 'file',
+          size: entry.isFile() ? entryStat.size : undefined,
+          lastModified: entryStat.mtime.toISOString(),
+          isHidden,
+          hasPermission
+        })
+      }
+
+      items.sort((a, b) => {
+        if (a.type !== b.type) {
+          return a.type === 'directory' ? -1 : 1
+        }
+        return a.name.localeCompare(b.name, 'zh-CN')
+      })
+
+      const parentCandidate = dirname(pathState.normalizedPath)
+      let parentPath: string | null = null
+      if (parentCandidate && parentCandidate !== pathState.normalizedPath) {
+        const parentState = await this.evaluatePathState(req, parentCandidate, 'list', 'filesystem-browse-parent')
+        if (parentState.exists && parentState.policyAllowed && parentState.isDirectory) {
+          parentPath = parentState.normalizedPath
+        }
+      }
 
       res.json({
         success: true,
         data: {
-          path: normalizedPath,
-          items: []
+          currentPath: pathState.normalizedPath,
+          parentPath,
+          items
         }
       })
     } catch (error) {

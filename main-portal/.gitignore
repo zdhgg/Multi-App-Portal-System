@@ -5,6 +5,7 @@ node_modules/
 # 构建输出
 dist/
 dist-ssr/
+*.tsbuildinfo
 *.local
 
 # 编辑器

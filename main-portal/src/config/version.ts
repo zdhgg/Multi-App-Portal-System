@@ -14,7 +14,7 @@ export interface VersionInfo {
 export const VERSION_INFO: VersionInfo = {
   name: '智能多Web应用门户系统',
   version: __APP_VERSION__,
-  buildDate: '2026-03-30',
+  buildDate: '2026-04-07',
   description: '一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统',
   author: 'Portal Team',
   repository: 'https://github.com/portal-system'

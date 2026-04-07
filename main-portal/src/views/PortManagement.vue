@@ -34,13 +34,16 @@
         <span class="stat-item" v-if="portStore.quickStats.conflicts > 0">
           冲突 <el-tag type="danger" size="small">{{ portStore.quickStats.conflicts }}</el-tag>
         </span>
+        <span class="stat-item" v-if="focusedPort">
+          聚焦 <el-tag type="warning" size="small">{{ focusedPort }}</el-tag>
+        </span>
         <span class="stat-item">
           可用 <el-tag type="info" size="small">{{ portStore.quickStats.available }}</el-tag>
         </span>
       </div>
 
       <div class="main-content">
-        <PortManager ref="portManagerRef" />
+        <PortManager ref="portManagerRef" :focus-port="focusedPort" />
       </div>
     </section>
 
@@ -52,8 +55,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useRoute } from 'vue-router'
 import {
   Refresh,
   Delete,
@@ -70,8 +74,10 @@ import { usePortMonitoringStore } from '@/stores/portMonitoring'
 import { getStoredAccessToken } from '@/utils/authStorage'
 
 const portStore = usePortMonitoringStore()
+const route = useRoute()
 const showConfigDrawer = ref(false)
 const portManagerRef = ref<InstanceType<typeof PortManager> | null>(null)
+const lastRouteHintKey = ref('')
 let statisticsRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 const loading = reactive({
@@ -84,6 +90,12 @@ const conflictSummaryText = computed(() => {
     return `检测到 ${portStore.quickStats.conflicts} 个冲突端口`
   }
   return '当前未发现端口冲突'
+})
+
+const focusedPort = computed<number | null>(() => {
+  const rawPort = Array.isArray(route.query.focusPort) ? route.query.focusPort[0] : route.query.focusPort
+  const port = Number(rawPort)
+  return Number.isInteger(port) && port > 0 ? port : null
 })
 
 const capacitySummaryText = computed(() => {
@@ -201,13 +213,39 @@ const onConfigSaved = async () => {
   ElMessage.success('配置已更新')
 }
 
+const notifyFocusedPortFromRoute = () => {
+  const rawSource = Array.isArray(route.query.from) ? route.query.from[0] : route.query.from
+  const rawAppId = Array.isArray(route.query.appId) ? route.query.appId[0] : route.query.appId
+  const focusPort = focusedPort.value
+
+  if (rawSource !== 'management' || !focusPort) {
+    return
+  }
+
+  const hintKey = `${rawSource}:${focusPort}:${String(rawAppId || '')}`
+  if (lastRouteHintKey.value === hintKey) {
+    return
+  }
+
+  lastRouteHintKey.value = hintKey
+  ElMessage.info(`已从应用管理跳转，建议优先检查端口 ${focusPort} 的占用情况`)
+}
+
 onMounted(async () => {
   await portStore.fetchStatistics()
+  notifyFocusedPortFromRoute()
 
   statisticsRefreshTimer = setInterval(() => {
     portStore.fetchStatistics()
   }, 30000)
 })
+
+watch(
+  () => [route.query.from, route.query.focusPort, route.query.appId].join('|'),
+  () => {
+    notifyFocusedPortFromRoute()
+  }
+)
 
 onUnmounted(() => {
   if (statisticsRefreshTimer) {

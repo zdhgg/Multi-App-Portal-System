@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { apiService } from '@/services/api'
 import { clearStoredAuthData, readStoredAuthData, type AuthStorageMode } from './authStorage'
 import { isDebugToolsEnabled } from './debugControl'
+import { decodeJwtPayload } from './jwt'
 
 export interface AuthDiagnostic {
   hasToken: boolean
@@ -33,10 +34,10 @@ export const diagnoseAuth = (): AuthDiagnostic => {
 
   if (token) {
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]))
+      const payload = decodeJwtPayload<{ exp?: number }>(token)
       const now = Math.floor(Date.now() / 1000)
 
-      if (payload.exp) {
+      if (payload?.exp) {
         tokenExpired = now > payload.exp
         tokenValid = !tokenExpired
 

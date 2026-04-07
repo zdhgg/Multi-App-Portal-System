@@ -292,7 +292,10 @@ import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Search, FolderOpened, ArrowDown, Loading, CircleCheck, Warning } from '@element-plus/icons-vue'
 import { ApiError } from '@/services/api'
-import { getNativeDirectoryPickerFailureMessage } from '@/utils/directoryPicker'
+import {
+  getNativeDirectoryPickerFailureMessage,
+  selectDirectoryWithBestEffort
+} from '@/utils/directoryPicker'
 import {
   detectionApiService,
   type SingleDirectoryDetectionData
@@ -860,33 +863,31 @@ const selectProjectDirectory = async () => {
   selectingDirectory.value = true
   try {
     const currentPath = form.directory.trim()
-    const response = await filesystemApiService.selectFolder(currentPath || undefined, true)
+    const selection = await selectDirectoryWithBestEffort(currentPath || undefined, true)
 
-    if (response.success && response.data) {
-      if (response.data.cancelled) {
-        ElMessage.info('已取消目录选择')
-        return
-      }
-
-      const selectedPath = typeof response.data.path === 'string' ? response.data.path.trim() : ''
-      if (selectedPath) {
-        form.directory = selectedPath
-        applyAutoDirectorySuggestions(selectedPath)
-        ElMessage.success(`已选择目录: ${selectedPath}`)
-        // 若前端推断已识别为 external-exe，跳过后端检测
-        // （external-exe 是纯手动配置类型，后端检测无意义且会产生错误结果）
-        if (isExternalExeApp.value) {
-          return
-        }
-        await detectProject({
-          autoApplySuggestions: true,
-          silentOnError: true
-        })
-        return
-      }
+    if (selection.cancelled) {
+      ElMessage.info('已取消目录选择')
+      return
     }
 
-    throw new Error(response.message || '未获取到有效目录路径')
+    const selectedPath = typeof selection.path === 'string' ? selection.path.trim() : ''
+    if (selectedPath) {
+      form.directory = selectedPath
+      applyAutoDirectorySuggestions(selectedPath)
+      ElMessage.success(`已选择目录: ${selectedPath}`)
+      // 若前端推断已识别为 external-exe，跳过后端检测
+      // （external-exe 是纯手动配置类型，后端检测无意义且会产生错误结果）
+      if (isExternalExeApp.value) {
+        return
+      }
+      await detectProject({
+        autoApplySuggestions: true,
+        silentOnError: true
+      })
+      return
+    }
+
+    throw new Error('未获取到有效目录路径')
   } catch (error: any) {
     if (error?.name === 'AbortError') {
       ElMessage.info('已取消目录选择')

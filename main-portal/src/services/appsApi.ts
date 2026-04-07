@@ -362,13 +362,17 @@ export class AppsApiService {
   /**
    * 启动应用
    */
-  async startApp(id: string, mode: 'development' | 'production' = 'development'): Promise<ApiResponse<{
+  async startApp(
+    id: string,
+    mode: 'development' | 'production' = 'development',
+    config: RequestConfig = {}
+  ): Promise<ApiResponse<{
     app: App
     process: any
     url: string
     mode: string
   }>> {
-    return apiService.put<ApiResponse<any>>(`${BASE_PATH}/${id}/start`, { mode })
+    return apiService.put<ApiResponse<any>>(`${BASE_PATH}/${id}/start`, { mode }, config)
   }
 
   /**

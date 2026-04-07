@@ -75,11 +75,14 @@
                   </el-button>
                 </router-link>
 
-                <router-link to="/detection" class="admin-link">
-                  <el-button type="primary" class="toolbar-action toolbar-action-primary" :icon="Plus">
-                    添加应用
-                  </el-button>
-                </router-link>
+                <el-button
+                  type="primary"
+                  class="toolbar-action toolbar-action-primary"
+                  :icon="Plus"
+                  @click="openAddApp"
+                >
+                  添加应用
+                </el-button>
 
                 <el-dropdown trigger="click" @command="handleAdminCommand">
                   <el-button class="toolbar-action-more" :icon="MoreFilled" circle />
@@ -186,11 +189,9 @@
             </p>
 
             <div v-if="authStore.isAdmin && !searchQuery" class="empty-actions">
-              <router-link to="/detection">
-                <el-button type="primary" class="empty-action-primary">
-                  立即添加应用
-                </el-button>
-              </router-link>
+              <el-button type="primary" class="empty-action-primary" @click="openAddApp">
+                立即添加应用
+              </el-button>
               <router-link to="/admin">
                 <el-button class="empty-action-secondary">
                   前往系统设置
@@ -427,6 +428,23 @@ const handleAdminCommand = (command: string) => {
     case 'admin':
       router.push('/admin')
       break
+  }
+}
+
+const openAddApp = async () => {
+  const targetRoute = {
+    path: '/management',
+    query: { action: 'add' }
+  }
+
+  try {
+    const navigationResult = await router.push(targetRoute)
+    if (navigationResult) {
+      throw navigationResult
+    }
+  } catch (error) {
+    console.warn('Router navigation to add app failed, falling back to location.assign', error)
+    window.location.assign(router.resolve(targetRoute).href)
   }
 }
 

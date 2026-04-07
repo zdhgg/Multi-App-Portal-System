@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.3',
+    date: '2026-04-07',
+    title: '目录选择兼容性与批量导入体验优化补丁',
+    items: [
+      { type: 'feature', description: '新增网页式服务器目录浏览器，局域网远程访问时可替代后端原生目录选择' },
+      { type: 'improvement', description: '手动添加、批量导入、备份路径和路径白名单配置统一复用新的最佳努力目录选择链路' },
+      { type: 'improvement', description: '检测页收口为低频批量导入工具，首页与空状态统一优先引导到“应用管理 > 添加应用”' },
+      { type: 'improvement', description: '应用启动遇到端口冲突时，管理页现在会直接跳转端口管理并聚焦冲突端口' },
+      { type: 'fix', description: '修复 base64url JWT 无法恢复登录态、记住我用户名回填不稳定，以及版本化 API 前缀被误改写的问题' }
+    ]
+  },
+  {
     version: '1.3.2',
     date: '2026-03-31',
     title: '启动校验与运维诊断增强补丁',
