@@ -14,6 +14,7 @@ import { exposeAuthDebugTools, fixAuthIssues } from '@/utils/authDebug'
 import { exposeAuthTestTools } from '@/utils/authTestScenarios'
 import { exposeAuthFixTools } from '@/utils/authFix'
 import { isDebugToolsEnabled } from '@/utils/debugControl'
+import { registerAuthInvalidationHandler } from '@/utils/authInvalidation'
 
 async function initializeAndMountApp() {
   const app = createApp(App)
@@ -62,6 +63,8 @@ async function initializeAndMountApp() {
   app.use(ElementPlus, {
     zIndex: 3000
   })
+
+  registerAuthInvalidationHandler({ authStore, router })
 
   // **在认证完成后再挂载路由**
   app.use(router)

@@ -241,9 +241,9 @@ const restoreAuthData = async (): Promise<boolean> => {
   }
 
   // 用户登出
-  const logout = async (showMessage = true) => {
+  const logout = async (showMessage = true, revokeServerSession = true) => {
     try {
-      if (accessToken.value) {
+      if (revokeServerSession && accessToken.value) {
         // 调用后端登出接口
         await authApiService.logout().catch(() => {
           // 忽略登出API错误，因为token可能已经无效

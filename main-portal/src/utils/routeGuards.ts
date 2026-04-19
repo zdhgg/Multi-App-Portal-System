@@ -177,7 +177,17 @@ export class RouteGuardUtils {
     // 如果token即将过期，尝试刷新
     if (authStore.isTokenExpiringSoon && authStore.refreshToken) {
       try {
-        await authStore.refreshAccessToken()
+        const refreshed = await authStore.refreshAccessToken()
+        if (!refreshed) {
+          return {
+            allowed: false,
+            reason: 'token_refresh_failed',
+            redirectTo: '/portal',
+            redirectQuery: {
+              message: 'token_expired'
+            }
+          }
+        }
       } catch (error) {
         console.error('Token刷新失败:', error)
         return {

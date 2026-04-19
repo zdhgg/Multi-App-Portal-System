@@ -1,6 +1,7 @@
 import { ElMessage } from 'element-plus'
 import type { User } from '@/stores/auth'
 import { getStoredAccessToken } from '@/utils/authStorage'
+import { dispatchAuthInvalidation } from '@/utils/authInvalidation'
 
 // API响应基础接口
 export interface ApiResponse<T = any> {
@@ -117,7 +118,7 @@ export class ApiService {
         const success = await this.authStore.refreshAccessToken()
         if (!success) {
           // 刷新失败，清除认证状态
-          await this.authStore.logout(false)
+          await this.authStore.logout(false, false)
           return false
         }
       }
@@ -232,12 +233,15 @@ export class ApiService {
   // 处理认证错误
   private async handleAuthError(error: ApiError): Promise<never> {
     if (error.status === 401) {
-      // 未授权，清除认证状态并跳转到登录
+      // 认证已失效时只清理本地状态，避免再次等待失效会话的网络请求。
       if (this.authStore) {
-        await this.authStore.logout(false)
+        await this.authStore.logout(false, false)
       }
-      
-      // 可以触发登录弹窗或跳转
+
+      dispatchAuthInvalidation({
+        source: 'api',
+        message: '登录已过期，请重新登录'
+      })
       ElMessage.error('登录已过期，请重新登录')
     } else if (error.status === 403) {
       ElMessage.error('权限不足，无法执行此操作')
@@ -264,7 +268,7 @@ export class ApiService {
     if (requireAuth && this.authStore) {
       const tokenValid = await this.checkAndRefreshToken()
       if (!tokenValid) {
-        throw new ApiError('Authentication failed', 401, 'AUTH_FAILED')
+        return this.handleAuthError(new ApiError('Authentication failed', 401, 'AUTH_FAILED'))
       }
     }
 
