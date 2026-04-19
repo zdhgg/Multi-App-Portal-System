@@ -906,10 +906,22 @@ export class SimpleProcessManager implements ProcessManager {
   }> // 全栈项目进程组
   private readonly maxLogLines = 1000 // 增加日志容量
   private readonly healthStartupGraceMs = 15000 // 启动后的宽限期，避免健康检查误杀冷启动进程
+  private readonly healthFailureThreshold = 2 // 连续失败阈值，避免瞬时端口抖动或检测误差误杀进程
+  private readonly healthFailureCounts = new Map<string, number>()
   private applicationRepository?: ApplicationRepository // 用于状态同步
   private healthCheckInterval?: NodeJS.Timeout // 健康检查定时器
   private wsService?: any // WebSocket服务，用于实时推送日志
   private db?: any // 数据库实例
+
+  private clearTrackedProcess(processId: string): void {
+    this.processes.delete(processId)
+    this.healthFailureCounts.delete(processId)
+  }
+
+  private setTrackedProcess(processId: string, processInfo: ProcessInfo): void {
+    this.processes.set(processId, processInfo)
+    this.healthFailureCounts.delete(processId)
+  }
 
   /**
    * 构造函数
@@ -952,19 +964,48 @@ export class SimpleProcessManager implements ProcessManager {
     try {
       const healthyProcesses: string[] = []
       const unhealthyProcesses: string[] = []
+      const cleanedAppIds = new Set<string>()
 
-      for (const [processId, processInfo] of this.processes.entries()) {
+      for (const [processId, processInfo] of Array.from(this.processes.entries())) {
+        if (!this.processes.has(processId)) {
+          continue
+        }
+
         const targetAppId = processInfo.parentAppId || processId
         const isHealthy = await this.checkProcessHealth(targetAppId, processInfo)
 
         if (isHealthy) {
+          this.healthFailureCounts.delete(processId)
           healthyProcesses.push(targetAppId)
         } else {
+          const failureCount = (this.healthFailureCounts.get(processId) || 0) + 1
+          this.healthFailureCounts.set(processId, failureCount)
+
+          logger.warn('Process health check failed', {
+            processId,
+            appId: targetAppId,
+            pid: processInfo.process?.pid,
+            port: processInfo.port,
+            failureCount,
+            threshold: this.healthFailureThreshold
+          })
+
+          if (failureCount < this.healthFailureThreshold) {
+            continue
+          }
+
           unhealthyProcesses.push(targetAppId)
+          this.healthFailureCounts.delete(processId)
+
           // Enhanced cleanup for unhealthy processes
-          await this.forceCleanupProcess(targetAppId, processInfo)
+          await this.forceCleanupProcess(processId, targetAppId, processInfo)
+
           // 更新数据库状态
-          await this.applicationRepository.updateState(targetAppId, 'stopped')
+          if (!cleanedAppIds.has(targetAppId)) {
+            await this.applicationRepository.updateState(targetAppId, 'stopped')
+            cleanedAppIds.add(targetAppId)
+          }
+
           logger.warn('Unhealthy process detected and cleaned up', { processId, appId: targetAppId })
         }
       }
@@ -986,8 +1027,18 @@ export class SimpleProcessManager implements ProcessManager {
   /**
    * 强制清理进程 - 确保进程完全停止并释放资源
    */
-  private async forceCleanupProcess(appId: string, processInfo: ProcessInfo): Promise<void> {
+  private async forceCleanupProcess(processId: string, appId: string, processInfo: ProcessInfo): Promise<void> {
     try {
+      if (processInfo.parentAppId && this.fullStackGroups.has(appId)) {
+        logger.info('Stopping fullstack application due to unhealthy child process', {
+          appId,
+          processId
+        })
+        await this.stopFullStack(appId)
+        this.clearTrackedProcess(processId)
+        return
+      }
+
       const { process: childProcess, port } = processInfo
 
       if (childProcess && !childProcess.killed) {
@@ -1001,7 +1052,7 @@ export class SimpleProcessManager implements ProcessManager {
       }
 
       // 清理进程记录
-      this.processes.delete(appId)
+      this.clearTrackedProcess(processId)
       
     } catch (error) {
       logger.error('Error during force process cleanup', {
@@ -1010,7 +1061,7 @@ export class SimpleProcessManager implements ProcessManager {
       })
       
       // 即使清理失败也要移除进程记录
-      this.processes.delete(appId)
+      this.clearTrackedProcess(processId)
     }
   }
 
@@ -1107,7 +1158,7 @@ export class SimpleProcessManager implements ProcessManager {
 
     // 检查端口是否还在监听（如果有端口信息）
     if (port) {
-      const isPortListening = await this.checkProcessRunning(port)
+      const isPortListening = await this.isPortListening(port)
       if (!isPortListening) {
         return false
       }
@@ -1345,7 +1396,7 @@ export class SimpleProcessManager implements ProcessManager {
       this.setupProcessListeners(app.id, childProcess, processInfo)
 
       // 存储进程信息
-      this.processes.set(app.id, processInfo)
+      this.setTrackedProcess(app.id, processInfo)
 
       logger.info('Application process started successfully', {
         id: app.id,
@@ -1393,7 +1444,7 @@ export class SimpleProcessManager implements ProcessManager {
         })
         
         // 清理进程记录
-        this.processes.delete(app.id)
+        this.clearTrackedProcess(app.id)
         
         throw new Error(`应用启动失败：端口 ${app.network.primaryPort} 未能正确监听`)
       }
@@ -1797,13 +1848,13 @@ export class SimpleProcessManager implements ProcessManager {
     this.setupProcessListeners(processId, childProcess, processInfo)
 
     // 存储进程信息
-    this.processes.set(processId, processInfo)
+    this.setTrackedProcess(processId, processInfo)
 
     // 等待进程稳定启动
     try {
       await this.waitForProcessStable(childProcess, 3000)
     } catch (error) {
-      this.processes.delete(processId)
+      this.clearTrackedProcess(processId)
 
       if (!childProcess.killed && childProcess.exitCode === null) {
         try {
@@ -2406,7 +2457,7 @@ export default defineConfig(async (env) => {
         await this.terminateChildProcess(appId, childProcess, 10000)
       }
 
-      this.processes.delete(appId)
+      this.clearTrackedProcess(appId)
       logger.info('Application process stopped successfully', { id: appId })
 
     } catch (error) {
@@ -2415,7 +2466,7 @@ export default defineConfig(async (env) => {
         error: error instanceof Error ? error.message : String(error)
       })
       // 即使出错也要清理进程记录
-      this.processes.delete(appId)
+      this.clearTrackedProcess(appId)
       throw error
     }
   }
@@ -3163,7 +3214,7 @@ export default defineConfig(async (env) => {
 
     toDelete.forEach(appId => {
       logger.info('Cleaning up exited process', { appId })
-      this.processes.delete(appId)
+      this.clearTrackedProcess(appId)
     })
   }
 
@@ -3350,7 +3401,7 @@ export default defineConfig(async (env) => {
       logger.info('Attempting auto-restart', { appId, name: app.name })
 
       // 清理旧进程记录
-      this.processes.delete(appId)
+      this.clearTrackedProcess(appId)
 
       // 重新启动应用
       await this.start(app)

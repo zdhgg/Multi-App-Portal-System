@@ -2,6 +2,24 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.3.4] - 2026-04-19
+
+### Added
+
+- 新增认证失效跳转回归测试与本地无头实测脚本，覆盖 `401`、refresh 失败和全局 `auth:token-invalid` 事件链路。
+- 为进程健康检查补充失败计数清理回归测试，覆盖手动停止、退出清扫和自动重启场景。
+
+### Changed
+
+- 将根项目、前端、后端、系统配置和主要发布文档版本统一提升到 `1.3.4`。
+- 将认证失效处理统一为“优先清理本地状态并立即跳转”，不再等待失效 token 的登出请求。
+
+### Fixed
+
+- 修复认证失效后页面可能先停留一段时间、再延迟跳转回首页的问题。
+- 修复 `refreshAccessToken()` 返回 `false` 时路由守卫仍可能继续放行的问题。
+- 修复进程健康检查失败计数在正常停止、启动回滚、退出清理或自动重启后可能残留，导致新进程被误判为连续失败的问题。
+
 ## [1.3.3] - 2026-04-07
 
 ### Added
@@ -174,6 +192,7 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.3.4]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.4
 [1.3.3]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.3
 [1.3.2]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.2
 [1.3.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.1

@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.3.3-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.3.3-success.svg)
+![Version](https://img.shields.io/badge/version-1.3.4-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.3.4-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.3.3`
-- **GitHub Release**: [v1.3.3: 目录选择兼容性与批量导入体验优化补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.3)
+- **当前版本**: `1.3.4`
+- **GitHub Release**: [v1.3.4: 认证失效跳转与健康检查稳定性修复补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.4)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -245,6 +245,17 @@ VITE_WS_BASE=
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.3.4 (2026-04-19) — 认证失效跳转与健康检查稳定性修复补丁
+- 🔐 **认证失效跳转统一**
+  - 统一 `401`、refresh 失败和全局 `auth:token-invalid` 事件的前端处理，认证失效后优先清理本地状态并立即回到 `/portal`
+  - 修复 `refreshAccessToken()` 返回 `false` 时路由守卫仍可能继续放行的问题
+- 🩺 **健康检查稳定性修复**
+  - 为进程失败计数增加统一清理入口，正常停止、启动回滚、退出清理和自动重启后都会同步清空历史失败次数
+  - 避免新进程继承旧计数后，只失败一次就被误判为“连续失败两次”而被清理
+- 🧪 **验证与发布配套**
+  - 补充认证失效和进程健康检查回归测试，并增加本地无头浏览器实测脚本
+  - 同步根项目、前后端包、系统配置和主要发布文档版本到 `1.3.4`
+
 ### v1.3.3 (2026-04-07) — 目录选择兼容性与批量导入体验优化补丁
 - 🗂 **目录选择兼容性增强**
   - 新增网页式服务器目录浏览器，在局域网远程访问时可替代后端原生目录选择
@@ -383,4 +394,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.3.3 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.3.4 - 让应用管理更简单、更智能！*
