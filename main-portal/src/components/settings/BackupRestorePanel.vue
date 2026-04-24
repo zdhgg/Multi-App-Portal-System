@@ -22,11 +22,15 @@
       <el-form label-width="96px" class="control-form">
         <div class="control-grid">
           <el-form-item label="自动备份">
-            <el-switch v-model="policySettings.enableAutoBackup" />
+            <el-switch v-model="policySettings.enableAutoBackup" @change="emitPolicySettingsChange" />
           </el-form-item>
 
           <el-form-item label="执行周期">
-            <el-select v-model="policySettings.backupInterval" :disabled="!policySettings.enableAutoBackup">
+            <el-select
+              v-model="policySettings.backupInterval"
+              :disabled="!policySettings.enableAutoBackup"
+              @change="emitPolicySettingsChange"
+            >
               <el-option label="每小时" value="hourly" />
               <el-option label="每天" value="daily" />
               <el-option label="每周" value="weekly" />
@@ -43,11 +47,17 @@
               format="HH:mm"
               placeholder="选择时间"
               :disabled="!policySettings.enableAutoBackup"
+              @change="emitPolicySettingsChange"
             />
           </el-form-item>
 
           <el-form-item label="保留天数">
-            <el-input-number v-model="policySettings.retentionDays" :min="1" :max="365" />
+            <el-input-number
+              v-model="policySettings.retentionDays"
+              :min="1"
+              :max="365"
+              @change="emitPolicySettingsChange"
+            />
           </el-form-item>
 
           <el-form-item label="存储路径" class="control-grid__path">
@@ -64,15 +74,15 @@
           </el-form-item>
 
           <el-form-item label="用户数据">
-            <el-switch v-model="policySettings.includeUserData" />
+            <el-switch v-model="policySettings.includeUserData" @change="emitPolicySettingsChange" />
           </el-form-item>
 
           <el-form-item label="归档日志">
-            <el-switch v-model="policySettings.includeLogs" />
+            <el-switch v-model="policySettings.includeLogs" @change="emitPolicySettingsChange" />
           </el-form-item>
 
           <el-form-item label="压缩输出">
-            <el-switch v-model="policySettings.compressionEnabled" />
+            <el-switch v-model="policySettings.compressionEnabled" @change="emitPolicySettingsChange" />
           </el-form-item>
         </div>
       </el-form>
@@ -161,7 +171,27 @@
 
     <el-dialog v-model="createDialogVisible" title="创建备份" width="520px">
       <el-form label-width="96px">
-        <el-form-item label="备份模式">
+        <el-form-item>
+          <template #label>
+            <span class="mode-label">
+              备份模式
+              <el-tooltip
+                placement="right-start"
+                effect="light"
+                popper-class="backup-mode-tooltip-popper"
+              >
+                <template #content>
+                  <div class="mode-tooltip">
+                    <div><strong>配置快照</strong>：备份应用配置、环境配置和模板定义，支持页面内直接恢复。</div>
+                    <div><strong>文件归档</strong>：备份配置文件、日志、数据和脚本等工作区文件，恢复时会启动离线恢复向导。</div>
+                  </div>
+                </template>
+                <el-icon class="mode-help" aria-label="查看备份模式说明">
+                  <QuestionFilled />
+                </el-icon>
+              </el-tooltip>
+            </span>
+          </template>
           <el-radio-group v-model="createForm.mode">
             <el-radio-button label="configuration">配置快照</el-radio-button>
             <el-radio-button label="archive">文件归档</el-radio-button>
@@ -224,6 +254,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, reactive } from 'vue'
+import { QuestionFilled } from '@element-plus/icons-vue'
 import { configExportApiService, type BackupInfo } from '@/services/configExportApi'
 import { ApiError } from '@/services/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -269,7 +300,6 @@ const createForm = reactive({
   includeTemplates: true,
   includeSensitiveData: false
 })
-let syncingPolicySettings = false
 
 const handlePageChange = (p: number) => {
   page.value = p
@@ -305,17 +335,24 @@ watch(keyword, () => {
 })
 
 watch(() => props.backupSettings, (value) => {
-  syncingPolicySettings = true
-  Object.assign(policySettings, normalizeBackupSettings(value))
-  queueMicrotask(() => { syncingPolicySettings = false })
+  const normalized = normalizeBackupSettings(value)
+  if (areBackupSettingsEqual(normalized, policySettings)) return
+
+  Object.assign(policySettings, normalized)
 }, { deep: true, immediate: true })
 
-watch(policySettings, (value) => {
-  if (syncingPolicySettings) return
-  const normalized = normalizeBackupSettings(value)
+function areBackupSettingsEqual(a: BackupSettingsModel, b: BackupSettingsModel) {
+  return JSON.stringify(normalizeBackupSettings(a)) === JSON.stringify(normalizeBackupSettings(b))
+}
+
+function emitPolicySettingsChange() {
+  const normalized = normalizeBackupSettings(policySettings)
+  if (areBackupSettingsEqual(normalized, props.backupSettings)) return
+
+  Object.assign(policySettings, normalized)
   emit('update:backup-settings', normalized)
   emit('backup-settings-changed')
-}, { deep: true })
+}
 
 function formatSize(size: number) {
   if (size > 1024 * 1024) return (size / 1024 / 1024).toFixed(1) + ' MB'
@@ -383,8 +420,13 @@ async function pickBackupPath() {
       return
     }
     if (selectedPath === null) return
+    if (selectedPath === policySettings.backupPath) {
+      ElMessage.info('备份目录未变化')
+      return
+    }
 
     policySettings.backupPath = selectedPath
+    emitPolicySettingsChange()
     ElMessage.success(`已选择目录: ${selectedPath}`)
   } finally {
     pickingBackupPath.value = false
@@ -550,6 +592,20 @@ onMounted(loadBackups)
 }
 .control-grid__path {
   grid-column: 1 / -1;
+}
+.mode-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mode-help {
+  color: var(--el-color-info);
+  cursor: help;
+  font-size: 14px;
+}
+.mode-tooltip {
+  max-width: 320px;
+  line-height: 1.6;
 }
 .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .spacer { flex: 1 }

@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.7',
+    date: '2026-04-24',
+    title: '备份设置同步与发布配置修正补丁',
+    items: [
+      { type: 'fix', description: '修复系统设置中的备份策略改动后，部分开关、下拉和数值项有时不会稳定标记为未保存变更的问题' },
+      { type: 'improvement', description: '“创建备份”弹窗新增备份模式说明提示，并修正提示浮层层级，避免被其他高层弹窗遮挡' },
+      { type: 'fix', description: '修复发布默认配置误写入本机绝对备份目录的问题，默认备份输出路径恢复为工作区相对 ./backups' },
+      { type: 'improvement', description: '同步根项目、前后端包、系统配置和主要发布文档版本到 1.3.7' }
+    ]
+  },
+  {
     version: '1.3.6',
     date: '2026-04-24',
     title: '关于系统更新记录补齐补丁',

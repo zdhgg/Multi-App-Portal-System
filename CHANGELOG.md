@@ -2,6 +2,18 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.3.7] - 2026-04-24
+
+### Changed
+
+- 为“创建备份”弹窗补充备份模式说明提示，并修正提示浮层层级，避免被其他高层弹窗遮挡。
+- 将根项目、前端、后端、系统配置和主要发布文档版本统一提升到 `1.3.7`。
+
+### Fixed
+
+- 修复系统设置中的备份策略改动后，部分开关、下拉和数值项有时不会稳定标记为未保存变更的问题。
+- 修复发布默认配置误写入本机绝对备份目录的问题，默认备份输出路径恢复为工作区相对 `./backups`。
+
 ## [1.3.6] - 2026-04-24
 
 ### Fixed
@@ -220,6 +232,7 @@
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
 [1.3.6]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.6
+[1.3.7]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.7
 [1.3.5]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.5
 [1.3.4]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.4
 [1.3.3]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.3

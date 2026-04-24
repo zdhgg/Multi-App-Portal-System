@@ -376,6 +376,10 @@ body {
   z-index: 100010 !important;
 }
 
+.backup-mode-tooltip-popper {
+  z-index: 100010 !important;
+}
+
 /* 强制覆盖任何可能的层级问题 */
 [class*="el-dialog"] {
   z-index: 99999 !important;
