@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.3.5-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.3.5-success.svg)
+![Version](https://img.shields.io/badge/version-1.3.6-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.3.6-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.3.5`
-- **GitHub Release**: [v1.3.5: 离线恢复安全校验与启动入口整理补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.5)
+- **当前版本**: `1.3.6`
+- **GitHub Release**: [v1.3.6: 关于系统更新记录补齐补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.6)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -245,6 +245,13 @@ VITE_WS_BASE=
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.3.6 (2026-04-24) — 关于系统更新记录补齐补丁
+- 📝 **更新记录补齐**
+  - 修复“关于系统 > 更新记录”没有同步纳入 `1.3.4` 与 `1.3.5`，导致界面仍显示旧版本记录的问题
+  - 前端内置更新记录已补齐到 `1.3.6`，关于系统弹窗可以直接查看最近几个正式版本的发布内容
+- 🔁 **版本同步**
+  - 同步根项目、前后端包、系统配置和主要发布文档版本到 `1.3.6`
+
 ### v1.3.5 (2026-04-24) — 离线恢复安全校验与启动入口整理补丁
 - 🛟 **离线恢复更安全**
   - 为脚本归档备份新增离线恢复向导入口，恢复前先校验备份，再停止门户服务并执行恢复
@@ -405,4 +412,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.3.5 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.3.6 - 让应用管理更简单、更智能！*

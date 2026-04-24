@@ -16,6 +16,40 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.6',
+    date: '2026-04-24',
+    title: '关于系统更新记录补齐补丁',
+    items: [
+      { type: 'fix', description: '修复关于系统弹窗中的“更新记录”未同步纳入 1.3.4 与 1.3.5，导致界面仍停留在旧版本记录的问题' },
+      { type: 'improvement', description: '前端内置更新记录现在补齐到 1.3.6，关于系统弹窗可直接展示最近几个正式版本的发布内容' },
+      { type: 'improvement', description: '同步根项目、前后端包、系统配置和主要发布文档版本到 1.3.6' }
+    ]
+  },
+  {
+    version: '1.3.5',
+    date: '2026-04-24',
+    title: '离线恢复安全校验与启动入口整理补丁',
+    items: [
+      { type: 'feature', description: '新增脚本归档备份的离线恢复向导入口，并补充 Backup-Portal.bat、Restore-Portal.bat 与中文控制向导入口' },
+      { type: 'improvement', description: 'Start-Portal.bat 收口为统一的中文控制向导入口，集中处理启动、重启、停机、自启和备份恢复操作' },
+      { type: 'fix', description: '修复离线恢复向导先按备份 ID 选中、但真正校验和恢复时又退回按备份名执行，可能命中错误归档的问题' },
+      { type: 'fix', description: '修复离线恢复在服务未完全停止时仍可能继续执行恢复的问题；现在会在恢复前确认 PM2 进程、监听端口和健康检查都已停稳' },
+      { type: 'improvement', description: '同步根项目、前后端包、系统配置和主要发布文档版本到 1.3.5' }
+    ]
+  },
+  {
+    version: '1.3.4',
+    date: '2026-04-19',
+    title: '认证失效跳转与健康检查稳定性修复补丁',
+    items: [
+      { type: 'feature', description: '新增认证失效跳转回归测试与本地无头实测脚本，覆盖 401、refresh 失败和全局 auth:token-invalid 事件链路' },
+      { type: 'feature', description: '为进程健康检查补充失败计数清理回归测试，覆盖手动停止、退出清扫和自动重启场景' },
+      { type: 'improvement', description: '认证失效处理统一为优先清理本地状态并立即跳转，不再等待失效 token 的登出请求' },
+      { type: 'fix', description: '修复认证失效后页面可能先停留一段时间、再延迟跳转回首页的问题' },
+      { type: 'fix', description: '修复进程健康检查失败计数在正常停止、启动回滚、退出清理或自动重启后可能残留，导致新进程被误判为连续失败的问题' }
+    ]
+  },
+  {
     version: '1.3.3',
     date: '2026-04-07',
     title: '目录选择兼容性与批量导入体验优化补丁',

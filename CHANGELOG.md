@@ -2,6 +2,17 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.3.6] - 2026-04-24
+
+### Fixed
+
+- 修复前端“关于系统 > 更新记录”未同步纳入 `1.3.4` 与 `1.3.5`，导致界面仍显示旧版本记录的问题。
+
+### Changed
+
+- 将前端内置更新记录补齐到 `1.3.6`，关于系统弹窗可直接展示最近几个正式版本的发布内容。
+- 将根项目、前端、后端、系统配置和主要发布文档版本统一提升到 `1.3.6`。
+
 ## [1.3.5] - 2026-04-24
 
 ### Added
@@ -208,6 +219,7 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.3.6]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.6
 [1.3.5]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.5
 [1.3.4]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.4
 [1.3.3]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.3
