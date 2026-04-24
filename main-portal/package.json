@@ -1,6 +1,6 @@
 {
   "name": "intelligent-portal-frontend",
-  "version": "1.3.4",
+  "version": "1.3.5",
   "description": "智能多Web应用门户系统 - 前端",
   "type": "module",
   "scripts": {

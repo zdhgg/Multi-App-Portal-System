@@ -1,7 +1,7 @@
 <template>
   <div class="backup-panel">
     <el-alert
-      title="当前页面统一展示配置快照和文件归档备份。你可以在这里创建任一模式的备份，并对历史 ZIP 归档执行查看、恢复和清理。"
+      title="当前页面统一展示配置快照和文件归档备份。配置快照支持在线恢复；脚本归档会拉起本机离线恢复向导，以便安全回滚数据库和项目文件。"
       type="info"
       show-icon
       :closable="false"
@@ -115,9 +115,35 @@
       </el-table-column>
       <el-table-column label="操作" width="240">
         <template #default="{ row }">
-          <el-button size="small" type="primary" @click="restore(row)" :loading="restoringId===row.id" :disabled="row.available === false">恢复</el-button>
-          <el-button size="small" type="danger" @click="remove(row)" :loading="deletingId===row.id">删除</el-button>
-          <el-button size="small" @click="view(row)">查看</el-button>
+          <el-button
+            size="small"
+            type="primary"
+            @click.stop="restore(row)"
+            :loading="restoringId===row.id"
+            :disabled="row.available === false"
+          >
+            {{ getRestoreActionLabel(row) }}
+          </el-button>
+          <el-popconfirm
+            :title="getDeleteConfirmText(row)"
+            width="300"
+            confirm-button-text="确定删除"
+            cancel-button-text="取消"
+            confirm-button-type="danger"
+            @confirm="deleteBackupRecord(row)"
+          >
+            <template #reference>
+              <el-button
+                size="small"
+                type="danger"
+                @click.stop
+                :loading="deletingId===row.id"
+              >
+                删除
+              </el-button>
+            </template>
+          </el-popconfirm>
+          <el-button size="small" @click.stop="view(row)">查看</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -311,6 +337,14 @@ function formatBackupType(backup: BackupInfo) {
   return mapping[backup.backupType] || backup.backupType || '未知'
 }
 
+function isOfflineRestoreBackup(backup: BackupInfo) {
+  return backup.source === 'script-registry'
+}
+
+function getRestoreActionLabel(backup: BackupInfo) {
+  return isOfflineRestoreBackup(backup) ? '离线恢复' : '恢复'
+}
+
 function openCreateBackupDialog() {
   createForm.compress = policySettings.compressionEnabled
   createForm.outputDirectory = policySettings.backupPath?.trim() || './backups'
@@ -415,31 +449,52 @@ async function restore(row: BackupInfo) {
     return
   }
 
-  const restoreMessage = row.source === 'script-registry'
-    ? `确认从备份“${row.name}”恢复吗？这会覆盖备份包中的项目文件${row.backupType === 'full' ? '、日志和数据库文件' : ''}，并自动创建恢复前备份。`
+  const offlineRestore = isOfflineRestoreBackup(row)
+  const restoreMessage = offlineRestore
+    ? `确认启动备份“${row.name}”的离线恢复向导吗？系统会打开新的本机窗口，在那里先校验备份，再停止服务并执行恢复。`
     : `确认从备份“${row.name}”恢复吗？当前配置将被覆盖（已自动创建恢复前备份）。`
 
   try {
-    await ElMessageBox.confirm(restoreMessage, '恢复确认', { type: 'warning' })
+    await ElMessageBox.confirm(restoreMessage, offlineRestore ? '启动离线恢复向导' : '恢复确认', { type: 'warning' })
   } catch { return }
   restoringId.value = row.id
   try {
+    if (offlineRestore) {
+      const resp = await configExportApiService.launchOfflineRestoreAssistant(row.id)
+      if (resp.success) {
+        ElMessage.success(resp.message || '离线恢复向导已启动，请在新窗口继续操作')
+      } else {
+        ElMessage.warning(resp.message || resp.error || '离线恢复向导启动后返回了警告')
+      }
+      return
+    }
+
     const resp = await configExportApiService.restoreBackup(row.id, { overwriteExisting: true, createBackup: true })
     if (resp.success) ElMessage.success(resp.message || '恢复完成')
     else ElMessage.warning(resp.message || resp.error || '恢复完成但存在警告')
     await loadBackups()
   } catch (error: any) {
-    ElMessage.error(error?.message || '恢复失败')
+    ElMessage.error(error?.message || (offlineRestore ? '离线恢复向导启动失败' : '恢复失败'))
   } finally { restoringId.value = null }
 }
 
-async function remove(row: BackupInfo) {
-  const removeMessage = row.available === false
+function getDeleteConfirmText(row: BackupInfo) {
+  return row.available === false
     ? `确认移除备份记录“${row.name}”？当前备份文件已缺失，将只清理记录。`
     : `确认删除备份“${row.name}”？`
-  try { await ElMessageBox.confirm(removeMessage, '删除确认', { type: 'warning' }) } catch { return }
+}
+
+async function deleteBackupRecord(row: BackupInfo) {
   deletingId.value = row.id
-  try { await configExportApiService.deleteBackup(row.id); ElMessage.success('已删除'); await loadBackups() } catch { ElMessage.error('删除失败') } finally { deletingId.value = null }
+  try {
+    await configExportApiService.deleteBackup(row.id)
+    ElMessage.success('已删除')
+    await loadBackups()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '删除失败')
+  } finally {
+    deletingId.value = null
+  }
 }
 
 function view(row: BackupInfo) { detail.value = { visible: true, data: row } }

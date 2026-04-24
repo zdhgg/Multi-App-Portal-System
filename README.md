@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.3.4-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.3.4-success.svg)
+![Version](https://img.shields.io/badge/version-1.3.5-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.3.5-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.3.4`
-- **GitHub Release**: [v1.3.4: 认证失效跳转与健康检查稳定性修复补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.4)
+- **当前版本**: `1.3.5`
+- **GitHub Release**: [v1.3.5: 离线恢复安全校验与启动入口整理补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.5)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -245,6 +245,17 @@ VITE_WS_BASE=
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.3.5 (2026-04-24) — 离线恢复安全校验与启动入口整理补丁
+- 🛟 **离线恢复更安全**
+  - 为脚本归档备份新增离线恢复向导入口，恢复前先校验备份，再停止门户服务并执行恢复
+  - 离线恢复现在改为优先按备份 ID 执行，避免同名手工备份时误恢复到错误归档
+- 🧭 **启动与运维入口整理**
+  - `Start-Portal.bat` 精简为中文控制向导入口，统一收口启动、重启、停机、自启和备份恢复操作
+  - 新增独立的 `Backup-Portal.bat` 与 `Restore-Portal.bat`，方便本机直接进入常用运维流程
+- 🔒 **发布前安全修复**
+  - 离线恢复在真正写入前会确认 PM2 进程、监听端口和健康检查都已停稳，避免服务未停干净时继续覆盖在线数据
+  - 同步根项目、前后端包、系统配置和主要发布文档版本到 `1.3.5`
+
 ### v1.3.4 (2026-04-19) — 认证失效跳转与健康检查稳定性修复补丁
 - 🔐 **认证失效跳转统一**
   - 统一 `401`、refresh 失败和全局 `auth:token-invalid` 事件的前端处理，认证失效后优先清理本地状态并立即回到 `/portal`
@@ -394,4 +405,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.3.4 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.3.5 - 让应用管理更简单、更智能！*

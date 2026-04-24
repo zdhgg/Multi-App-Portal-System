@@ -1,4 +1,4 @@
-# PM2守护模式启动脚本 - 门户系统自我管理
+﻿# PM2守护模式启动脚本 - 门户系统自我管理
 # 
 # 功能：
 # 1. 将门户系统后端服务通过PM2管理
@@ -18,6 +18,17 @@ Set-Location $projectRoot
 $primaryProcess = "portal-api"
 $legacyProcess = "portal-backend"
 
+function Get-Pm2CommandPath {
+    foreach ($candidate in @("pm2.cmd", "pm2")) {
+        $command = Get-Command $candidate -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($command) {
+            return $command.Source
+        }
+    }
+
+    return $null
+}
+
 # 1. 检查PM2是否安装
 Write-Host "📋 步骤 1/6: 检查PM2安装状态..." -ForegroundColor Yellow
 try {
@@ -30,6 +41,7 @@ try {
     npm install -g pm2
     Write-Host "   ✅ PM2安装完成" -ForegroundColor Green
 }
+$pm2Command = Get-Pm2CommandPath
 Write-Host ""
 
 # 2. 检查端口占用
@@ -55,11 +67,16 @@ Write-Host ""
 
 # 3. 清理旧的PM2进程
 Write-Host "📋 步骤 3/6: 清理旧的PM2进程..." -ForegroundColor Yellow
-$existingProcess = pm2 list 2>$null | Select-String "$primaryProcess|$legacyProcess"
+$pm2ListOutput = pm2 list 2>$null
+$existingProcess = $pm2ListOutput | Select-String "$primaryProcess|$legacyProcess"
 if ($existingProcess) {
     Write-Host "   发现已存在的进程，正在删除..." -ForegroundColor Yellow
-    pm2 delete $primaryProcess 2>$null
-    pm2 delete $legacyProcess 2>$null
+    if ($pm2ListOutput | Select-String "\b$([regex]::Escape($primaryProcess))\b") {
+        pm2 delete $primaryProcess 2>$null | Out-Null
+    }
+    if ($pm2ListOutput | Select-String "\b$([regex]::Escape($legacyProcess))\b") {
+        pm2 delete $legacyProcess 2>$null | Out-Null
+    }
     Start-Sleep -Seconds 1
 }
 Write-Host "   ✅ 清理完成" -ForegroundColor Green
@@ -86,27 +103,44 @@ if (-not (Test-Path $pm2ConfigPath)) {
     Write-Host "   ❌ 未找到配置文件: $pm2ConfigPath" -ForegroundColor Red
     exit 1
 }
+$pm2ConfigName = Split-Path $pm2ConfigPath -Leaf
 
-pm2 start $pm2ConfigPath
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host ""
-    Write-Host "   ✅ 后端服务启动成功！" -ForegroundColor Green
-} else {
-    Write-Host ""
-    Write-Host "   ❌ 后端服务启动失败" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "查看错误日志：" -ForegroundColor Yellow
-    pm2 logs $primaryProcess --lines 20 --nostream
+if (-not $pm2Command) {
+    Write-Host "   ❌ 未找到 PM2 可执行文件" -ForegroundColor Red
     exit 1
+}
+
+$stdoutFile = Join-Path $env:TEMP ("portal-pm2-start-{0}.out.log" -f ([guid]::NewGuid().ToString("N")))
+$stderrFile = Join-Path $env:TEMP ("portal-pm2-start-{0}.err.log" -f ([guid]::NewGuid().ToString("N")))
+
+try {
+    $pm2StartProcess = Start-Process -FilePath $pm2Command -ArgumentList @("start", $pm2ConfigName) -WorkingDirectory $projectRoot -Wait -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
+    $pm2StartExitCode = $pm2StartProcess.ExitCode
+
+    if (Test-Path $stdoutFile) {
+        Get-Content -Path $stdoutFile -Encoding UTF8 | Out-Host
+    }
+    if (Test-Path $stderrFile) {
+        Get-Content -Path $stderrFile -Encoding UTF8 | Out-Host
+    }
+} finally {
+    Remove-Item -Path $stdoutFile -ErrorAction SilentlyContinue
+    Remove-Item -Path $stderrFile -ErrorAction SilentlyContinue
+}
+
+Write-Host ""
+if ($pm2StartExitCode -eq 0) {
+    Write-Host "   ✅ 已提交 PM2 启动命令" -ForegroundColor Green
+} else {
+    Write-Host "   ⚠️ PM2 返回了非零状态，继续检查服务是否已实际启动..." -ForegroundColor Yellow
 }
 Write-Host ""
 
 # 6. 等待服务就绪并验证
 Write-Host "📋 步骤 6/6: 验证服务状态..." -ForegroundColor Yellow
-Write-Host "   等待服务启动（最多30秒）..." -ForegroundColor Gray
+Write-Host "   等待服务启动（最多约60秒）..." -ForegroundColor Gray
 
-$maxAttempts = 30
+$maxAttempts = 12
 $attempt = 0
 $serviceReady = $false
 
@@ -115,8 +149,8 @@ while ($attempt -lt $maxAttempts -and -not $serviceReady) {
     $attempt++
     
     try {
-        $health = Invoke-RestMethod -Uri "http://localhost:8002/health" -Method GET -TimeoutSec 2 -ErrorAction Stop
-        if ($health.status -eq "ok") {
+        $healthResponse = Invoke-WebRequest -Uri "http://localhost:8002/health" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+        if ([int]$healthResponse.StatusCode -eq 200) {
             $serviceReady = $true
             Write-Host "   ✅ 服务健康检查通过！" -ForegroundColor Green
         }

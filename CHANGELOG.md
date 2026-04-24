@@ -2,6 +2,22 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.3.5] - 2026-04-24
+
+### Added
+
+- 新增脚本归档备份的离线恢复向导启动入口，并补充 `Backup-Portal.bat`、`Restore-Portal.bat` 与中文控制向导入口。
+
+### Changed
+
+- 将 `Start-Portal.bat` 收口为统一的中文控制向导入口，集中处理启动、重启、停机、自启和备份恢复操作。
+- 将根项目、前端、后端、系统配置和主要发布文档版本统一提升到 `1.3.5`。
+
+### Fixed
+
+- 修复离线恢复向导先按备份 `id` 选中、但真正校验和恢复时又退回按备份名执行，可能在同名备份场景命中错误归档的问题。
+- 修复离线恢复在服务未完全停止时仍可能继续执行恢复的问题；现在会在恢复前确认 PM2 进程、监听端口和健康检查都已停稳。
+
 ## [1.3.4] - 2026-04-19
 
 ### Added
@@ -192,6 +208,7 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.3.5]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.5
 [1.3.4]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.4
 [1.3.3]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.3
 [1.3.2]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.2

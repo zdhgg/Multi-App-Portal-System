@@ -127,6 +127,9 @@ $BACKUP_CONFIG_SCHEMA = @{
     }
 }
 
+$UTF8_BOM_ENCODING = New-Object System.Text.UTF8Encoding($true)
+$UTF8_ENCODING = New-Object System.Text.UTF8Encoding($false)
+
 # 备份注册表架构
 $BACKUP_REGISTRY_SCHEMA = @{
     version = "1.1.1"
@@ -158,7 +161,7 @@ function Write-BackupLog {
     
     # 写入日志文件
     try {
-        Add-Content -Path $BACKUP_LOG_FILE -Value $logEntry -Encoding UTF8
+        [System.IO.File]::AppendAllText($BACKUP_LOG_FILE, $logEntry + [Environment]::NewLine, $UTF8_BOM_ENCODING)
     } catch {
         # 如果日志写入失败，至少输出到控制台
     }
@@ -173,6 +176,24 @@ function Write-BackupLog {
     }
 }
 
+function Read-Utf8JsonFile {
+    param([string]$Path)
+
+    $resolvedPath = (Resolve-Path -Path $Path).ProviderPath
+    $rawContent = [System.IO.File]::ReadAllText($resolvedPath, $UTF8_ENCODING)
+    return $rawContent | ConvertFrom-Json
+}
+
+function Write-Utf8JsonFile {
+    param(
+        [string]$Path,
+        [object]$Content
+    )
+
+    $json = $Content | ConvertTo-Json -Depth 10
+    [System.IO.File]::WriteAllText($Path, $json, $UTF8_BOM_ENCODING)
+}
+
 # ============================================================================
 # 配置管理函数
 # ============================================================================
@@ -182,13 +203,13 @@ function Initialize-BackupConfig {
     
     # 创建默认配置文件
     if (-not (Test-Path $BACKUP_CONFIG_FILE)) {
-        $BACKUP_CONFIG_SCHEMA | ConvertTo-Json -Depth 10 | Set-Content -Path $BACKUP_CONFIG_FILE -Encoding UTF8
+        Write-Utf8JsonFile -Path $BACKUP_CONFIG_FILE -Content $BACKUP_CONFIG_SCHEMA
         Write-BackupLog "创建默认备份配置文件: $BACKUP_CONFIG_FILE" "SUCCESS" "CONFIG"
     }
     
     # 创建默认注册表文件
     if (-not (Test-Path $BACKUP_REGISTRY_FILE)) {
-        $BACKUP_REGISTRY_SCHEMA | ConvertTo-Json -Depth 10 | Set-Content -Path $BACKUP_REGISTRY_FILE -Encoding UTF8
+        Write-Utf8JsonFile -Path $BACKUP_REGISTRY_FILE -Content $BACKUP_REGISTRY_SCHEMA
         Write-BackupLog "创建默认备份注册表文件: $BACKUP_REGISTRY_FILE" "SUCCESS" "CONFIG"
     }
     
@@ -205,7 +226,7 @@ function Initialize-BackupConfig {
 function Get-BackupConfig {
     try {
         if (Test-Path $BACKUP_CONFIG_FILE) {
-            $config = Get-Content -Path $BACKUP_CONFIG_FILE -Raw | ConvertFrom-Json
+            $config = Read-Utf8JsonFile -Path $BACKUP_CONFIG_FILE
             return $config
         } else {
             Write-BackupLog "备份配置文件不存在，使用默认配置" "WARN" "CONFIG"
@@ -222,7 +243,7 @@ function Set-BackupConfig {
     
     try {
         $Config.lastUpdated = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-        $Config | ConvertTo-Json -Depth 10 | Set-Content -Path $BACKUP_CONFIG_FILE -Encoding UTF8
+        Write-Utf8JsonFile -Path $BACKUP_CONFIG_FILE -Content $Config
         Write-BackupLog "备份配置已保存" "SUCCESS" "CONFIG"
         return $true
     } catch {
@@ -234,7 +255,7 @@ function Set-BackupConfig {
 function Get-BackupRegistry {
     try {
         if (Test-Path $BACKUP_REGISTRY_FILE) {
-            $registry = Get-Content -Path $BACKUP_REGISTRY_FILE -Raw | ConvertFrom-Json
+            $registry = Read-Utf8JsonFile -Path $BACKUP_REGISTRY_FILE
             return $registry
         } else {
             Write-BackupLog "备份注册表文件不存在，使用默认注册表" "WARN" "REGISTRY"
@@ -252,7 +273,7 @@ function Set-BackupRegistry {
     try {
         $Registry.lastUpdated = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
         $Registry.statistics.totalBackups = $Registry.backups.Count
-        $Registry | ConvertTo-Json -Depth 10 | Set-Content -Path $BACKUP_REGISTRY_FILE -Encoding UTF8
+        Write-Utf8JsonFile -Path $BACKUP_REGISTRY_FILE -Content $Registry
         Write-BackupLog "备份注册表已保存" "SUCCESS" "REGISTRY"
         return $true
     } catch {
@@ -521,69 +542,88 @@ function Invoke-DataBackup {
 # ============================================================================
 
 function Main {
-    # 处理帮助请求
-    if ($Help) {
-        Show-BackupHelp
-        return
-    }
-    
-    # 初始化配置
-    Initialize-BackupConfig
-    
-    # 执行指定操作
-    switch ($Action.ToLower()) {
-        "backup" {
-            $result = Invoke-DataBackup -BackupType $BackupType -BackupName $BackupName -BackupPath $BackupPath -IncludePaths $IncludePaths -ExcludePaths $ExcludePaths -Compress:$Compress
-            if ($result.Success) {
-                Write-BackupLog "备份操作成功完成" "SUCCESS" "MAIN"
-            } else {
-                Write-BackupLog "备份操作失败: $($result.Message)" "ERROR" "MAIN"
-            }
-        }
-        "restore" {
-            if ([string]::IsNullOrEmpty($RestoreFrom)) {
-                Write-BackupLog "恢复操作需要指定 -RestoreFrom 参数" "ERROR" "MAIN"
-                return
-            }
-            $result = Invoke-DataRestore -RestoreFrom $RestoreFrom -BackupPath $BackupPath
-            if ($result.Success) {
-                Write-BackupLog "恢复操作成功完成" "SUCCESS" "MAIN"
-            } else {
-                Write-BackupLog "恢复操作失败: $($result.Message)" "ERROR" "MAIN"
-            }
-        }
-        "schedule" {
-            Show-BackupSchedule
-        }
-        "verify" {
-            if ([string]::IsNullOrEmpty($RestoreFrom)) {
-                Write-BackupLog "验证操作需要指定 -RestoreFrom 参数" "ERROR" "MAIN"
-                return
-            }
-            $result = Test-BackupIntegrity -BackupName $RestoreFrom
-            if ($result.Success) {
-                Write-BackupLog "备份验证成功" "SUCCESS" "MAIN"
-            } else {
-                Write-BackupLog "备份验证失败: $($result.Message)" "ERROR" "MAIN"
-            }
-        }
-        "clean" {
-            $result = Remove-OldBackups
-            Write-BackupLog "清理操作完成，删除了 $($result.DeletedCount) 个过期备份" "SUCCESS" "MAIN"
-        }
-        "list" {
-            Show-BackupList
-        }
-        "status" {
-            Show-BackupStatus
-        }
-        "interactive" {
-            Start-InteractiveBackupManager
-        }
-        default {
-            Write-BackupLog "未知操作: $Action" "ERROR" "MAIN"
+    try {
+        # 处理帮助请求
+        if ($Help) {
             Show-BackupHelp
+            return 0
         }
+
+        # 初始化配置
+        Initialize-BackupConfig
+
+        # 执行指定操作
+        switch ($Action.ToLower()) {
+            "backup" {
+                $result = Invoke-DataBackup -BackupType $BackupType -BackupName $BackupName -BackupPath $BackupPath -IncludePaths $IncludePaths -ExcludePaths $ExcludePaths -Compress:$Compress
+                if ($result.Success) {
+                    Write-BackupLog "备份操作成功完成" "SUCCESS" "MAIN"
+                    return 0
+                }
+
+                Write-BackupLog "备份操作失败: $($result.Message)" "ERROR" "MAIN"
+                return 1
+            }
+            "restore" {
+                if ([string]::IsNullOrEmpty($RestoreFrom)) {
+                    Write-BackupLog "恢复操作需要指定 -RestoreFrom 参数" "ERROR" "MAIN"
+                    return 1
+                }
+
+                $result = Invoke-DataRestore -RestoreFrom $RestoreFrom -BackupPath $BackupPath
+                if ($result.Success) {
+                    Write-BackupLog "恢复操作成功完成" "SUCCESS" "MAIN"
+                    return 0
+                }
+
+                Write-BackupLog "恢复操作失败: $($result.Message)" "ERROR" "MAIN"
+                return 1
+            }
+            "schedule" {
+                Show-BackupSchedule
+                return 0
+            }
+            "verify" {
+                if ([string]::IsNullOrEmpty($RestoreFrom)) {
+                    Write-BackupLog "验证操作需要指定 -RestoreFrom 参数" "ERROR" "MAIN"
+                    return 1
+                }
+
+                $result = Test-BackupIntegrity -BackupName $RestoreFrom
+                if ($result.Success) {
+                    Write-BackupLog "备份验证成功" "SUCCESS" "MAIN"
+                    return 0
+                }
+
+                Write-BackupLog "备份验证失败: $($result.Message)" "ERROR" "MAIN"
+                return 1
+            }
+            "clean" {
+                $result = Remove-OldBackups
+                Write-BackupLog "清理操作完成，删除了 $($result.DeletedCount) 个过期备份" "SUCCESS" "MAIN"
+                return 0
+            }
+            "list" {
+                Show-BackupList
+                return 0
+            }
+            "status" {
+                Show-BackupStatus
+                return 0
+            }
+            "interactive" {
+                Start-InteractiveBackupManager
+                return 0
+            }
+            default {
+                Write-BackupLog "未知操作: $Action" "ERROR" "MAIN"
+                Show-BackupHelp
+                return 1
+            }
+        }
+    } catch {
+        Write-BackupLog "备份工具执行异常: $($_.Exception.Message)" "ERROR" "MAIN"
+        return 1
     }
 }
 
@@ -1009,10 +1049,10 @@ function Show-BackupHelp {
     Write-Host ""
     Write-Host "  🗄️ 备份操作:" -ForegroundColor Magenta
     Write-Host "    backup -BackupType <类型> -BackupName <名称> -Compress  创建备份" -ForegroundColor Cyan
-    Write-Host "    restore -RestoreFrom <备份名称>                        恢复数据" -ForegroundColor Cyan
+    Write-Host "    restore -RestoreFrom <备份名称或ID>                    恢复数据" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  ✅ 验证和管理:" -ForegroundColor Magenta
-    Write-Host "    verify -RestoreFrom <备份名称>                         验证备份完整性" -ForegroundColor Cyan
+    Write-Host "    verify -RestoreFrom <备份名称或ID>                     验证备份完整性" -ForegroundColor Cyan
     Write-Host "    list                                                   显示备份列表" -ForegroundColor Cyan
     Write-Host "    status                                                 显示系统状态" -ForegroundColor Cyan
     Write-Host "    clean                                                  清理过期备份" -ForegroundColor Cyan
@@ -1039,10 +1079,10 @@ function Show-BackupHelp {
     Write-Host "  .\backup.ps1 -Action backup -BackupType config -BackupName 'config-backup-v1'" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  # 恢复备份" -ForegroundColor Gray
-    Write-Host "  .\backup.ps1 -Action restore -RestoreFrom 'full-backup-20250923-120000'" -ForegroundColor Cyan
+    Write-Host "  .\backup.ps1 -Action restore -RestoreFrom 'full-backup-20250923-120000'  # 也可传备份 ID" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  # 验证备份" -ForegroundColor Gray
-    Write-Host "  .\backup.ps1 -Action verify -RestoreFrom 'config-backup-v1'" -ForegroundColor Cyan
+    Write-Host "  .\backup.ps1 -Action verify -RestoreFrom 'config-backup-v1'               # 也可传备份 ID" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  # 查看备份列表" -ForegroundColor Gray
     Write-Host "  .\backup.ps1 -Action list" -ForegroundColor Cyan
@@ -1060,4 +1100,9 @@ function Show-BackupHelp {
 }
 
 # 执行主函数
-Main
+$exitCode = Main
+if ($null -eq $exitCode) {
+    $exitCode = 0
+}
+
+exit ([int]$exitCode)

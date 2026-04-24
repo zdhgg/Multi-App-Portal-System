@@ -4,7 +4,8 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { ConfigurationExporter, ExportOptions, ImportOptions, BackupCreateOptions } from '../services/configurationExporter';
+import { spawn } from 'child_process';
+import { ConfigurationExporter, ExportOptions, ImportOptions, BackupCreateOptions, ImportResult } from '../services/configurationExporter';
 import { AppConfigurationService } from '../services/appConfigurationService';
 import { EnvironmentManager } from '../services/environmentManager';
 import { logger } from '../utils/logger';
@@ -12,6 +13,7 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import multer from 'multer';
 import { validateConfigImportFile } from '../middleware/fileValidation.js';
+import { getSystemConfigFilePath } from '../utils/systemConfigPath.js';
 
 const router = Router();
 
@@ -143,6 +145,171 @@ function parseBackupCreateOptions(body: Record<string, unknown>): BackupCreateOp
     excludePaths: parseStringArrayInput(body.excludePaths),
     compress: parseBooleanInput(body.compress, true)
   };
+}
+
+function buildRestoreResponseMessage(result: ImportResult): string {
+  if (result.success) {
+    return '备份恢复完成';
+  }
+
+  const primaryIssue = result.errors[0]?.error || result.warnings[0]?.message;
+  const hasPartialProgress = Boolean(
+    (result.importedConfigurations || 0) > 0 ||
+    (result.importedEnvironments || 0) > 0 ||
+    (result.restoredFiles || 0) > 0
+  );
+
+  if (hasPartialProgress) {
+    return primaryIssue
+      ? `恢复部分完成：${primaryIssue}`
+      : `恢复部分完成，存在 ${result.errors.length} 个错误和 ${result.warnings.length} 个警告`;
+  }
+
+  return primaryIssue || '备份恢复失败';
+}
+
+interface OfflineRestoreLaunchResult {
+  child: ReturnType<typeof spawn>;
+  exitedEarly: boolean;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+}
+
+interface OfflineRestoreLaunchCommandSpec {
+  program: string;
+  args: string[];
+}
+
+function getWorkspaceRoot(): string {
+  const overrideRoot = process.env.PORTAL_WORKSPACE_ROOT?.trim();
+  if (overrideRoot) {
+    return path.resolve(overrideRoot);
+  }
+
+  return path.resolve(path.dirname(getSystemConfigFilePath()), '..');
+}
+
+function buildOfflineRestoreLaunchCommands(
+  platform: NodeJS.Platform,
+  assistantPath: string,
+  backupId: string
+): OfflineRestoreLaunchCommandSpec[] {
+  if (platform !== 'win32') {
+    return [];
+  }
+
+  return [
+    {
+      program: 'cmd.exe',
+      args: ['/d', '/s', '/c', 'start', '', assistantPath, '-Selection', backupId]
+    }
+  ];
+}
+
+function spawnDetachedOfflineRestoreAssistant(
+  command: OfflineRestoreLaunchCommandSpec,
+  cwd: string
+): Promise<OfflineRestoreLaunchResult> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(command.program, command.args, {
+      cwd,
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: false
+    });
+
+    let settled = false;
+    let spawned = false;
+    let timer: NodeJS.Timeout | null = null;
+    let exitCode: number | null = null;
+    let exitSignal: NodeJS.Signals | null = null;
+
+    const resolveOnce = (value: OfflineRestoreLaunchResult) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolvePromise(value);
+    };
+
+    const rejectOnce = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      rejectPromise(error);
+    };
+
+    child.once('error', (error) => {
+      rejectOnce(new Error(`无法启动离线恢复向导: ${error.message}`));
+    });
+
+    child.once('spawn', () => {
+      spawned = true;
+      timer = setTimeout(() => {
+        resolveOnce({
+          child,
+          exitedEarly: false,
+          exitCode,
+          signal: exitSignal
+        });
+      }, 300);
+    });
+
+    child.once('exit', (code, signal) => {
+      exitCode = code;
+      exitSignal = signal;
+
+      if (!spawned) return;
+
+      if (code === 0) {
+        resolveOnce({
+          child,
+          exitedEarly: true,
+          exitCode: code,
+          signal
+        });
+        return;
+      }
+
+      rejectOnce(new Error(`离线恢复向导启动异常 (code=${code ?? 'null'}, signal=${signal ?? 'null'})`));
+    });
+  });
+}
+
+async function launchOfflineRestoreAssistant(backupId: string): Promise<{
+  assistantPath: string;
+  command: OfflineRestoreLaunchCommandSpec;
+  result: OfflineRestoreLaunchResult;
+}> {
+  const workspaceRoot = getWorkspaceRoot();
+  const assistantPath = path.join(workspaceRoot, 'Restore-Portal.bat');
+
+  try {
+    await fs.access(assistantPath);
+  } catch {
+    throw new Error(`Offline restore assistant not found: ${assistantPath}`);
+  }
+
+  const commands = buildOfflineRestoreLaunchCommands(process.platform, assistantPath, backupId);
+  if (commands.length === 0) {
+    throw new Error(`Offline restore assistant is not supported on platform: ${process.platform}`);
+  }
+
+  let lastError: Error | null = null;
+
+  for (const command of commands) {
+    try {
+      const result = await spawnDetachedOfflineRestoreAssistant(command, workspaceRoot);
+      return { assistantPath, command, result };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      logger.warn('Failed to launch offline restore assistant with command', {
+        command,
+        error: lastError.message
+      });
+    }
+  }
+
+  throw lastError ?? new Error('Unable to launch offline restore assistant');
 }
 
 /**
@@ -395,9 +562,7 @@ router.post('/backups/:backupId/restore', async (req: Request, res: Response) =>
     res.status(statusCode).json({
       success: result.success,
       data: result,
-      message: result.success 
-        ? 'Backup restored successfully' 
-        : `Restore completed with ${result.errors.length} errors and ${result.warnings.length} warnings`
+      message: buildRestoreResponseMessage(result)
     });
   } catch (error) {
     logger.error('Failed to restore backup', { error, backupId: req.params.backupId });
@@ -405,6 +570,80 @@ router.post('/backups/:backupId/restore', async (req: Request, res: Response) =>
     res.status(status).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to restore backup'
+    });
+  }
+});
+
+/**
+ * 启动离线恢复向导
+ */
+router.post('/backups/:backupId/launch-offline-restore', async (req: Request, res: Response) => {
+  try {
+    const { backupId } = req.params;
+    const exporter = getConfigExporter();
+    const backups = await exporter.getBackups();
+    const backup = backups.find(item => item.id === backupId);
+
+    if (!backup) {
+      return res.status(404).json({
+        success: false,
+        error: 'Backup not found'
+      });
+    }
+
+    if (backup.available === false) {
+      return res.status(409).json({
+        success: false,
+        error: 'Backup file is not available'
+      });
+    }
+
+    if (backup.source !== 'script-registry') {
+      return res.status(409).json({
+        success: false,
+        error: 'Offline restore assistant is only available for script archive backups'
+      });
+    }
+
+    const launch = await launchOfflineRestoreAssistant(backup.id);
+    launch.result.child.unref();
+
+    logger.info('Offline restore assistant launched', {
+      backupId: backup.id,
+      backupName: backup.name,
+      assistantPath: launch.assistantPath,
+      launcherProgram: launch.command.program,
+      launcherArgs: launch.command.args,
+      pid: launch.result.child.pid,
+      exitedEarly: launch.result.exitedEarly,
+      exitCode: launch.result.exitCode
+    });
+
+    return res.status(202).json({
+      success: true,
+      message: `已启动离线恢复向导，请在新窗口中继续恢复备份“${backup.name}”`,
+      data: {
+        backupId: backup.id,
+        backupName: backup.name,
+        assistantPath: launch.assistantPath,
+        launcherPid: launch.result.child.pid ?? null,
+        exitedEarly: launch.result.exitedEarly,
+        exitCode: launch.result.exitCode
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to launch offline restore assistant', { error, backupId: req.params.backupId });
+
+    const message = error instanceof Error ? error.message : 'Failed to launch offline restore assistant';
+    const status = message === 'Backup not found'
+      ? 404
+      : message.includes('not supported on platform')
+      ? 501
+      : 500;
+
+    return res.status(status).json({
+      success: false,
+      error: message
     });
   }
 });

@@ -55,7 +55,7 @@ export interface ImportResult {
   restoreSource?: BackupInfo['source'];
   restoreType?: string;
   errors: Array<{
-    type: 'configuration' | 'environment' | 'template';
+    type: 'configuration' | 'environment' | 'template' | 'file';
     item: string;
     error: string;
   }>;
@@ -1419,27 +1419,67 @@ export class ConfigurationExporter {
       for (const relativeFile of relativeFiles) {
         const sourcePath = path.join(extractedDir, relativeFile);
         const destinationPath = this.resolveProjectRelativePath(relativeFile);
-        await fs.mkdir(path.dirname(destinationPath), { recursive: true });
-        await fs.copyFile(sourcePath, destinationPath);
+        const liveDatabaseMessage = this.getLiveDatabaseRestoreBlockMessage(destinationPath);
+        if (liveDatabaseMessage) {
+          result.errors.push({
+            type: 'file',
+            item: relativeFile,
+            error: liveDatabaseMessage
+          });
+          continue;
+        }
+
+        try {
+          await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+          await fs.copyFile(sourcePath, destinationPath);
+          result.restoredFiles = (result.restoredFiles || 0) + 1;
+        } catch (error) {
+          result.errors.push({
+            type: 'file',
+            item: relativeFile,
+            error: this.formatLegacyRestoreFileError(relativeFile, destinationPath, error)
+          });
+        }
       }
 
-      result.restoredFiles = relativeFiles.length;
+      result.success = result.errors.length === 0;
+      const restoreStatus = result.success
+        ? 'success'
+        : ((result.restoredFiles || 0) > 0 ? 'partial' : 'failed');
+
+      if (!result.success) {
+        const blockedDatabaseFiles = result.errors.filter(error => error.error.includes('数据库文件'));
+        if (blockedDatabaseFiles.length > 0) {
+          result.warnings.push({
+            type: 'restore',
+            message: `已跳过 ${blockedDatabaseFiles.length} 个正在使用中的数据库文件。若要完整恢复数据库，请先停止 Detection API 或整个门户服务，再执行离线恢复。`
+          });
+        }
+      }
 
       await this.recordImportExportHistory(
         'import',
         backup.filePath,
         { ...options, backupSource: backup.source, backupType: backup.backupType },
         result,
-        'success',
+        restoreStatus,
         Date.now() - startTime,
         createdBy
       );
 
-      logger.info('Legacy backup restored successfully', {
+      const logPayload = {
         backupId: backup.id,
         backupType: backup.backupType,
-        restoredFiles: relativeFiles.length
-      });
+        restoredFiles: result.restoredFiles || 0,
+        errorsCount: result.errors.length,
+        warningsCount: result.warnings.length
+      };
+
+      if (result.success) {
+        logger.info('Legacy backup restored successfully', logPayload);
+      } else {
+        logger.warn('Legacy backup restore completed with warnings', logPayload);
+      }
 
       return result;
     } finally {
@@ -1495,6 +1535,32 @@ export class ConfigurationExporter {
     }
 
     return path.join(this.getWorkspaceRoot(), normalizedRelative);
+  }
+
+  private getLiveDatabaseRestoreBlockMessage(destinationPath: string): string | null {
+    const currentDatabasePath = typeof this.db.name === 'string' ? this.db.name : '';
+    if (!currentDatabasePath || currentDatabasePath === ':memory:') {
+      return null;
+    }
+
+    const normalizedDestination = path.normalize(destinationPath).toLowerCase();
+    const normalizedDatabase = path.normalize(currentDatabasePath).toLowerCase();
+    const blockedTargets = new Set([
+      normalizedDatabase,
+      `${normalizedDatabase}-wal`,
+      `${normalizedDatabase}-shm`
+    ]);
+
+    if (!blockedTargets.has(normalizedDestination)) {
+      return null;
+    }
+
+    return `数据库文件当前正被 Detection API 使用，无法在服务运行中覆盖：${destinationPath}。如需完整恢复数据库，请先停止 Detection API 或整个门户服务，再执行离线恢复。`;
+  }
+
+  private formatLegacyRestoreFileError(relativeFile: string, destinationPath: string, error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error);
+    return `恢复文件失败（${relativeFile} -> ${destinationPath}）：${message}`;
   }
 
   private async createLegacyPreRestoreBackup(

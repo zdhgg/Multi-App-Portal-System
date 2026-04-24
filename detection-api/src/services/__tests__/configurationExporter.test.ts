@@ -373,6 +373,77 @@ describe('ConfigurationExporter backup and restore flow', () => {
     expect(backup.name).toBe('manual-archive')
     expect(backup.filePath).toBe(path.join(tempDir, 'manual-backups', 'manual-archive.zip'))
   })
+
+  it('returns a partial restore result when a legacy backup contains the live database file', async () => {
+    db.close()
+
+    const liveDatabasePath = path.join(tempDir, 'detection-api', 'data', 'portal.db')
+    await mkdir(path.dirname(liveDatabasePath), { recursive: true })
+
+    db = new Database(liveDatabasePath)
+    configService = new AppConfigurationService(db)
+    environmentManager = new EnvironmentManager(db)
+    exporter = new ConfigurationExporter(db, configService, environmentManager)
+
+    const restoreSourceDir = path.join(tempDir, 'restore-source')
+    await mkdir(path.join(restoreSourceDir, 'configs'), { recursive: true })
+    await mkdir(path.join(restoreSourceDir, 'detection-api', 'data'), { recursive: true })
+    await mkdir(path.join(tempDir, 'configs'), { recursive: true })
+    await mkdir(path.join(tempDir, 'backups'), { recursive: true })
+
+    await writeFile(path.join(tempDir, 'configs', 'system-config.json'), '{"restored":false}', 'utf-8')
+    await writeFile(path.join(restoreSourceDir, 'configs', 'system-config.json'), '{"restored":true}', 'utf-8')
+    await writeFile(path.join(restoreSourceDir, 'detection-api', 'data', 'portal.db'), 'legacy-db', 'utf-8')
+
+    await writeFile(path.join(tempDir, 'backups', 'backup-registry.json'), JSON.stringify({
+      version: '2.0.0',
+      backups: [{
+        id: 'live-db-restore',
+        name: 'live-db-restore',
+        type: 'custom',
+        path: restoreSourceDir,
+        size: 0,
+        compressed: false,
+        createdAt: '2026-04-21T02:00:14.000Z',
+        description: 'Directory restore source',
+        status: 'completed'
+      }],
+      statistics: {
+        totalBackups: 1,
+        successfulBackups: 1,
+        failedBackups: 0,
+        lastBackup: '2026-04-21T02:00:14.000Z',
+        totalSize: 0
+      },
+      lastUpdated: '2026-04-21T02:00:14.000Z'
+    }, null, 2), 'utf-8')
+
+    const result = await exporter.restoreBackup('live-db-restore', {
+      overwriteExisting: true,
+      validateBeforeImport: true,
+      mergeEnvironments: false,
+      createBackup: false
+    }, 'tester')
+
+    expect(result.success).toBe(false)
+    expect(result.restoredFiles).toBe(1)
+    expect(result.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'file',
+        item: path.join('detection-api', 'data', 'portal.db'),
+        error: expect.stringContaining('数据库文件当前正被 Detection API 使用')
+      })
+    ]))
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'restore',
+        message: expect.stringContaining('请先停止 Detection API 或整个门户服务，再执行离线恢复')
+      })
+    ]))
+
+    const restoredConfig = JSON.parse(await readFile(path.join(tempDir, 'configs', 'system-config.json'), 'utf-8'))
+    expect(restoredConfig.restored).toBe(true)
+  })
 })
 
 function createConfig(

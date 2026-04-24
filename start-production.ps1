@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # 智能多Web应用门户系统 - 生产环境快速启动脚本
 
 param(
@@ -9,7 +9,7 @@ param(
     [int]$RequiredHealthyResponses = 2
 )
 
-Write-Host "🚀 智能多Web应用门户系统 - 生产环境启动" -ForegroundColor Cyan
+Write-Host "智能多Web应用门户系统 - 生产环境启动" -ForegroundColor Cyan
 Write-Host ('=' * 60) -ForegroundColor Cyan
 
 $ErrorActionPreference = "Stop"
@@ -45,7 +45,7 @@ function Exit-PM2PermissionIssue {
     )
 
     Write-Host ""
-    Write-Host "❌ 检测到 PM2 权限问题，当前无法继续启动。" -ForegroundColor Red
+    Write-Host "[错误] 检测到 PM2 权限问题，当前无法继续启动。" -ForegroundColor Red
     if (-not [string]::IsNullOrWhiteSpace($CommandName)) {
         Write-Host "   失败命令: pm2 $CommandName" -ForegroundColor Gray
     }
@@ -541,7 +541,7 @@ function Show-EnvironmentWarnings {
         return
     }
 
-    Write-Host "`n⚠️  环境提醒" -ForegroundColor Yellow
+Write-Host "`n[提醒] 环境提醒" -ForegroundColor Yellow
     foreach ($warning in $warnings) {
         Write-Host "   - $($warning.Title)" -ForegroundColor Yellow
         Write-Host "     影响: $($warning.Detail)" -ForegroundColor Gray
@@ -673,24 +673,24 @@ function Ensure-JwtSecret {
     $newSecret = New-RandomSecret
     if ($jwtLineIndex -ge 0) {
         $envLines[$jwtLineIndex] = "JWT_SECRET=$newSecret"
-        Write-Host "   ⚠️  检测到弱 JWT_SECRET，已自动更新为安全随机值" -ForegroundColor Yellow
+        Write-Host "   [提醒] 检测到弱 JWT_SECRET，已自动更新为安全随机值" -ForegroundColor Yellow
     } else {
         if ($envLines.Count -gt 0 -and $envLines[-1].Trim() -ne "") {
             $envLines += ""
         }
         $envLines += "JWT_SECRET=$newSecret"
-        Write-Host "   ✅ 已自动写入 JWT_SECRET 到 detection-api/.env" -ForegroundColor Green
+        Write-Host "   [完成] 已自动写入 JWT_SECRET 到 detection-api/.env" -ForegroundColor Green
     }
 
     Set-Content -Path $EnvPath -Value $envLines -Encoding UTF8
 }
 
-Write-Host "`n🔐 检查生产环境密钥..." -ForegroundColor Yellow
+Write-Host "`n检查生产环境密钥..." -ForegroundColor Yellow
 $backendEnvPath = Join-Path $projectRoot "detection-api\.env"
 Ensure-JwtSecret -EnvPath $backendEnvPath
 
 # 检查是否已有运行的实例
-Write-Host "`n🔍 检查服务状态..." -ForegroundColor Yellow
+Write-Host "`n检查服务状态..." -ForegroundColor Yellow
 $existingProcess = $null
 $usedCompatMode = $false
 
@@ -711,7 +711,7 @@ if ($existingProcess -and $existingProcess.pid) {
 
 $preStartListener = Get-ListeningProcessInfo -Port $portalPort
 if ($preStartListener.IsListening -and ($existingPm2Pid -le 0 -or $preStartListener.Pid -ne $existingPm2Pid)) {
-    Write-Host "❌ Port $portalPort is already owned by another process." -ForegroundColor Red
+    Write-Host "[错误] Port $portalPort is already owned by another process." -ForegroundColor Red
     Show-PortOwnerSummary -Listener $preStartListener
     Write-Host "   PM2 portal-api is not the active listener, so startup verification would be unreliable." -ForegroundColor Gray
     Write-Host "   Please stop that process or free port $portalPort before retrying." -ForegroundColor Gray
@@ -719,13 +719,13 @@ if ($preStartListener.IsListening -and ($existingPm2Pid -le 0 -or $preStartListe
 }
 
 if ($existingProcess -and $existingProcess.pm2_env.status -eq "online") {
-    Write-Host "   ✅ 服务已在运行中" -ForegroundColor Green
+        Write-Host "   [完成] 服务已在运行中" -ForegroundColor Green
     Show-PortalProcessSummary -Process $existingProcess -DetectionMode $(if ($usedCompatMode) { 'compat' } else { 'jlist' })
     
     # 检查当前环境变量是否正确
     $currentPM2Enabled = $existingProcess.pm2_env.PM2_ENABLED
     if ($currentPM2Enabled -and $currentPM2Enabled -ne "1") {
-        Write-Host "   ⚠️  PM2_ENABLED 未启用，需要重新加载环境变量" -ForegroundColor Yellow
+        Write-Host "   [提醒] PM2_ENABLED 未启用，需要重新加载环境变量" -ForegroundColor Yellow
     }
 
     $shouldRestart = $false
@@ -749,37 +749,37 @@ if ($existingProcess -and $existingProcess.pm2_env.status -eq "online") {
         Start-Sleep -Seconds 1
         $pm2StartResult = Invoke-PM2 -Arguments @('start', 'ecosystem-prod-loader.config.js') -Silent
         if ($pm2StartResult.ExitCode -ne 0) {
-            Write-Host "❌ PM2 重启失败！" -ForegroundColor Red
+    Write-Host "[错误] PM2 重启失败！" -ForegroundColor Red
             exit 1
         }
     }
 } else {
-    Write-Host "   🧹 清理旧的 PM2 进程记录..." -ForegroundColor DarkGray
+Write-Host "   清理旧的 PM2 进程记录..." -ForegroundColor DarkGray
     Invoke-PM2 -Arguments @('delete', 'portal-api') -Silent | Out-Null
     Start-Sleep -Seconds 1
 
     # 启动新实例
-    Write-Host "`n🚀 启动新服务..." -ForegroundColor Yellow
+Write-Host "`n启动新服务..." -ForegroundColor Yellow
     Set-Location $projectRoot
     
     # 使用 tsx 配置（不需要编译）
     $pm2StartResult = Invoke-PM2 -Arguments @('start', 'ecosystem-prod-loader.config.js') -Silent
     
     if ($pm2StartResult.ExitCode -ne 0) {
-        Write-Host "❌ PM2 启动失败！" -ForegroundColor Red
+    Write-Host "[错误] PM2 启动失败！" -ForegroundColor Red
         exit 1
     }
     
-    Write-Host "✅ 服务启动成功" -ForegroundColor Green
+Write-Host "[完成] 服务启动成功" -ForegroundColor Green
 }
 
 # 等待服务完全启动
-Write-Host "`n⏳ 等待服务完全启动..." -ForegroundColor Yellow
+Write-Host "`n等待服务完全启动..." -ForegroundColor Yellow
 Write-Host "   条件: PM2 在线、端口归属正确、/health 连续 $RequiredHealthyResponses 次通过" -ForegroundColor DarkGray
 
 # 显示状态
 Write-Host ("`n" + ('=' * 60)) -ForegroundColor Cyan
-Write-Host "📊 当前状态" -ForegroundColor Cyan
+Write-Host "当前状态" -ForegroundColor Cyan
 Write-Host ('=' * 60) -ForegroundColor Cyan
 
 $readinessResult = Wait-ForPortalReadiness -Name 'portal-api' -Port $portalPort -TimeoutSeconds $ReadyTimeoutSeconds -WarmupSeconds $StartupWarmupSeconds -RequiredHealthyResponses $RequiredHealthyResponses
@@ -794,7 +794,7 @@ if ($statusSnapshot) {
 $listenerSnapshot = $readinessResult.Listener
 
 if (-not $readinessResult.Ready -or $pm2Pid -le 0 -or -not $listenerSnapshot.IsListening -or $listenerSnapshot.Pid -ne $pm2Pid) {
-    Write-Host "`n❌ Startup verification failed" -ForegroundColor Red
+    Write-Host "`n[错误] Startup verification failed" -ForegroundColor Red
     if ($pm2Pid -le 0) {
         Write-Host "   PM2 did not report a valid PID for portal-api." -ForegroundColor Gray
     } else {
@@ -808,18 +808,18 @@ if (-not $readinessResult.Ready -or $pm2Pid -le 0 -or -not $listenerSnapshot.IsL
 Show-PortalProcessSummary -Process $existingProcess -DetectionMode $(if ($usedCompatMode) { 'compat' } else { 'jlist' })
 
 # 健康检查
-Write-Host "`n🏥 健康检查..." -ForegroundColor Yellow
-Write-Host "✅ 健康检查通过 ($($readinessResult.Health.Detail))" -ForegroundColor Green
+Write-Host "`n健康检查..." -ForegroundColor Yellow
+Write-Host "[完成] 健康检查通过 ($($readinessResult.Health.Detail))" -ForegroundColor Green
 Write-Host "   连续通过次数: $($readinessResult.ConsecutiveHealthyResponses)" -ForegroundColor DarkGray
 
 Write-Host ("`n" + ('=' * 60)) -ForegroundColor Cyan
-Write-Host "📊 服务信息" -ForegroundColor Cyan
+Write-Host "服务信息" -ForegroundColor Cyan
 Write-Host ('=' * 60) -ForegroundColor Cyan
-Write-Host "   🌐 访问地址: http://localhost:$portalPort" -ForegroundColor White
-Write-Host "   📡 API 地址: http://localhost:$portalPort/api" -ForegroundColor White
-Write-Host "   💚 健康检查: http://localhost:$portalPort/health" -ForegroundColor White
+Write-Host "   访问地址: http://localhost:$portalPort" -ForegroundColor White
+Write-Host "   API 地址: http://localhost:$portalPort/api" -ForegroundColor White
+Write-Host "   健康检查: http://localhost:$portalPort/health" -ForegroundColor White
 
-Write-Host "`n📝 常用命令:" -ForegroundColor Cyan
+Write-Host "`n常用命令:" -ForegroundColor Cyan
 Write-Host "   .\Start-Portal.bat                        # 推荐：带状态检测的控制入口" -ForegroundColor Gray
 Write-Host "   .\start-production.ps1 -RestartIfRunning -NonInteractive # 推荐：校验式重启" -ForegroundColor Gray
 Write-Host "   pm2 status                                # 查看服务状态" -ForegroundColor Gray
