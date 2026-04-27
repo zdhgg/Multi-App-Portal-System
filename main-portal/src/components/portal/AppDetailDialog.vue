@@ -339,7 +339,13 @@ const portSummaryText = computed(() => {
   return `${portItems.value.length} 个服务端口`
 })
 
-const uptimeText = computed(() => props.app?.uptime ? formatUptime(props.app.uptime) : '尚未启动')
+const uptimeText = computed(() => {
+  if (!props.app?.isRunning) return '尚未启动'
+  if (typeof props.app.uptime === 'number' && props.app.uptime >= 0) {
+    return formatUptime(props.app.uptime)
+  }
+  return '同步中'
+})
 const lastUpdatedText = computed(() => props.app?.lastUpdated ? formatTime(props.app.lastUpdated) : '未记录')
 const accessHostText = computed(() => props.app?.accessHost || '本机 / 局域网自动适配')
 const accessProtocolText = computed(() => props.app ? resolveAppProtocol(props.app).toUpperCase() : 'N/A')
@@ -386,7 +392,7 @@ const copyUrl = async () => {
 }
 
 const formatUptime = (uptime: number) => {
-  const seconds = Math.floor(uptime / 1000)
+  const seconds = Math.floor(Math.max(uptime, 0) / 1000)
   const minutes = Math.floor(seconds / 60)
   const hours = Math.floor(minutes / 60)
   const days = Math.floor(hours / 24)

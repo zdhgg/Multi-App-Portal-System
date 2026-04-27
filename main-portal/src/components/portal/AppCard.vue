@@ -53,7 +53,7 @@
 
       <div class="meta-panel">
         <span class="meta-label">运行时间</span>
-        <span class="meta-value">{{ app.uptime ? formatUptime(app.uptime) : '尚未启动' }}</span>
+        <span class="meta-value">{{ uptimeText }}</span>
       </div>
     </div>
 
@@ -235,6 +235,14 @@ const descriptionText = computed(() => {
   return `${techStackInfo.value.displayName} 已接入门户，当前处于离线或待启动状态。`
 })
 
+const uptimeText = computed(() => {
+  if (!props.app.isRunning) return '尚未启动'
+  if (typeof props.app.uptime === 'number' && props.app.uptime >= 0) {
+    return formatUptime(props.app.uptime)
+  }
+  return '同步中'
+})
+
 const handleAccess = () => {
   if (!props.app.isRunning) {
     ElMessage.warning('应用当前未运行')
@@ -290,7 +298,7 @@ const getPortShortLabel = (type: AppPort['type']) => {
 }
 
 const formatUptime = (uptime: number) => {
-  const seconds = Math.floor(uptime / 1000)
+  const seconds = Math.floor(Math.max(uptime, 0) / 1000)
   const minutes = Math.floor(seconds / 60)
   const hours = Math.floor(minutes / 60)
   const days = Math.floor(hours / 24)

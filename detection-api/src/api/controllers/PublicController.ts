@@ -10,19 +10,24 @@ import net from 'net'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { ApplicationService } from '../../core/ApplicationService'
+import type { ProcessManager } from '../../core/types'
 import { logger } from '../../utils/logger'
 import { PM2Service } from '../../services/pm2Service'
+import type { PM2Process } from '../../services/pm2Service'
 
 export class PublicController {
   private router = Router()
   private pm2Service: PM2Service | null = null
+  private processManager: Pick<ProcessManager, 'getRunningProcesses'> | null = null
   private lanHostCache: { value: string | null; resolvedAt: number } | null = null
 
   constructor(
     private applicationService: ApplicationService,
-    pm2Service?: PM2Service
+    pm2Service?: PM2Service,
+    processManager?: Pick<ProcessManager, 'getRunningProcesses'>
   ) {
     this.pm2Service = pm2Service || null
+    this.processManager = processManager || null
     this.setupRoutes()
   }
 
@@ -341,6 +346,7 @@ export class PublicController {
     const accessPath = this.resolveExternalExeAccessPath(app)
     const accessUrl = this.buildAccessUrl(protocol, hostname, accessPort, accessPath)
     const lanAccessUrl = lanHost ? this.buildAccessUrl(protocol, lanHost, accessPort, accessPath) : null
+    const uptime = await this.resolveAppUptime(app)
 
     return {
       id: app.id,
@@ -379,7 +385,7 @@ export class PublicController {
       // ✅ 新增：运行模式信息
       deploymentMode: deploymentMode,
       isFullStack: isFullStack,
-      uptime: 0,
+      uptime,
       lastUpdated: app.metadata?.updatedAt ? new Date(app.metadata.updatedAt * 1000).toISOString() : new Date().toISOString(),
       network: {
         protocol,
@@ -463,27 +469,184 @@ export class PublicController {
 
     try {
       const processes = await this.pm2Service.getProcessList()
-      const normalizedAppName = appName.toLowerCase().replace(/\s+/g, '-')
-      const normalizedPm2Name = typeof pm2ProcessName === 'string' && pm2ProcessName.trim() !== ''
-        ? pm2ProcessName.toLowerCase().replace(/\s+/g, '-')
-        : null
-
-      // 检查是否有同名的PM2进程在运行
-      const pm2Process = processes.find(p =>
-        (!!normalizedPm2Name && (
-          p.name === pm2ProcessName ||
-          p.name.toLowerCase() === normalizedPm2Name
-        )) ||
-        p.name === normalizedAppName ||
-        p.name === appName ||
-        p.name.toLowerCase().replace(/\s+/g, '-') === normalizedAppName
-      )
+      const pm2Process = this.findMatchingPm2Process(processes, appName, pm2ProcessName)
 
       return pm2Process?.status === 'online'
     } catch (error) {
       logger.error('检查PM2进程失败', { appName, error })
       return false
     }
+  }
+
+  private async resolveAppUptime(app: any): Promise<number> {
+    if (app?.state !== 'running') {
+      return 0
+    }
+
+    const pm2Uptime = await this.resolvePm2Uptime(app)
+    if (pm2Uptime !== null) {
+      return pm2Uptime
+    }
+
+    const managedProcessUptime = this.resolveManagedProcessUptime(app)
+    if (managedProcessUptime !== null) {
+      return managedProcessUptime
+    }
+
+    return 0
+  }
+
+  private shouldResolveViaPm2(app: any): boolean {
+    const deploymentMode = typeof app?.deploymentMode === 'string' ? app.deploymentMode : 'unknown'
+    const pm2ProcessName = typeof app?.pm2ProcessName === 'string' ? app.pm2ProcessName.trim() : ''
+
+    return deploymentMode === 'production' || pm2ProcessName.length > 0
+  }
+
+  private async resolvePm2Uptime(app: any): Promise<number | null> {
+    if (!this.pm2Service || !this.shouldResolveViaPm2(app)) {
+      return null
+    }
+
+    try {
+      const processes = await this.pm2Service.getProcessList()
+      const pm2Process = this.findMatchingPm2Process(processes, app.name, app.pm2ProcessName)
+
+      if (!pm2Process || pm2Process.status !== 'online') {
+        return null
+      }
+
+      return this.normalizeUptimeValue(pm2Process.uptime)
+    } catch (error) {
+      logger.debug('Failed to resolve PM2 app uptime', {
+        appId: app?.id,
+        appName: app?.name,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return null
+    }
+  }
+
+  private resolveManagedProcessUptime(app: any): number | null {
+    const getRunningProcesses = this.processManager?.getRunningProcesses
+    if (typeof getRunningProcesses !== 'function') {
+      return null
+    }
+
+    try {
+      const runningProcesses = getRunningProcesses.call(this.processManager)
+      if (!(runningProcesses instanceof Map)) {
+        return null
+      }
+
+      let startedAtMs: number | null = null
+      const trackedKeys = [app.id, `${app.id}-frontend`, `${app.id}-backend`]
+
+      for (const key of trackedKeys) {
+        const processInfo = runningProcesses.get(key)
+        startedAtMs = this.pickEarlierStartTime(startedAtMs, processInfo?.startedAt)
+      }
+
+      if (startedAtMs === null) {
+        for (const [processId, processInfo] of runningProcesses.entries()) {
+          if (
+            processId !== app.id &&
+            processInfo?.parentAppId !== app.id &&
+            processInfo?.appName !== app.name
+          ) {
+            continue
+          }
+
+          startedAtMs = this.pickEarlierStartTime(startedAtMs, processInfo?.startedAt)
+        }
+      }
+
+      return startedAtMs === null ? null : Math.max(Date.now() - startedAtMs, 0)
+    } catch (error) {
+      logger.debug('Failed to resolve managed process uptime', {
+        appId: app?.id,
+        appName: app?.name,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return null
+    }
+  }
+
+  private pickEarlierStartTime(currentValue: number | null, candidate: unknown): number | null {
+    const candidateMs = this.toTimestampMs(candidate)
+    if (candidateMs === null) {
+      return currentValue
+    }
+
+    if (currentValue === null || candidateMs < currentValue) {
+      return candidateMs
+    }
+
+    return currentValue
+  }
+
+  private toTimestampMs(value: unknown): number | null {
+    if (value instanceof Date) {
+      const timestamp = value.getTime()
+      return Number.isFinite(timestamp) ? timestamp : null
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return value > 1_000_000_000_000 ? value : value * 1000
+    }
+
+    if (typeof value === 'string' && value.trim() !== '') {
+      const numericValue = Number(value)
+      if (Number.isFinite(numericValue) && numericValue > 0) {
+        return numericValue > 1_000_000_000_000 ? numericValue : numericValue * 1000
+      }
+
+      const parsed = Date.parse(value)
+      return Number.isNaN(parsed) ? null : parsed
+    }
+
+    return null
+  }
+
+  private normalizeUptimeValue(rawValue: unknown): number {
+    const numericValue = typeof rawValue === 'string' ? Number(rawValue) : rawValue
+    if (typeof numericValue !== 'number' || !Number.isFinite(numericValue) || numericValue <= 0) {
+      return 0
+    }
+
+    if (numericValue > 946684800000) {
+      return Math.max(Date.now() - numericValue, 0)
+    }
+
+    return numericValue
+  }
+
+  private findMatchingPm2Process(
+    processes: PM2Process[],
+    appName: string,
+    pm2ProcessName?: string | null
+  ): PM2Process | undefined {
+    const normalizedAppName = this.normalizeProcessName(appName)
+    const normalizedPm2Name = typeof pm2ProcessName === 'string' && pm2ProcessName.trim() !== ''
+      ? this.normalizeProcessName(pm2ProcessName)
+      : null
+
+    return processes.find(process => {
+      const normalizedProcessName = this.normalizeProcessName(process.name)
+
+      return (
+        (!!normalizedPm2Name && (
+          process.name === pm2ProcessName ||
+          normalizedProcessName === normalizedPm2Name
+        )) ||
+        process.name === appName ||
+        normalizedProcessName === normalizedAppName
+      )
+    })
+  }
+
+  private normalizeProcessName(value: string): string {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, '-')
   }
 
   /**

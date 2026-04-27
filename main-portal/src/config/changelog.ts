@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.9',
+    date: '2026-04-27',
+    title: '应用运行时间显示修复补丁',
+    items: [
+      { type: 'fix', description: '修复门户首页和应用详情中的“运行时间”长期显示为“尚未启动”的问题，运行中应用现在会展示真实存活时长' },
+      { type: 'improvement', description: '公共应用接口现在会优先读取 PM2 uptime，并在直启/开发模式下回退到进程管理器中的 startedAt 计算结果' },
+      { type: 'fix', description: '前端不再把 uptime=0 的在线应用误判为未启动；刚启动或同步中的应用会按当前状态稳定展示' },
+      { type: 'feature', description: '新增 PublicController uptime 映射回归测试，覆盖 PM2 托管应用和直接启动应用两条链路' },
+      { type: 'improvement', description: '同步根项目、前后端包、系统配置、锁文件和主要发布文档版本到 1.3.9' }
+    ]
+  },
+  {
     version: '1.3.8',
     date: '2026-04-27',
     title: '目录选择回填与全栈工作区识别增强补丁',

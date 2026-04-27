@@ -2,6 +2,22 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.3.9] - 2026-04-27
+
+### Added
+
+- 为门户公共应用接口新增运行时间回归测试，覆盖 PM2 托管应用与直接启动应用两条 uptime 映射链路。
+
+### Changed
+
+- 将根项目、前端、后端、系统配置、锁文件、前端内置更新记录和主要发布文档版本统一提升到 `1.3.9`。
+
+### Fixed
+
+- 修复门户首页和应用详情中的“运行时间”长期显示为“尚未启动”的问题，运行中应用现在会展示真实存活时长。
+- 修复公共应用接口将 `uptime` 固定返回 `0` 的问题；现在会优先读取 PM2 运行时间，并在直启场景下回退到进程管理器的 `startedAt` 计算结果。
+- 修复前端对 `uptime=0` 的真值判断误用，避免刚启动或同步中的在线应用被错误显示为“尚未启动”。
+
 ## [1.3.8] - 2026-04-27
 
 ### Added
@@ -252,6 +268,7 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.3.9]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.9
 [1.3.8]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.8
 [1.3.7]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.7
 [1.3.6]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.6

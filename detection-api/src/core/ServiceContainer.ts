@@ -203,7 +203,11 @@ export class ServiceContainer {
     this.services.set('detectionController',
       new DetectionController(this.get('detectionService'), this.get('configManager')))
     this.services.set('publicController',
-      new PublicController(this.get('applicationService'), this.get('pm2Service')))
+      new PublicController(
+        this.get('applicationService'),
+        this.get('pm2Service'),
+        this.get('processManager')
+      ))
     this.services.set('authController',
       new AuthController())
     this.services.set('portConfigController',

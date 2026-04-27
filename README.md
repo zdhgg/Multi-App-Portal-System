@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.3.8-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.3.8-success.svg)
+![Version](https://img.shields.io/badge/version-1.3.9-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.3.9-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.3.8`
-- **GitHub Release**: [v1.3.8: 目录选择回填与全栈工作区识别增强补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.8)
+- **当前版本**: `1.3.9`
+- **GitHub Release**: [v1.3.9: 应用运行时间显示修复补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.9)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -245,6 +245,18 @@ VITE_WS_BASE=
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.3.9 (2026-04-27) — 应用运行时间显示修复补丁
+- ⏱ **运行时间展示修复**
+  - 修复门户首页和应用详情中的“运行时间”长期显示为“尚未启动”的问题，运行中应用现在会展示真实存活时长
+  - 前端不再把 `uptime=0` 的在线应用误判为未启动；刚启动或状态同步中的应用会按实际状态展示
+- 🔌 **公共接口 uptime 回填**
+  - 公共应用接口现在会优先读取 PM2 进程 uptime，并在直启/开发模式下回退到进程管理器中的 `startedAt`
+  - 全栈应用会从主应用和子进程记录中选择最早启动时间，避免只看到部分子进程时长
+- 🧪 **回归测试补齐**
+  - 新增 `PublicController` 的运行时间映射测试，覆盖 PM2 托管应用和直接启动应用两条链路
+- 🔁 **版本同步**
+  - 同步根项目、前后端包、系统配置、锁文件、前端内置更新记录和主要发布文档版本到 `1.3.9`
+
 ### v1.3.8 (2026-04-27) — 目录选择回填与全栈工作区识别增强补丁
 - 📁 **目录选择链路修复**
   - 修复“系统设置 > 路径访问”中“选择目录并添加”在存在空白输入行时看起来没有生效的问题；现在会优先回填空白行，并避免重复路径
@@ -438,4 +450,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.3.8 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.3.9 - 让应用管理更简单、更智能！*
