@@ -144,6 +144,42 @@ describe('PM2StateSyncService manual runtime detection', () => {
     expect(stored?.deploymentMode).toBe('unknown')
   })
 
+  it('falls back to direct TCP probing when checkConflicts misses active ports', async () => {
+    const repository = new InMemoryApplicationRepository([createApp()])
+    const applicationService = {
+      repository,
+      findAll: vi.fn(async () => {
+        const app = repository.get('video-cms')
+        return app ? [app] : []
+      }),
+      findById: vi.fn(async (id: string) => repository.get(id) ?? null)
+    }
+    const pm2Service = {
+      getProcessList: vi.fn(async () => [])
+    }
+    const networkService = {
+      checkConflicts: vi.fn(async () => [])
+    }
+
+    const service = new PM2StateSyncService(
+      pm2Service as any,
+      applicationService as any,
+      networkService as any
+    )
+
+    vi.spyOn(service as any, 'isPortListening').mockImplementation(async (port: number) => {
+      return port === 3004 || port === 8004
+    })
+
+    const result = await service.syncNow()
+    const stored = repository.get('video-cms')
+
+    expect(result).toMatchObject({ synced: 1, updated: 1, errors: 0 })
+    expect(stored?.state).toBe('running')
+    expect(stored?.deploymentMode).toBe('development')
+    expect(networkService.checkConflicts).toHaveBeenCalledWith([3004, 8004])
+  })
+
   it('downgrades stale production labels when no PM2 process name is recorded', async () => {
     const repository = new InMemoryApplicationRepository([
       createApp({

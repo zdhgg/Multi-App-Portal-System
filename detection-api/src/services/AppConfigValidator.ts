@@ -31,6 +31,19 @@ export interface ConfigValidationResult {
 }
 
 export class AppConfigValidator {
+  private readonly frontendDirCandidates = [
+    'frontend',
+    'client',
+    'web',
+    'ui',
+    'app-ui',
+    'portal',
+    'apps/frontend',
+    'apps/client',
+    'apps/web',
+    'apps/ui'
+  ] as const
+
   /**
    * 验证应用配置
    */
@@ -40,8 +53,8 @@ export class AppConfigValidator {
 
     try {
       // 检测前端配置文件
-      const frontendDir = join(appDirectory, 'frontend')
-      if (existsSync(frontendDir)) {
+      const frontendDir = this.resolveFrontendDirectory(appDirectory)
+      if (frontendDir) {
         // 检查 Vite 配置
         const viteConfigPath = this.findViteConfig(frontendDir)
         if (viteConfigPath) {
@@ -76,6 +89,17 @@ export class AppConfigValidator {
       logger.error('配置验证失败', { error, appDirectory })
       throw error
     }
+  }
+
+  private resolveFrontendDirectory(appDirectory: string): string | null {
+    for (const candidate of this.frontendDirCandidates) {
+      const candidatePath = join(appDirectory, candidate)
+      if (existsSync(candidatePath)) {
+        return candidatePath
+      }
+    }
+
+    return null
   }
 
   /**
@@ -750,4 +774,3 @@ export class AppConfigValidator {
     return issues
   }
 }
-

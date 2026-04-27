@@ -1,7 +1,11 @@
 import { isLocalAccess } from './networkUtils'
 import { createApp, h } from 'vue'
 import FolderBrowser from '@/components/FolderBrowser.vue'
-import { filesystemApiService, type FolderSelectionResult } from '@/services/filesystemApi'
+import {
+  filesystemApiService,
+  type FolderSelectionResult,
+  type SelectFolderOptions
+} from '@/services/filesystemApi'
 
 function extractErrorMessage(error: unknown): string {
   if (error && typeof error === 'object') {
@@ -27,9 +31,57 @@ export const canUseNativeDirectoryPickerInCurrentContext = (): boolean => {
   return isLocalAccess()
 }
 
+export const isServerDirectoryPickerContext = (): boolean => {
+  return !canUseNativeDirectoryPickerInCurrentContext()
+}
+
+export const getDirectoryPickerModeLabel = (): string => {
+  return isServerDirectoryPickerContext() ? '服务器目录模式' : '本机目录模式'
+}
+
+export const getDirectoryPickerActionLabel = (): string => {
+  return isServerDirectoryPickerContext() ? '选择服务器目录' : '选择目录'
+}
+
+export const getDirectoryPickerAddActionLabel = (): string => {
+  return isServerDirectoryPickerContext() ? '选择服务器目录并添加' : '选择目录并添加'
+}
+
+export const getDirectoryPickerDialogTitle = (): string => {
+  return isServerDirectoryPickerContext() ? '选择服务器目录' : '选择文件夹'
+}
+
+export const getDirectoryPickerBrowseDialogTitle = (): string => {
+  return isServerDirectoryPickerContext() ? '选择服务器扫描路径' : '选择扫描路径'
+}
+
+export const getDirectoryPickerAlertTitle = (): string => {
+  return isServerDirectoryPickerContext() ? '当前正在浏览服务器目录' : '文件夹选择功能'
+}
+
+export const getDirectoryPickerPathPlaceholder = (): string => {
+  return isServerDirectoryPickerContext() ? '输入服务器上的绝对路径...' : '输入路径...'
+}
+
+export const getDirectoryPickerSelectedLabel = (): string => {
+  return isServerDirectoryPickerContext() ? '已选择服务器目录:' : '已选择:'
+}
+
+export const getDirectoryPickerSelectCurrentLabel = (): string => {
+  return isServerDirectoryPickerContext() ? '选择当前服务器目录' : '选择当前目录'
+}
+
+export const getDirectoryPickerCancelMessage = (): string => {
+  return isServerDirectoryPickerContext() ? '已取消服务器目录选择' : '已取消目录选择'
+}
+
+export const formatDirectoryPickerSelectionMessage = (path: string): string => {
+  return isServerDirectoryPickerContext() ? `已选择服务器目录: ${path}` : `已选择目录: ${path}`
+}
+
 export const getNativeDirectoryPickerUnavailableMessage = (): string => {
   if (!isLocalAccess()) {
-    return '当前通过局域网地址访问，“选择目录”会在服务器本机弹出系统窗口，无法可靠显示在当前浏览器前。请直接手动输入服务器上的绝对路径，或在服务器本机使用 http://localhost:8002 打开页面后再选择目录。'
+    return '当前通过内网地址远程访问，系统目录选择窗口只会显示在服务器本机，无法可靠出现在当前浏览器前。请直接输入服务器上的绝对路径，或在服务器本机使用 http://localhost:8002 打开页面后再选择目录。'
   }
 
   return '当前环境不适合使用后端原生目录选择，请手动输入完整路径。'
@@ -37,7 +89,7 @@ export const getNativeDirectoryPickerUnavailableMessage = (): string => {
 
 export const getDirectoryPickerCompatibilityDescription = (): string => {
   if (!canUseNativeDirectoryPickerInCurrentContext()) {
-    return '当前通过局域网远程访问，将使用网页式服务器目录浏览器；如需选择客户端本机目录，请在服务器本机使用 http://localhost:8002 打开页面。'
+    return '当前通过内网远程访问，将打开网页式服务器目录浏览器。这里选择的是部署服务器上的路径，不是你当前电脑的本地路径；如需使用系统目录选择窗口，请在服务器本机使用 http://localhost:8002 打开页面。'
   }
 
   if (canUseBrowserDirectoryPickerInCurrentContext()) {
@@ -45,7 +97,7 @@ export const getDirectoryPickerCompatibilityDescription = (): string => {
   }
 
   if (!isLocalAccess()) {
-    return '当前通过局域网 HTTP 地址访问，浏览器目录选择能力受限。建议在服务器本机使用 http://localhost:8002 打开页面，或直接手动输入服务器上的绝对路径。'
+    return '当前通过内网 HTTP 地址远程访问，浏览器目录选择能力受限。建议在服务器本机使用 http://localhost:8002 打开页面，或直接输入服务器上的绝对路径。'
   }
 
   return '建议使用 Chrome/Edge 最新版，并尽量在本机使用 http://localhost:8002 访问，以获得更稳定的目录选择体验。'
@@ -60,20 +112,23 @@ export const getNativeDirectoryPickerFailureMessage = (error: unknown): string =
 
   if (errorMessage.includes('原生目录选择失败')) {
     if (!isLocalAccess()) {
-      return '后端原生目录选择失败，且当前通过局域网地址访问，浏览器无法可靠回退到本地目录选择。请在服务器本机使用 http://localhost:8002 打开页面后重试，或手动输入完整路径。'
+      return '系统目录选择失败，且当前是内网远程访问。请在服务器本机使用 http://localhost:8002 打开页面后重试，或直接输入服务器上的完整路径。'
     }
 
     return '后端原生目录选择失败。请手动输入完整路径，或刷新页面后重试。'
   }
 
   if (!isLocalAccess()) {
-    return '当前通过局域网地址访问，浏览器无法可靠回退到本地目录选择。请在服务器本机使用 http://localhost:8002 打开页面后重试，或手动输入完整路径。'
+    return '当前是内网远程访问，无法可靠回退到本地目录选择。请在服务器本机使用 http://localhost:8002 打开页面后重试，或直接输入服务器上的完整路径。'
   }
 
   return errorMessage || '目录选择失败，请手动输入完整路径。'
 }
 
-const openWebDirectoryPicker = (startPath?: string): Promise<FolderSelectionResult> => {
+const openWebDirectoryPicker = (
+  startPath?: string,
+  options: DirectoryPickerOptions = {}
+): Promise<FolderSelectionResult> => {
   return new Promise((resolve) => {
     if (typeof document === 'undefined') {
       resolve({ cancelled: true })
@@ -89,6 +144,7 @@ const openWebDirectoryPicker = (startPath?: string): Promise<FolderSelectionResu
         return h(FolderBrowser, {
           initialPath: startPath || '',
           showHidden: false,
+          validateSelection: options.validateSelectedPath !== false,
           onSelect: (path: string) => finish({ cancelled: false, path, source: 'web' }),
           onClose: () => finish({ cancelled: true, source: 'web' })
         })
@@ -115,10 +171,11 @@ const openWebDirectoryPicker = (startPath?: string): Promise<FolderSelectionResu
 
 export const selectDirectoryWithBestEffort = async (
   startPath?: string,
-  silent = false
+  silent = false,
+  options: DirectoryPickerOptions = {}
 ): Promise<FolderSelectionResult> => {
   if (canUseNativeDirectoryPickerInCurrentContext()) {
-    const response = await filesystemApiService.selectFolder(startPath, silent)
+    const response = await filesystemApiService.selectFolder(startPath, silent, options)
     if (!response.success || !response.data) {
       throw new Error(response.message || '目录选择失败')
     }
@@ -126,5 +183,6 @@ export const selectDirectoryWithBestEffort = async (
     return response.data
   }
 
-  return openWebDirectoryPicker(startPath)
+  return openWebDirectoryPicker(startPath, options)
 }
+export interface DirectoryPickerOptions extends SelectFolderOptions {}

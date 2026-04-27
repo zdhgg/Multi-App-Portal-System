@@ -2,6 +2,27 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.3.8] - 2026-04-27
+
+### Added
+
+- 为路径访问页新增路径回填辅助逻辑和前端回归测试，覆盖“选择目录并添加”优先复用空白行的场景。
+- 为全栈应用工作区识别补充 monorepo 回归测试，覆盖 `pnpm-workspace.yaml` 与 `apps/web + apps/api` 目录结构。
+
+### Changed
+
+- 将目录选择提示文案统一调整为区分“本机目录模式 / 服务器目录模式”，并在手动添加、检测页、备份路径和路径白名单设置中复用同一套目录选择描述。
+- 扩展全栈检测、应用配置验证和配置服务的前后端目录候选集，新增对 `apps/frontend`、`apps/web`、`apps/api` 等工作区子目录的识别与配置支持。
+- 将根项目、前端、后端、系统配置、锁文件、前端内置更新记录和主要发布文档版本统一提升到 `1.3.8`。
+
+### Fixed
+
+- 修复系统设置“路径访问”中的“选择目录并添加”在存在空白输入行时看起来没有成功添加的问题，并避免重复路径被重复写入。
+- 修复路径访问场景下目录选择返回路径时的过严即时校验，避免出现“手动输入可以，目录选择失败”的不一致行为。
+- 修复全栈应用服务对 monorepo 工作区结构识别不足的问题，现可自动识别 `package.json workspaces` 与 `pnpm-workspace.yaml` 声明的前后端子项目。
+- 修复 PM2 状态同步仅依赖冲突检测时可能漏判手动启动运行态的问题，现会补充本地端口监听探测。
+- 修复 external-exe 应用工作目录变更后 `build_script` 未同步重映射，以及应用停止时陈旧运行态标记未完全清理的问题。
+
 ## [1.3.7] - 2026-04-24
 
 ### Changed
@@ -231,8 +252,9 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
-[1.3.6]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.6
+[1.3.8]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.8
 [1.3.7]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.7
+[1.3.6]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.6
 [1.3.5]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.5
 [1.3.4]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.4
 [1.3.3]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.3

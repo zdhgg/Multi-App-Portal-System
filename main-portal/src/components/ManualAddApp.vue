@@ -31,36 +31,48 @@
       </el-form-item>
 
       <el-form-item label="项目目录" prop="directory">
-        <el-input
-          v-model="form.directory"
-          :placeholder="isExternalExeApp ? '请输入应用工作目录（通常是exe所在目录）' : '请输入项目根目录路径'"
-        >
-          <template #append>
-            <el-dropdown
-              trigger="click"
-              :teleported="false"
-              @command="handleDirectoryAction"
-            >
-              <el-button :loading="selectingDirectory || detecting">
-                <el-icon><FolderOpened /></el-icon>
-                目录操作
-                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="pick">
-                    <el-icon><FolderOpened /></el-icon>
-                    选择目录
-                  </el-dropdown-item>
-                  <el-dropdown-item command="detect" :disabled="isExternalExeApp">
-                    <el-icon><Search /></el-icon>
-                    检测项目
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </template>
-        </el-input>
+        <div class="directory-field">
+          <el-input
+            v-model="form.directory"
+            :placeholder="isExternalExeApp ? '请输入应用工作目录（通常是exe所在目录）' : '请输入项目根目录路径'"
+          >
+            <template #append>
+              <el-dropdown
+                trigger="click"
+                :teleported="false"
+                @command="handleDirectoryAction"
+              >
+                <el-button :loading="selectingDirectory || detecting">
+                  <el-icon><FolderOpened /></el-icon>
+                  目录操作
+                  <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="pick">
+                      <el-icon><FolderOpened /></el-icon>
+                      {{ directoryPickerActionLabel }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="detect" :disabled="isExternalExeApp">
+                      <el-icon><Search /></el-icon>
+                      检测项目
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </template>
+          </el-input>
+
+          <el-alert
+            v-if="showDirectoryPickerNotice"
+            class="directory-picker-notice"
+            title="当前正在选择服务器目录"
+            :description="directoryPickerDescription"
+            type="warning"
+            show-icon
+            :closable="false"
+          />
+        </div>
       </el-form-item>
 
       <el-form-item label="项目类型" prop="techStack">
@@ -293,6 +305,11 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Search, FolderOpened, ArrowDown, Loading, CircleCheck, Warning } from '@element-plus/icons-vue'
 import { ApiError } from '@/services/api'
 import {
+  canUseNativeDirectoryPickerInCurrentContext,
+  formatDirectoryPickerSelectionMessage,
+  getDirectoryPickerActionLabel,
+  getDirectoryPickerCancelMessage,
+  getDirectoryPickerCompatibilityDescription,
   getNativeDirectoryPickerFailureMessage,
   selectDirectoryWithBestEffort
 } from '@/utils/directoryPicker'
@@ -574,6 +591,9 @@ const techStackOptions = computed(() => {
 })
 
 const secondaryPortLabel = computed(() => (form.techStack === 'fullstack' ? '后端端口' : '辅端口'))
+const showDirectoryPickerNotice = computed(() => !canUseNativeDirectoryPickerInCurrentContext())
+const directoryPickerDescription = computed(() => getDirectoryPickerCompatibilityDescription())
+const directoryPickerActionLabel = getDirectoryPickerActionLabel()
 
 const detectionConfidence = computed(() => {
   const confidence = detectionResult.value?.enhanced?.confidence ?? detectionResult.value?.traditional?.confidence
@@ -866,7 +886,7 @@ const selectProjectDirectory = async () => {
     const selection = await selectDirectoryWithBestEffort(currentPath || undefined, true)
 
     if (selection.cancelled) {
-      ElMessage.info('已取消目录选择')
+      ElMessage.info(getDirectoryPickerCancelMessage())
       return
     }
 
@@ -874,7 +894,7 @@ const selectProjectDirectory = async () => {
     if (selectedPath) {
       form.directory = selectedPath
       applyAutoDirectorySuggestions(selectedPath)
-      ElMessage.success(`已选择目录: ${selectedPath}`)
+      ElMessage.success(formatDirectoryPickerSelectionMessage(selectedPath))
       // 若前端推断已识别为 external-exe，跳过后端检测
       // （external-exe 是纯手动配置类型，后端检测无意义且会产生错误结果）
       if (isExternalExeApp.value) {
@@ -890,7 +910,7 @@ const selectProjectDirectory = async () => {
     throw new Error('未获取到有效目录路径')
   } catch (error: any) {
     if (error?.name === 'AbortError') {
-      ElMessage.info('已取消目录选择')
+      ElMessage.info(getDirectoryPickerCancelMessage())
       return
     }
 
@@ -1177,6 +1197,14 @@ const handleDialogClosed = () => {
 
 .dialog-footer {
   text-align: right;
+}
+
+.directory-field {
+  width: 100%;
+}
+
+.directory-picker-notice {
+  margin-top: 12px;
 }
 
 /* ===== 内联检测状态条 ===== */

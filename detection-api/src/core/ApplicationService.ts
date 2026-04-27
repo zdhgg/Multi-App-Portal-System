@@ -9,7 +9,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import { existsSync, readdirSync, statSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { basename, join, normalize, resolve } from 'path'
 import type {
   Application,
@@ -23,6 +23,23 @@ import type {
 import { ApplicationError } from '../core/types'
 import { logger } from '../utils/logger'
 import type { ConfigManager, PortConfiguration } from '../services/configManager'
+
+const FRONTEND_DIRECTORY_CANDIDATES = [
+  'frontend',
+  'client',
+  'web',
+  'ui',
+  'app-ui',
+  'portal'
+] as const
+
+const BACKEND_DIRECTORY_CANDIDATES = [
+  'backend',
+  'server',
+  'api',
+  'services',
+  'app-server'
+] as const
 
 export class ApplicationService implements IApplicationService {
   constructor(
@@ -171,7 +188,16 @@ export class ApplicationService implements IApplicationService {
     const hydrated: Application[] = []
 
     for (const app of apps) {
-      hydrated.push(await this.autoFixMissingFullStackSecondaryPort(app))
+      const appWithSecondaryPort = await this.autoFixMissingFullStackSecondaryPort(app)
+      const fullStackConfig = await this.detectFullStackConfiguration(
+        appWithSecondaryPort.directory,
+        appWithSecondaryPort.network.primaryPort,
+        appWithSecondaryPort.network.secondaryPorts
+      )
+      hydrated.push({
+        ...appWithSecondaryPort,
+        fullStack: fullStackConfig
+      })
     }
 
     return hydrated
@@ -956,13 +982,268 @@ export class ApplicationService implements IApplicationService {
       return true
     }
 
-    return this.isSeparatedFullStackDirectory(directory)
+    return await this.isSeparatedFullStackDirectory(directory)
   }
 
-  private isSeparatedFullStackDirectory(directory: string): boolean {
-    const frontendDir = resolve(directory, 'frontend')
-    const backendDir = resolve(directory, 'backend')
-    return existsSync(frontendDir) && existsSync(backendDir)
+  private async isSeparatedFullStackDirectory(directory: string): Promise<boolean> {
+    const { frontendDir, backendDir } = await this.resolveFullStackDirectories(directory)
+    return Boolean(frontendDir && backendDir)
+  }
+
+  private async resolveFullStackDirectories(
+    directory: string
+  ): Promise<{ frontendDir?: string; backendDir?: string }> {
+    const directFrontendDir = this.findDirectSubdirectory(directory, FRONTEND_DIRECTORY_CANDIDATES)
+    const directBackendDir = this.findDirectSubdirectory(directory, BACKEND_DIRECTORY_CANDIDATES)
+
+    if (directFrontendDir && directBackendDir) {
+      return {
+        frontendDir: directFrontendDir,
+        backendDir: directBackendDir
+      }
+    }
+
+    const workspaceDirectories = await this.resolveWorkspaceDirectories(directory)
+    let frontendDir = directFrontendDir
+    let backendDir = directBackendDir
+
+    for (const workspaceDirectory of workspaceDirectories) {
+      const role = this.classifyWorkspaceDirectory(workspaceDirectory)
+
+      if (role === 'frontend' && !frontendDir) {
+        frontendDir = workspaceDirectory
+      }
+
+      if (role === 'backend' && !backendDir) {
+        backendDir = workspaceDirectory
+      }
+
+      if (frontendDir && backendDir) {
+        break
+      }
+    }
+
+    return {
+      frontendDir,
+      backendDir
+    }
+  }
+
+  private findDirectSubdirectory(directory: string, candidates: readonly string[]): string | undefined {
+    for (const candidate of candidates) {
+      const candidatePath = resolve(directory, candidate)
+      if (!existsSync(candidatePath)) {
+        continue
+      }
+
+      try {
+        if (statSync(candidatePath).isDirectory()) {
+          return candidatePath
+        }
+      } catch {
+        continue
+      }
+    }
+
+    return undefined
+  }
+
+  private async resolveWorkspaceDirectories(directory: string): Promise<string[]> {
+    const patterns = this.readWorkspacePatterns(directory)
+    if (patterns.length === 0) {
+      return []
+    }
+
+    try {
+      const fgModule = await import('fast-glob')
+      const fg = fgModule.default
+      const directories = await fg(patterns, {
+        cwd: directory,
+        onlyDirectories: true,
+        absolute: true,
+        unique: true,
+        suppressErrors: true,
+        ignore: ['**/node_modules/**', '**/dist/**', '**/build/**']
+      })
+
+      return directories.map(dir => resolve(dir))
+    } catch (error) {
+      logger.warn('Failed to resolve workspace directories for fullstack detection', {
+        directory,
+        patterns,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return []
+    }
+  }
+
+  private readWorkspacePatterns(directory: string): string[] {
+    const patterns = new Set<string>()
+    const packageJsonPath = join(directory, 'package.json')
+
+    if (existsSync(packageJsonPath)) {
+      try {
+        const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
+        for (const pattern of this.extractWorkspacePatternsFromPackageJson(packageJson)) {
+          patterns.add(pattern)
+        }
+      } catch (error) {
+        logger.warn('Failed to read package.json workspaces for fullstack detection', {
+          directory,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+
+    const pnpmWorkspacePath = join(directory, 'pnpm-workspace.yaml')
+    if (existsSync(pnpmWorkspacePath)) {
+      try {
+        for (const pattern of this.extractWorkspacePatternsFromPnpm(readFileSync(pnpmWorkspacePath, 'utf-8'))) {
+          patterns.add(pattern)
+        }
+      } catch (error) {
+        logger.warn('Failed to read pnpm workspace for fullstack detection', {
+          directory,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+
+    return Array.from(patterns)
+  }
+
+  private extractWorkspacePatternsFromPackageJson(packageJson: any): string[] {
+    const workspaces = packageJson?.workspaces
+    if (Array.isArray(workspaces)) {
+      return workspaces.filter((pattern: unknown): pattern is string => typeof pattern === 'string' && pattern.trim().length > 0)
+    }
+
+    if (Array.isArray(workspaces?.packages)) {
+      return workspaces.packages.filter((pattern: unknown): pattern is string => typeof pattern === 'string' && pattern.trim().length > 0)
+    }
+
+    if (Array.isArray(packageJson?.packages)) {
+      return packageJson.packages.filter((pattern: unknown): pattern is string => typeof pattern === 'string' && pattern.trim().length > 0)
+    }
+
+    return []
+  }
+
+  private extractWorkspacePatternsFromPnpm(content: string): string[] {
+    const patterns: string[] = []
+    let inPackagesBlock = false
+
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) {
+        continue
+      }
+
+      if (!inPackagesBlock) {
+        if (/^packages\s*:/.test(trimmed)) {
+          inPackagesBlock = true
+        }
+        continue
+      }
+
+      if (/^[A-Za-z0-9_-]+\s*:/.test(trimmed) && !trimmed.startsWith('-')) {
+        break
+      }
+
+      const match = trimmed.match(/^-\s*['"]?([^'"]+)['"]?\s*$/)
+      if (match?.[1]) {
+        patterns.push(match[1].trim())
+      }
+    }
+
+    return patterns
+  }
+
+  private classifyWorkspaceDirectory(directory: string): 'frontend' | 'backend' | 'unknown' {
+    const packageJsonPath = join(directory, 'package.json')
+    if (!existsSync(packageJsonPath)) {
+      return 'unknown'
+    }
+
+    let frontendScore = this.scoreDirectoryName(basename(directory), FRONTEND_DIRECTORY_CANDIDATES)
+    let backendScore = this.scoreDirectoryName(basename(directory), BACKEND_DIRECTORY_CANDIDATES)
+
+    try {
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
+      if (this.isFrontendPackage(packageJson, directory)) {
+        frontendScore += 3
+      }
+
+      if (this.isBackendPackage(packageJson, directory)) {
+        backendScore += 3
+      }
+    } catch (error) {
+      logger.warn('Failed to parse workspace package.json for fullstack classification', {
+        directory,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+
+    if (frontendScore === backendScore) {
+      return 'unknown'
+    }
+
+    return frontendScore > backendScore ? 'frontend' : 'backend'
+  }
+
+  private scoreDirectoryName(directoryName: string, candidates: readonly string[]): number {
+    const normalizedDirectoryName = directoryName.trim().toLowerCase()
+    return candidates.some(candidate => normalizedDirectoryName === candidate.toLowerCase()) ? 2 : 0
+  }
+
+  private isFrontendPackage(packageJson: any, directory: string): boolean {
+    const dependencies = {
+      ...(packageJson?.dependencies || {}),
+      ...(packageJson?.devDependencies || {})
+    }
+
+    if (
+      dependencies.react ||
+      dependencies.vue ||
+      dependencies.next ||
+      dependencies.nuxt ||
+      dependencies.vite ||
+      dependencies.svelte ||
+      dependencies['@angular/core'] ||
+      dependencies['@vitejs/plugin-vue'] ||
+      dependencies['@vitejs/plugin-react']
+    ) {
+      return true
+    }
+
+    const configFiles = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'next.config.js', 'next.config.ts']
+    return configFiles.some(file => existsSync(join(directory, file)))
+  }
+
+  private isBackendPackage(packageJson: any, directory: string): boolean {
+    const dependencies = {
+      ...(packageJson?.dependencies || {}),
+      ...(packageJson?.devDependencies || {})
+    }
+    const scripts = packageJson?.scripts || {}
+    const packageName = String(packageJson?.name || '').toLowerCase()
+
+    if (
+      dependencies.express ||
+      dependencies.koa ||
+      dependencies.fastify ||
+      dependencies['@nestjs/core']
+    ) {
+      return true
+    }
+
+    return Boolean(
+      packageName.includes('api') ||
+      packageName.includes('server') ||
+      scripts.start ||
+      scripts['start:dev'] ||
+      scripts.dev
+    ) && !this.isFrontendPackage(packageJson, directory)
   }
 
   private async allocatePortExcluding(
@@ -1073,12 +1354,11 @@ export class ApplicationService implements IApplicationService {
     const { existsSync, readFileSync } = await import('fs')
     const { join } = await import('path')
 
-    const frontendDir = join(directory, 'frontend')
-    const backendDir = join(directory, 'backend')
+    const { frontendDir, backendDir } = await this.resolveFullStackDirectories(directory)
 
-    const hasFrontend = existsSync(frontendDir)
-    const hasBackend = existsSync(backendDir)
-    const isFullStack = hasFrontend && hasBackend
+    const hasFrontend = typeof frontendDir === 'string' && existsSync(frontendDir)
+    const hasBackend = typeof backendDir === 'string' && existsSync(backendDir)
+    const isFullStack = Boolean(hasFrontend && hasBackend && frontendDir && backendDir)
 
     if (!isFullStack) {
       return { isFullStack: false }
@@ -1092,7 +1372,7 @@ export class ApplicationService implements IApplicationService {
 
     // 配置前端
     let frontendConfig: import('./types').ProcessConfiguration | undefined
-    if (hasFrontend) {
+    if (hasFrontend && frontendDir) {
       const frontendPackageJson = join(frontendDir, 'package.json')
       let frontendStartCommand = 'npm run dev'
 
@@ -1116,14 +1396,17 @@ export class ApplicationService implements IApplicationService {
         port: primaryPort, // 前端使用主端口
         environmentVariables: {
           NODE_ENV: 'development',
-          VITE_PORT: primaryPort.toString()
+          HOST: '0.0.0.0',
+          VITE_PORT: primaryPort.toString(),
+          PORT: primaryPort.toString(),
+          WEB_PORT: primaryPort.toString()
         }
       }
     }
 
     // 配置后端
     let backendConfig: import('./types').ProcessConfiguration | undefined
-    if (hasBackend) {
+    if (hasBackend && backendDir) {
       const backendPackageJson = join(backendDir, 'package.json')
       let backendStartCommand = 'npm run dev'
       const backendPort = secondaryPorts[0] || 4076 // 使用第一个辅助端口或默认4076
@@ -1150,13 +1433,17 @@ export class ApplicationService implements IApplicationService {
         port: backendPort,
         environmentVariables: {
           NODE_ENV: 'development',
-          PORT: backendPort.toString()
+          HOST: '0.0.0.0',
+          PORT: backendPort.toString(),
+          API_PORT: backendPort.toString()
         }
       }
     }
 
     return {
       isFullStack: true,
+      frontendDir,
+      backendDir,
       frontendConfig,
       backendConfig
     }

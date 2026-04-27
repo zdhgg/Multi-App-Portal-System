@@ -38,6 +38,10 @@ export interface FolderSelectionResult {
   source?: 'native' | 'web'
 }
 
+export interface SelectFolderOptions {
+  validateSelectedPath?: boolean
+}
+
 export interface ExeFileItem {
   name: string
   path: string
@@ -143,8 +147,19 @@ export class FilesystemApiService {
   /**
    * 打开后端原生目录选择器（优先返回绝对路径）
    */
-  async selectFolder(startPath?: string, silent = false): Promise<ApiResponse<FolderSelectionResult>> {
-    const payload = startPath ? { startPath } : {}
+  async selectFolder(
+    startPath?: string,
+    silent = false,
+    options: SelectFolderOptions = {}
+  ): Promise<ApiResponse<FolderSelectionResult>> {
+    const payload: Record<string, unknown> = {}
+    if (startPath) {
+      payload.startPath = startPath
+    }
+    if (typeof options.validateSelectedPath === 'boolean') {
+      payload.validateSelectedPath = options.validateSelectedPath
+    }
+
     return apiService.post<ApiResponse<FolderSelectionResult>>('/filesystem/select-folder', payload, {
       timeout: 180000,
       showErrorMessage: !silent

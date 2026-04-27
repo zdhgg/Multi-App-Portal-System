@@ -2,7 +2,12 @@
   <div class="folder-browser-overlay" @click="closeModal">
     <div class="folder-browser" @click.stop>
       <div class="browser-header">
-        <h3>选择文件夹</h3>
+        <div class="browser-title-block">
+          <h3>{{ browserDialogTitle }}</h3>
+          <p v-if="showServerContextHint" class="browser-subtitle">
+            当前浏览的是部署服务器上的目录，不是当前电脑的本地目录。
+          </p>
+        </div>
         <button @click="closeModal" class="close-btn">✕</button>
       </div>
 
@@ -30,7 +35,7 @@
               @keyup.enter="navigateToPath"
               @blur="navigateToPath"
               class="path-input"
-              placeholder="输入路径..."
+              :placeholder="pathInputPlaceholder"
               :disabled="loading"
             />
           </div>
@@ -91,7 +96,7 @@
 
       <div class="browser-footer">
         <div class="selected-path">
-          <strong>已选择:</strong> 
+          <strong>{{ currentSelectionLabel }}</strong>
           <span>{{ effectiveSelectedPath || '未选择' }}</span>
         </div>
         <div class="footer-actions">
@@ -100,7 +105,7 @@
             class="btn btn-secondary"
             :disabled="loading || !currentData?.currentPath"
           >
-            选择当前目录
+            {{ selectCurrentDirectoryLabel }}
           </button>
           <button @click="closeModal" class="btn btn-secondary">取消</button>
           <button 
@@ -119,17 +124,32 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { filesystemApiService } from '@/services'
+import {
+  getDirectoryPickerDialogTitle,
+  getDirectoryPickerPathPlaceholder,
+  getDirectoryPickerSelectedLabel,
+  getDirectoryPickerSelectCurrentLabel,
+  isServerDirectoryPickerContext
+} from '@/utils/directoryPicker'
 
 // Props
 interface Props {
   initialPath?: string
   showHidden?: boolean
+  validateSelection?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   initialPath: '',
-  showHidden: false
+  showHidden: false,
+  validateSelection: true
 })
+
+const browserDialogTitle = getDirectoryPickerDialogTitle()
+const pathInputPlaceholder = getDirectoryPickerPathPlaceholder()
+const currentSelectionLabel = getDirectoryPickerSelectedLabel()
+const selectCurrentDirectoryLabel = getDirectoryPickerSelectCurrentLabel()
+const showServerContextHint = isServerDirectoryPickerContext()
 
 // Emits
 const emit = defineEmits<{
@@ -241,6 +261,11 @@ const confirmSelection = async () => {
   const targetPath = effectiveSelectedPath.value
 
   if (targetPath) {
+    if (!props.validateSelection) {
+      emit('select', targetPath)
+      return
+    }
+
     // 在确认选择前再次验证路径
     try {
       const response = await filesystemApiService.validatePath(targetPath)
@@ -307,7 +332,7 @@ watch(() => props.initialPath, (newPath) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 4000;
+  z-index: 100020;
 }
 
 .folder-browser {
@@ -332,9 +357,19 @@ watch(() => props.initialPath, (newPath) => {
   border-radius: 8px 8px 0 0;
 }
 
+.browser-title-block {
+  min-width: 0;
+}
+
 .browser-header h3 {
   margin: 0;
   color: #333;
+}
+
+.browser-subtitle {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  color: #667085;
 }
 
 .close-btn {

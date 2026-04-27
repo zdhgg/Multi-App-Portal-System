@@ -25,13 +25,13 @@
               placeholder="例如：D:\\My Programs"
               @input="emitChange"
             />
-            <el-button plain :loading="pickingIndex === index" @click="pickFolder(index)">选择目录</el-button>
+            <el-button plain :loading="pickingIndex === index" @click="pickFolder(index)">{{ directoryPickerActionLabel }}</el-button>
             <el-button type="danger" plain @click="removePath(index)">删除</el-button>
           </div>
 
           <div class="path-actions">
             <el-button type="primary" plain @click="addPath">添加路径</el-button>
-            <el-button plain :loading="addingByPicker" @click="addPathByPicker">选择目录并添加</el-button>
+            <el-button plain :loading="addingByPicker" @click="addPathByPicker">{{ directoryPickerAddActionLabel }}</el-button>
           </div>
           <div class="help-text">
             建议填写父目录而不是单个项目目录，便于后续新增应用。示例：`D:\\My Programs`
@@ -47,9 +47,14 @@ import { reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ApiError } from '@/services/api'
 import {
+  formatDirectoryPickerSelectionMessage,
+  getDirectoryPickerActionLabel,
+  getDirectoryPickerAddActionLabel,
+  getDirectoryPickerCancelMessage,
   getNativeDirectoryPickerFailureMessage,
   selectDirectoryWithBestEffort
 } from '@/utils/directoryPicker'
+import { applyPickedPathToEditableList } from '@/utils/pathAccessList'
 
 type PathAccessSettings = {
   allowWorkspaceParent: boolean
@@ -69,6 +74,8 @@ const model = reactive<PathAccessSettings>({
 })
 const pickingIndex = ref<number | null>(null)
 const addingByPicker = ref(false)
+const directoryPickerActionLabel = getDirectoryPickerActionLabel()
+const directoryPickerAddActionLabel = getDirectoryPickerAddActionLabel()
 
 const normalizePathAccessSettings = (value: any): PathAccessSettings => ({
   allowWorkspaceParent: Boolean(value?.allowWorkspaceParent),
@@ -119,9 +126,11 @@ const pickFolder = async (index: number) => {
   pickingIndex.value = index
   try {
     const currentPath = model.allowedBasePaths[index]?.trim()
-    const selection = await selectDirectoryWithBestEffort(currentPath || undefined, true)
+    const selection = await selectDirectoryWithBestEffort(currentPath || undefined, true, {
+      validateSelectedPath: false
+    })
     if (selection.cancelled) {
-      ElMessage.info('已取消目录选择')
+      ElMessage.info(getDirectoryPickerCancelMessage())
       return
     }
 
@@ -133,7 +142,7 @@ const pickFolder = async (index: number) => {
     model.allowedBasePaths[index] = selectedPath
     const payload = emitChange()
     emit('picker-selected', payload)
-    ElMessage.success(`已选择目录: ${selectedPath}`)
+    ElMessage.success(formatDirectoryPickerSelectionMessage(selectedPath))
   } catch (error: any) {
     const message = getNativeDirectoryPickerFailureMessage(error instanceof ApiError ? error : error)
     ElMessage.error(message)
@@ -148,9 +157,11 @@ const addPathByPicker = async () => {
 
   try {
     const fallbackStartPath = model.allowedBasePaths.find(item => item.trim().length > 0)?.trim()
-    const selection = await selectDirectoryWithBestEffort(fallbackStartPath || undefined, true)
+    const selection = await selectDirectoryWithBestEffort(fallbackStartPath || undefined, true, {
+      validateSelectedPath: false
+    })
     if (selection.cancelled) {
-      ElMessage.info('已取消目录选择')
+      ElMessage.info(getDirectoryPickerCancelMessage())
       return
     }
 
@@ -159,13 +170,13 @@ const addPathByPicker = async () => {
       throw new Error('未获取到有效目录路径')
     }
 
-    const exists = model.allowedBasePaths.some(item => item.trim().toLowerCase() === selectedPath.toLowerCase())
-    if (exists) {
+    const { paths: nextPaths, duplicate } = applyPickedPathToEditableList(model.allowedBasePaths, selectedPath)
+    if (duplicate) {
       ElMessage.warning('该路径已存在')
       return
     }
 
-    model.allowedBasePaths.push(selectedPath)
+    model.allowedBasePaths = nextPaths
     const payload = emitChange()
     emit('picker-selected', payload)
     ElMessage.success(`已添加路径: ${selectedPath}`)

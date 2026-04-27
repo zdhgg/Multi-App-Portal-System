@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ApplicationService } from '../ApplicationService'
 import type { Application } from '../types'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -99,6 +99,54 @@ const createBaseApp = (overrides: Partial<MutableApp> = {}): MutableApp => ({
   },
   ...overrides
 })
+
+const createMonorepoFullStackFixture = () => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'portal-monorepo-'))
+  const webDir = join(rootDir, 'apps', 'web')
+  const apiDir = join(rootDir, 'apps', 'api')
+
+  mkdirSync(webDir, { recursive: true })
+  mkdirSync(apiDir, { recursive: true })
+
+  writeFileSync(join(rootDir, 'package.json'), JSON.stringify({
+    name: 'fixture-monorepo',
+    private: true
+  }, null, 2))
+  writeFileSync(join(rootDir, 'pnpm-workspace.yaml'), 'packages:\n  - apps/*\n')
+
+  writeFileSync(join(webDir, 'package.json'), JSON.stringify({
+    name: '@fixture/web',
+    private: true,
+    scripts: {
+      dev: 'vite --host 0.0.0.0 --port 5173'
+    },
+    dependencies: {
+      vue: '^3.0.0'
+    },
+    devDependencies: {
+      vite: '^5.0.0',
+      '@vitejs/plugin-vue': '^5.0.0'
+    }
+  }, null, 2))
+  writeFileSync(join(webDir, 'vite.config.ts'), 'export default {}')
+
+  writeFileSync(join(apiDir, 'package.json'), JSON.stringify({
+    name: '@fixture/api',
+    private: true,
+    scripts: {
+      dev: 'tsx watch src/main.ts'
+    },
+    dependencies: {
+      '@nestjs/core': '^11.0.0'
+    }
+  }, null, 2))
+
+  return {
+    rootDir,
+    webDir,
+    apiDir
+  }
+}
 
 describe('ApplicationService lifecycle policy', () => {
   beforeEach(() => {
@@ -477,5 +525,54 @@ describe('ApplicationService lifecycle policy', () => {
     ).rejects.toMatchObject({
       code: 'VALIDATION_ERROR'
     })
+  })
+
+  it('detects monorepo fullstack structure under apps/web and apps/api', async () => {
+    const fixture = createMonorepoFullStackFixture()
+    const repository = new InMemoryApplicationRepository([])
+    const networkService = {
+      allocatePort: vi.fn(async (scope?: 'frontend' | 'backend' | 'unified') => {
+        if (scope === 'frontend') return 3006
+        if (scope === 'backend') return 8006
+        return 3006
+      }),
+      releasePort: vi.fn(async () => {}),
+      checkConflicts: vi.fn(async () => [])
+    }
+    const processManager = {
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {})
+    }
+    const configManager = {
+      getPortConfig: vi.fn(() => ({
+        frontendRange: { start: 3003, end: 3100, description: 'frontend' },
+        backendRange: { start: 8003, end: 8100, description: 'backend' }
+      }))
+    }
+
+    try {
+      const service = new ApplicationService(
+        repository as any,
+        networkService as any,
+        processManager as any,
+        configManager as any
+      )
+
+      const created = await service.create({
+        name: 'NovelOS Fixture',
+        directory: fixture.rootDir,
+        techStack: 'Vue'
+      })
+
+      expect(created.network.primaryPort).toBe(3006)
+      expect(created.network.secondaryPorts).toEqual([8006])
+      expect(created.fullStack?.isFullStack).toBe(true)
+      expect(created.fullStack?.frontendConfig?.workingDirectory.toLowerCase()).toBe(fixture.webDir.toLowerCase())
+      expect(created.fullStack?.backendConfig?.workingDirectory.toLowerCase()).toBe(fixture.apiDir.toLowerCase())
+      expect(created.fullStack?.frontendConfig?.environmentVariables?.WEB_PORT).toBe('3006')
+      expect(created.fullStack?.backendConfig?.environmentVariables?.API_PORT).toBe('8006')
+    } finally {
+      rmSync(fixture.rootDir, { recursive: true, force: true })
+    }
   })
 })

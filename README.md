@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.3.7-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.3.7-success.svg)
+![Version](https://img.shields.io/badge/version-1.3.8-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.3.8-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.3.7`
-- **GitHub Release**: [v1.3.7: 备份设置同步与发布配置修正补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.7)
+- **当前版本**: `1.3.8`
+- **GitHub Release**: [v1.3.8: 目录选择回填与全栈工作区识别增强补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.8)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -245,6 +245,21 @@ VITE_WS_BASE=
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.3.8 (2026-04-27) — 目录选择回填与全栈工作区识别增强补丁
+- 📁 **目录选择链路修复**
+  - 修复“系统设置 > 路径访问”中“选择目录并添加”在存在空白输入行时看起来没有生效的问题；现在会优先回填空白行，并避免重复路径
+  - 路径访问场景的目录选择按场景放宽返回路径即时校验，避免出现“手动输入可以，目录选择反而失败”的不一致体验
+  - 手动添加、检测页、备份路径与路径白名单配置统一强化服务器目录模式文案，明确当前选择的是部署服务器上的路径
+- 🧩 **全栈与工作区识别增强**
+  - 后端应用服务、增强型全栈检测器、配置验证器与配置服务统一扩展 `frontend/client/web/ui/portal`、`backend/server/api/services` 及 `apps/*` 子目录候选
+  - 新增对 `package.json workspaces` 与 `pnpm-workspace.yaml` 的工作区解析，支持 `apps/web + apps/api` 等 monorepo 全栈结构自动识别与配置
+  - 全栈应用生成的前后端运行配置补充 `HOST/PORT/WEB_PORT/API_PORT` 等环境变量，降低工作区子项目的启动适配成本
+- 🔄 **运行态同步与生命周期修复**
+  - PM2 状态同步在端口冲突检测之外增加本地监听探测，提升手动启动应用运行态识别的稳定性
+  - 应用生命周期现在会清理陈旧运行态、自动修正缺失的全栈辅端口，并在 external-exe 目录变更后自动重映射 `build_script`
+- 🔁 **版本同步**
+  - 同步根项目、前后端包、系统配置、前端内置更新记录和主要发布文档版本到 `1.3.8`
+
 ### v1.3.7 (2026-04-24) — 备份设置同步与发布配置修正补丁
 - 💾 **备份设置同步修复**
   - 修复系统设置中的备份策略改动后，部分开关、下拉和数值项有时不会稳定标记为未保存变更的问题
@@ -423,4 +438,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.3.7 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.3.8 - 让应用管理更简单、更智能！*

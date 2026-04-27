@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.8',
+    date: '2026-04-27',
+    title: '目录选择回填与全栈工作区识别增强补丁',
+    items: [
+      { type: 'fix', description: '修复系统设置 > 路径访问中的“选择目录并添加”在存在空白输入行时看起来没有生效的问题，现在会优先回填空白行并避免重复路径' },
+      { type: 'improvement', description: '手动添加、检测页、备份路径和路径访问设置统一强化服务器目录模式提示，明确当前选择的是部署服务器上的路径' },
+      { type: 'fix', description: '修复路径访问场景下目录选择返回路径时的过严即时校验，避免出现“手动输入可以，目录选择失败”的不一致行为' },
+      { type: 'improvement', description: '增强全栈与 monorepo 工作区识别，支持 apps/web、apps/api 及 pnpm workspace 结构自动识别与配置' },
+      { type: 'improvement', description: '同步根项目、前后端包、系统配置、锁文件和主要发布文档版本到 1.3.8' }
+    ]
+  },
+  {
     version: '1.3.7',
     date: '2026-04-24',
     title: '备份设置同步与发布配置修正补丁',

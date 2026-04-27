@@ -35,7 +35,7 @@
                 <div class="quick-start-path">
                   <el-input
                     v-model="quickStartPath"
-                    placeholder="输入扫描路径，如 D:\Projects"
+                    :placeholder="quickStartPathPlaceholder"
                     clearable
                     style="width: 300px;"
                   >
@@ -44,7 +44,7 @@
                     </template>
                   </el-input>
                   <el-button type="primary" @click="selectQuickStartFolder">
-                    选择文件夹
+                    {{ directoryPickerActionLabel }}
                   </el-button>
                 </div>
                 <el-button 
@@ -580,6 +580,10 @@ import { filesystemApiService } from '@/services'
 import { getPortTypeColor, getPortTypeIcon } from '@/types/app'
 import { getStoredAccessToken } from '@/utils/authStorage'
 import {
+  formatDirectoryPickerSelectionMessage,
+  getDirectoryPickerActionLabel,
+  getDirectoryPickerCancelMessage,
+  isServerDirectoryPickerContext,
   getNativeDirectoryPickerFailureMessage,
   selectDirectoryWithBestEffort
 } from '@/utils/directoryPicker'
@@ -865,6 +869,11 @@ const currentScanId = ref('')
 // 快速开始相关
 const quickStartPath = ref('D:\\My Programs') // 快速开始路径，默认值
 const hasLastConfig = ref(false) // 是否有保存的配置
+const usesServerDirectoryBrowser = isServerDirectoryPickerContext()
+const directoryPickerActionLabel = getDirectoryPickerActionLabel()
+const quickStartPathPlaceholder = usesServerDirectoryBrowser
+  ? '输入服务器扫描路径，如 E:\\Projects'
+  : '输入扫描路径，如 D:\\Projects'
 
 // ========== 扫描模式相关 ==========
 const selectedScanMode = ref<'shallow' | 'fast' | 'standard' | 'full'>('standard')
@@ -1066,14 +1075,14 @@ const selectQuickStartFolder = async () => {
       const selection = await selectDirectoryWithBestEffort(startPath, true)
 
       if (selection.cancelled) {
-        ElMessage.info('用户取消了文件夹选择')
+        ElMessage.info(getDirectoryPickerCancelMessage())
         return
       }
 
       const selectedPath = String(selection.path || '').trim()
       if (isAbsolutePathFormat(selectedPath)) {
         quickStartPath.value = selectedPath
-        ElMessage.success(`已选择文件夹: ${selectedPath}`)
+        ElMessage.success(formatDirectoryPickerSelectionMessage(selectedPath))
         return
       }
     } catch (nativeError) {
@@ -1081,10 +1090,14 @@ const selectQuickStartFolder = async () => {
       ElMessage.warning(getNativeDirectoryPickerFailureMessage(nativeError))
       return
     }
-    ElMessage.warning('当前环境无法自动获取绝对路径，请手动输入完整路径')
+    ElMessage.warning(
+      usesServerDirectoryBrowser
+        ? '当前环境无法自动获取服务器绝对路径，请手动输入服务器上的完整路径'
+        : '当前环境无法自动获取绝对路径，请手动输入完整路径'
+    )
   } catch (error: any) {
     if (error.name !== 'AbortError') {
-      ElMessage.error('文件夹选择失败')
+      ElMessage.error(usesServerDirectoryBrowser ? '服务器目录选择失败' : '文件夹选择失败')
     }
   }
 }

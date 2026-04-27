@@ -45,6 +45,8 @@ export interface TechStackType {
 
 export interface FullStackConfiguration {
   readonly isFullStack: boolean
+  readonly frontendDir?: string
+  readonly backendDir?: string
   readonly frontendConfig?: ProcessConfiguration
   readonly backendConfig?: ProcessConfiguration
 }

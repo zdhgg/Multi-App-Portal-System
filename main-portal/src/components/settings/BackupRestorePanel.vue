@@ -68,7 +68,7 @@
               @click="pickBackupPath"
             >
               <template #append>
-                <el-button :loading="pickingBackupPath" @click.stop="pickBackupPath">选择目录</el-button>
+                <el-button :loading="pickingBackupPath" @click.stop="pickBackupPath">{{ directoryPickerActionLabel }}</el-button>
               </template>
             </el-input>
           </el-form-item>
@@ -210,7 +210,7 @@
             @click="pickCreateOutputDirectory"
           >
             <template #append>
-              <el-button :loading="pickingCreateOutputDirectory" @click.stop="pickCreateOutputDirectory">选择目录</el-button>
+              <el-button :loading="pickingCreateOutputDirectory" @click.stop="pickCreateOutputDirectory">{{ directoryPickerActionLabel }}</el-button>
             </template>
           </el-input>
         </el-form-item>
@@ -259,6 +259,10 @@ import { configExportApiService, type BackupInfo } from '@/services/configExport
 import { ApiError } from '@/services/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  formatDirectoryPickerSelectionMessage,
+  getDirectoryPickerActionLabel,
+  getDirectoryPickerCancelMessage,
+  isServerDirectoryPickerContext,
   getNativeDirectoryPickerFailureMessage,
   selectDirectoryWithBestEffort
 } from '@/utils/directoryPicker'
@@ -289,6 +293,8 @@ const detail = ref<{ visible: boolean; data: any }>({ visible: false, data: null
 const createDialogVisible = ref(false)
 const pickingBackupPath = ref(false)
 const pickingCreateOutputDirectory = ref(false)
+const directoryPickerActionLabel = getDirectoryPickerActionLabel()
+const usesServerDirectoryBrowser = isServerDirectoryPickerContext()
 const policySettings = reactive<BackupSettingsModel>(normalizeBackupSettings(props.backupSettings))
 const createForm = reactive({
   mode: 'configuration' as 'configuration' | 'archive',
@@ -416,7 +422,7 @@ async function pickBackupPath() {
   try {
     const selectedPath = await selectDirectory(policySettings.backupPath?.trim() || undefined)
     if (selectedPath === undefined) {
-      ElMessage.info('已取消目录选择')
+      ElMessage.info(getDirectoryPickerCancelMessage())
       return
     }
     if (selectedPath === null) return
@@ -427,7 +433,7 @@ async function pickBackupPath() {
 
     policySettings.backupPath = selectedPath
     emitPolicySettingsChange()
-    ElMessage.success(`已选择目录: ${selectedPath}`)
+    ElMessage.success(formatDirectoryPickerSelectionMessage(selectedPath))
   } finally {
     pickingBackupPath.value = false
   }
@@ -442,13 +448,17 @@ async function pickCreateOutputDirectory() {
       createForm.outputDirectory?.trim() || policySettings.backupPath?.trim() || undefined
     )
     if (selectedPath === undefined) {
-      ElMessage.info('已取消目录选择')
+      ElMessage.info(getDirectoryPickerCancelMessage())
       return
     }
     if (selectedPath === null) return
 
     createForm.outputDirectory = selectedPath
-    ElMessage.success(`已选择输出目录: ${selectedPath}`)
+    ElMessage.success(
+      usesServerDirectoryBrowser
+        ? `已选择服务器输出目录: ${selectedPath}`
+        : `已选择输出目录: ${selectedPath}`
+    )
   } finally {
     pickingCreateOutputDirectory.value = false
   }

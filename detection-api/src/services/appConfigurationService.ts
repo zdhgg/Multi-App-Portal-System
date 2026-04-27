@@ -777,8 +777,28 @@ export class AppConfigurationService {
 
   private configBackups: Map<string, ConfigurationBackup[]> = new Map()
   private readonly subProjectEnvFiles = ['.env', '.env.local', '.env.development'] as const
-  private readonly frontendDirCandidates = ['frontend', 'client'] as const
-  private readonly backendDirCandidates = ['backend', 'server'] as const
+  private readonly frontendDirCandidates = [
+    'frontend',
+    'client',
+    'web',
+    'ui',
+    'app-ui',
+    'portal',
+    'apps/frontend',
+    'apps/client',
+    'apps/web',
+    'apps/ui'
+  ] as const
+  private readonly backendDirCandidates = [
+    'backend',
+    'server',
+    'api',
+    'services',
+    'app-server',
+    'apps/backend',
+    'apps/server',
+    'apps/api'
+  ] as const
 
   /**
    * 为应用配置端口

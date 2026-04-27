@@ -8,6 +8,7 @@
 import { join, basename } from 'path';
 import { access, readdir, stat, readFile } from 'fs/promises';
 import { constants } from 'fs';
+import fg from 'fast-glob';
 import { logger } from '../utils/logger';
 
 export interface FullStackProject {
@@ -86,13 +87,16 @@ export class EnhancedFullStackDetector {
       const nestedProjects = await this.detectNestedFullStack(rootDirectory, opts);
       projects.push(...nestedProjects);
 
+      // 去重：同一组 frontend/backend 组件只保留一个项目根
+      const deduplicatedProjects = this.deduplicateProjects(projects);
+
       // 过滤低置信度项目
-      const validProjects = projects.filter(p => p.confidence >= opts.minConfidence);
+      const validProjects = deduplicatedProjects.filter(p => p.confidence >= opts.minConfidence);
       
       const duration = Date.now() - startTime;
       logger.info('全栈项目检测完成', {
         rootDirectory,
-        totalFound: projects.length,
+        totalFound: deduplicatedProjects.length,
         validProjects: validProjects.length,
         duration: `${duration}ms`
       });
@@ -201,15 +205,14 @@ export class EnhancedFullStackDetector {
 
       const content = await readFile(packageJsonPath, 'utf-8');
       const packageJson = JSON.parse(content);
-      
-      // 检查是否有 workspaces 或 packages 配置
-      if (!packageJson.workspaces && !packageJson.packages) return [];
 
-      const workspaces = packageJson.workspaces || packageJson.packages || [];
+      const workspacePatterns = await this.resolveWorkspacePatterns(directory, packageJson);
+      if (workspacePatterns.length === 0) return [];
+
       const projects: FullStackProject[] = [];
       
       // 解析 workspace 路径
-      const workspacePaths = await this.resolveWorkspacePaths(directory, workspaces);
+      const workspacePaths = await this.resolveWorkspacePaths(directory, workspacePatterns);
       
       // 按技术栈类型分组
       const backendWorkspaces: SubProject[] = [];
@@ -574,6 +577,34 @@ export class EnhancedFullStackDetector {
     return Math.min(confidence, 1.0);
   }
 
+  private deduplicateProjects(projects: FullStackProject[]): FullStackProject[] {
+    const projectMap = new Map<string, FullStackProject>();
+
+    for (const project of projects) {
+      const key = `${this.normalizeProjectPath(project.frontend.directory)}::${this.normalizeProjectPath(project.backend.directory)}`;
+      const existing = projectMap.get(key);
+
+      if (!existing) {
+        projectMap.set(key, project);
+        continue;
+      }
+
+      const shouldReplace =
+        project.directory.length < existing.directory.length ||
+        (project.directory.length === existing.directory.length && project.confidence > existing.confidence);
+
+      if (shouldReplace) {
+        projectMap.set(key, project);
+      }
+    }
+
+    return Array.from(projectMap.values());
+  }
+
+  private normalizeProjectPath(value: string): string {
+    return value.replace(/\\/g, '/').toLowerCase();
+  }
+
   /**
    * 获取子目录列表
    */
@@ -611,19 +642,83 @@ export class EnhancedFullStackDetector {
    * 解析 workspace 路径
    */
   private async resolveWorkspacePaths(rootDir: string, workspaces: string[]): Promise<string[]> {
-    const paths: string[] = [];
-    
-    for (const workspace of workspaces) {
-      // 简单处理，不支持 glob (如 packages/*)
-      // 如果需要支持 glob，需要引入 fast-glob 或类似库
-      // 这里假设 workspace 是具体路径
-      const workspacePath = join(rootDir, workspace);
-      if (await this.exists(workspacePath)) {
-        paths.push(workspacePath);
+    return fg(workspaces, {
+      cwd: rootDir,
+      onlyDirectories: true,
+      absolute: true,
+      unique: true,
+      suppressErrors: true,
+      ignore: ['**/node_modules/**', '**/dist/**', '**/build/**']
+    });
+  }
+
+  private async resolveWorkspacePatterns(rootDir: string, packageJson: any): Promise<string[]> {
+    const patterns = new Set<string>();
+
+    for (const pattern of this.extractWorkspacePatternsFromPackageJson(packageJson)) {
+      patterns.add(pattern);
+    }
+
+    const pnpmWorkspacePath = join(rootDir, 'pnpm-workspace.yaml');
+    if (await this.exists(pnpmWorkspacePath)) {
+      try {
+        const content = await readFile(pnpmWorkspacePath, 'utf-8');
+        for (const pattern of this.extractWorkspacePatternsFromPnpm(content)) {
+          patterns.add(pattern);
+        }
+      } catch (error) {
+        logger.warn('读取 pnpm workspace 失败', { rootDir, error });
       }
     }
-    
-    return paths;
+
+    return Array.from(patterns);
+  }
+
+  private extractWorkspacePatternsFromPackageJson(packageJson: any): string[] {
+    const workspaces = packageJson?.workspaces;
+    if (Array.isArray(workspaces)) {
+      return workspaces.filter((pattern: unknown): pattern is string => typeof pattern === 'string' && pattern.trim().length > 0);
+    }
+
+    if (Array.isArray(workspaces?.packages)) {
+      return workspaces.packages.filter((pattern: unknown): pattern is string => typeof pattern === 'string' && pattern.trim().length > 0);
+    }
+
+    if (Array.isArray(packageJson?.packages)) {
+      return packageJson.packages.filter((pattern: unknown): pattern is string => typeof pattern === 'string' && pattern.trim().length > 0);
+    }
+
+    return [];
+  }
+
+  private extractWorkspacePatternsFromPnpm(content: string): string[] {
+    const patterns: string[] = [];
+    let inPackagesBlock = false;
+
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) {
+        continue;
+      }
+
+      if (!inPackagesBlock) {
+        if (/^packages\s*:/.test(trimmed)) {
+          inPackagesBlock = true;
+        }
+        continue;
+      }
+
+      if (/^[A-Za-z0-9_-]+\s*:/.test(trimmed) && !trimmed.startsWith('-')) {
+        break;
+      }
+
+      const match = trimmed.match(/^-\s*['"]?([^'"]+)['"]?\s*$/);
+      if (match?.[1]) {
+        patterns.push(match[1].trim());
+      }
+    }
+
+    return patterns;
   }
 
   /**

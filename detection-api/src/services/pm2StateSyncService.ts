@@ -419,12 +419,7 @@ export class PM2StateSyncService {
     }
 
     try {
-      const conflicts = await this.networkService.checkConflicts(configuredPorts)
-      const activePortSet = new Set(
-        conflicts
-          .map(conflict => conflict.port)
-          .filter(port => Number.isInteger(port) && port > 0)
-      )
+      const activePortSet = await this.resolveActivePortSet(configuredPorts)
 
       const activePorts = configuredPorts.filter(port => activePortSet.has(port))
       const inactivePorts = configuredPorts.filter(port => !activePortSet.has(port))
@@ -473,6 +468,60 @@ export class PM2StateSyncService {
         inactivePorts: configuredPorts
       }
     }
+  }
+
+  private async resolveActivePortSet(configuredPorts: number[]): Promise<Set<number>> {
+    const activePortSet = new Set<number>()
+
+    const conflicts = await this.networkService.checkConflicts(configuredPorts)
+    for (const port of conflicts
+      .map(conflict => conflict.port)
+      .filter(port => Number.isInteger(port) && port > 0)) {
+      activePortSet.add(port)
+    }
+
+    if (activePortSet.size === configuredPorts.length) {
+      return activePortSet
+    }
+
+    const probeResults = await Promise.all(
+      configuredPorts.map(async port => ({
+        port,
+        listening: await this.isPortListening(port)
+      }))
+    )
+
+    for (const result of probeResults) {
+      if (result.listening) {
+        activePortSet.add(result.port)
+      }
+    }
+
+    return activePortSet
+  }
+
+  private async isPortListening(port: number): Promise<boolean> {
+    return new Promise(async resolve => {
+      try {
+        const { createConnection } = await import('net')
+        const socket = createConnection({ host: '127.0.0.1', port }, () => {
+          socket.destroy()
+          resolve(true)
+        })
+
+        socket.once('error', () => {
+          socket.destroy()
+          resolve(false)
+        })
+
+        socket.setTimeout(500, () => {
+          socket.destroy()
+          resolve(false)
+        })
+      } catch {
+        resolve(false)
+      }
+    })
   }
 }
 

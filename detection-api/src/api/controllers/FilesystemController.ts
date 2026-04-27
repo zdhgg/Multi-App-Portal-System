@@ -368,6 +368,7 @@ export class FilesystemController {
 
       const rawStartPath = typeof req.body?.startPath === 'string' ? req.body.startPath.trim() : ''
       const startPath = rawStartPath ? normalize(rawStartPath) : undefined
+      const validateSelectedPath = req.body?.validateSelectedPath !== false
 
       const result = await this.showWindowsFolderPicker(startPath)
 
@@ -390,7 +391,7 @@ export class FilesystemController {
         return
       }
 
-      if (!existsSync(selectedPath)) {
+      if (validateSelectedPath && !existsSync(selectedPath)) {
         logger.warn('原生目录选择返回的路径在当前进程中不存在', {
           startPath,
           selectedPath,
@@ -404,13 +405,15 @@ export class FilesystemController {
         return
       }
 
-      const stats = statSync(selectedPath)
-      if (!stats.isDirectory()) {
-        res.status(400).json({
-          success: false,
-          error: '所选路径不是目录'
-        })
-        return
+      if (validateSelectedPath) {
+        const stats = statSync(selectedPath)
+        if (!stats.isDirectory()) {
+          res.status(400).json({
+            success: false,
+            error: '所选路径不是目录'
+          })
+          return
+        }
       }
 
       res.json({

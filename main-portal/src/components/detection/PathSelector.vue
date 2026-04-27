@@ -6,24 +6,14 @@
         扫描路径配置
       </h3>
       <div class="header-actions">
-        <el-tooltip 
-          v-if="browserSupportsFileSystemAccess"
-          :content="browserDirectoryPickerDescription"
-          placement="bottom"
-        >
-          <el-tag type="success" size="small">
-            <el-icon><SuccessFilled /></el-icon>
-            支持文件夹选择
-          </el-tag>
-        </el-tooltip>
-        <el-tooltip 
-          v-else
-          :content="browserDirectoryPickerDescription"
-          placement="bottom"
-        >
-          <el-tag type="warning" size="small">
+        <el-tooltip :content="browserDirectoryPickerDescription" placement="bottom">
+          <el-tag v-if="usesServerDirectoryBrowser" type="warning" size="small">
             <el-icon><WarningFilled /></el-icon>
-            兼容性有限
+            {{ directoryPickerModeLabel }}
+          </el-tag>
+          <el-tag v-else type="success" size="small">
+            <el-icon><SuccessFilled /></el-icon>
+            {{ directoryPickerModeLabel }}
           </el-tag>
         </el-tooltip>
         <el-button type="primary" @click="addPath" :disabled="loading">
@@ -52,7 +42,7 @@
               </el-button>
               <el-button size="small" type="primary" @click="selectFolderFromExplorer(index)">
                 <el-icon><FolderOpened /></el-icon>
-                选择文件夹
+                {{ directoryPickerActionLabel }}
               </el-button>
               <el-button size="small" @click="browsePath(index)">
                 <el-icon><Search /></el-icon>
@@ -99,7 +89,7 @@
           <el-form-item label="路径">
             <el-input 
               v-model="currentEditPath"
-              placeholder="请输入完整路径，如：D:\Projects\MyApp"
+              :placeholder="pathInputPlaceholder"
               clearable
             />
           </el-form-item>
@@ -146,25 +136,16 @@
     <!-- 浏览路径对话框 -->
     <el-dialog 
       v-model="pathBrowseVisible"
-      title="选择扫描路径"
+      :title="pathBrowseDialogTitle"
       width="700px"
       :close-on-click-modal="false"
     >
       <div class="path-browse-dialog">
         <div class="browse-header">
           <el-alert
-            v-if="!browserSupportsFileSystemAccess"
-            title="浏览器兼容性提示"
+            :title="directoryPickerAlertTitle"
             :description="browserDirectoryPickerDescription"
-            type="warning"
-            show-icon
-            :closable="false"
-          />
-          <el-alert
-            v-else
-            title="文件夹选择功能"
-            :description="browserDirectoryPickerDescription"
-            type="success"
+            :type="usesServerDirectoryBrowser ? 'warning' : 'success'"
             show-icon
             :closable="false"
           />
@@ -173,7 +154,7 @@
         <div class="browse-content">
           <el-row :gutter="16">
             <el-col :span="12">
-              <h4>🗂️ 常用开发目录</h4>
+              <h4>{{ commonPathsTitle }}</h4>
               <div class="path-options">
                 <div 
                   v-for="path in commonPaths" 
@@ -235,9 +216,15 @@ import {
 import { userSettingsApiService, filesystemApiService, type UserSettings, type PresetPath } from '@/services'
 import { getStoredAccessToken } from '@/utils/authStorage'
 import {
-  canUseBrowserDirectoryPickerInCurrentContext,
+  formatDirectoryPickerSelectionMessage,
+  getDirectoryPickerActionLabel,
+  getDirectoryPickerAlertTitle,
+  getDirectoryPickerBrowseDialogTitle,
+  getDirectoryPickerCancelMessage,
   getDirectoryPickerCompatibilityDescription,
+  getDirectoryPickerModeLabel,
   getNativeDirectoryPickerFailureMessage,
+  isServerDirectoryPickerContext,
   selectDirectoryWithBestEffort
 } from '@/utils/directoryPicker'
 
@@ -308,13 +295,18 @@ const pathTemplates = [
   }
 ]
 
-const browserSupportsFileSystemAccess = computed(() => {
-  return canUseBrowserDirectoryPickerInCurrentContext()
-})
-
 const browserDirectoryPickerDescription = computed(() => {
   return getDirectoryPickerCompatibilityDescription()
 })
+const usesServerDirectoryBrowser = isServerDirectoryPickerContext()
+const directoryPickerModeLabel = getDirectoryPickerModeLabel()
+const directoryPickerActionLabel = getDirectoryPickerActionLabel()
+const pathBrowseDialogTitle = getDirectoryPickerBrowseDialogTitle()
+const directoryPickerAlertTitle = getDirectoryPickerAlertTitle()
+const commonPathsTitle = usesServerDirectoryBrowser ? '🗂️ 常用服务器目录' : '🗂️ 常用开发目录'
+const pathInputPlaceholder = usesServerDirectoryBrowser
+  ? '请输入服务器上的完整路径，如：D:\\Projects\\MyApp'
+  : '请输入完整路径，如：D:\\Projects\\MyApp'
 
 // 方法
 const addPath = () => {
@@ -357,9 +349,9 @@ const selectBrowsePath = (path: string) => {
     
     // 异步验证路径和估算
     validateAndEstimate(currentEditIndex.value)
-    
+
     pathBrowseVisible.value = false
-    ElMessage.success('路径选择成功')
+    ElMessage.success(usesServerDirectoryBrowser ? '服务器路径选择成功' : '路径选择成功')
   }
 }
 
@@ -381,7 +373,7 @@ const confirmPathInput = () => {
     validateAndEstimate(currentEditIndex.value)
     
     pathInputVisible.value = false
-    ElMessage.success('路径设置成功')
+    ElMessage.success(usesServerDirectoryBrowser ? '服务器路径设置成功' : '路径设置成功')
   }
 }
 
@@ -400,14 +392,14 @@ const selectFolderFromExplorer = async (index: number) => {
       const selection = await selectDirectoryWithBestEffort(startPath, true)
 
       if (selection.cancelled) {
-        ElMessage.info('用户取消了文件夹选择')
+        ElMessage.info(getDirectoryPickerCancelMessage())
         return
       }
 
       if (selection.path) {
         selectedPath = selection.path.trim()
         if (selectedPath) {
-          ElMessage.success(`文件夹选择成功: ${selectedPath}`)
+          ElMessage.success(formatDirectoryPickerSelectionMessage(selectedPath))
         }
       }
     } catch (nativeError) {
@@ -417,7 +409,11 @@ const selectFolderFromExplorer = async (index: number) => {
     }
 
     if (!selectedPath) {
-      ElMessage.info('未获取到目录路径，请手动输入完整路径')
+      ElMessage.info(
+        usesServerDirectoryBrowser
+          ? '未获取到服务器目录路径，请手动输入服务器上的完整路径'
+          : '未获取到目录路径，请手动输入完整路径'
+      )
       return
     }
     
@@ -445,7 +441,7 @@ const selectFolderFromExplorer = async (index: number) => {
       if (!resolvedPath) {
         const folderName = normalizedSelectedPath
         ElMessage.warning(
-          `已选择文件夹 "${folderName}"，但浏览器安全限制无法获取绝对路径，请点击“编辑”手动输入完整路径（如 D:\\My Programs\\${folderName}）`
+          `已选择目录 "${folderName}"，但浏览器安全限制无法获取绝对路径，请点击“编辑”手动输入完整路径（如 D:\\My Programs\\${folderName}）`
         )
         return
       }
@@ -457,7 +453,11 @@ const selectFolderFromExplorer = async (index: number) => {
     
   } catch (error) {
     console.error('文件夹选择失败:', error)
-    ElMessage.error('文件夹选择失败，请尝试手动输入路径')
+    ElMessage.error(
+      usesServerDirectoryBrowser
+        ? '服务器目录选择失败，请尝试手动输入服务器路径'
+        : '文件夹选择失败，请尝试手动输入路径'
+    )
   } finally {
     loading.value = false
   }
