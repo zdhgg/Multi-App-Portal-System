@@ -22,6 +22,11 @@ import type { Database } from 'better-sqlite3'
 const execAsync = promisify(exec)
 type PortAllocationScope = 'frontend' | 'backend' | 'unified'
 
+export interface PortPairAllocation {
+  primaryPort: number
+  secondaryPort: number
+}
+
 export class NetworkService implements INetworkService {
   private readonly allocatedPorts = new Set<number>()
   private configManager: ConfigManager
@@ -103,6 +108,56 @@ export class NetworkService implements INetworkService {
     throw new Error(`No free ports available in ${scope} range ${portRange.start}-${portRange.end}`)
   }
 
+  async allocateSpecificPort(port: number, scope: PortAllocationScope = 'unified'): Promise<number> {
+    if (await this.isPortAvailableForAllocation(port, scope)) {
+      this.allocatedPorts.add(port)
+      logger.debug('Specific port allocated', { port, scope })
+      return port
+    }
+
+    throw new Error(`Port ${port} is not available in ${scope} range`)
+  }
+
+  async allocatePortPair(): Promise<PortPairAllocation> {
+    const frontendRange = this.getPortRange('frontend')
+    const backendRange = this.getPortRange('backend')
+    const pairCount = Math.min(
+      frontendRange.end - frontendRange.start,
+      backendRange.end - backendRange.start
+    ) + 1
+
+    for (let offset = 0; offset < pairCount; offset += 1) {
+      const primaryPort = frontendRange.start + offset
+      const secondaryPort = backendRange.start + offset
+
+      const primaryAvailable = await this.isPortAvailableForAllocation(primaryPort, 'frontend')
+      if (!primaryAvailable) {
+        continue
+      }
+
+      const secondaryAvailable = await this.isPortAvailableForAllocation(secondaryPort, 'backend')
+      if (!secondaryAvailable) {
+        continue
+      }
+
+      this.allocatedPorts.add(primaryPort)
+      this.allocatedPorts.add(secondaryPort)
+      logger.debug('Paired ports allocated', {
+        primaryPort,
+        secondaryPort,
+        offset,
+        frontendRange,
+        backendRange
+      })
+      return { primaryPort, secondaryPort }
+    }
+
+    throw new Error(
+      `No free paired ports available in frontend range ${frontendRange.start}-${frontendRange.end} ` +
+      `and backend range ${backendRange.start}-${backendRange.end}`
+    )
+  }
+
   async releasePort(port: number): Promise<void> {
     try {
       // 1. 先尝试杀死占用端口的进程
@@ -110,6 +165,13 @@ export class NetworkService implements INetworkService {
 
       // 2. 从内存中删除端口分配记录
       this.allocatedPorts.delete(port)
+
+      // 3. 最终验收：必须确认端口已经真正释放，不能只删内存标记
+      PortSnapshotManager.clearCache()
+      const isActuallyFree = await this.checkSystemPort(port)
+      if (!isActuallyFree) {
+        throw new Error(`Port ${port} remains occupied after release attempt`)
+      }
 
       logger.info('Port released successfully', { port })
     } catch (error) {
@@ -142,10 +204,9 @@ export class NetworkService implements INetworkService {
 
       // 阶段一：软关闭通知 (Soft Stop, 不带 /F)
       try {
-        await execAsync(`taskkill /PID ${pid}`, { windowsHide: true });
-        logger.info('Sent termination signal to process', { port, pid });
+        await execAsync(`taskkill /T /PID ${pid}`, { windowsHide: true });
+        logger.info('Sent termination signal to process tree', { port, pid });
       } catch (err) {
-        // 大多由于权限或进程不响应软关闭导致，跳过警告，交由最后防线处理
         logger.debug('Soft kill attempt failed or denied', { pid, error: (err as Error).message });
       }
 
@@ -164,13 +225,12 @@ export class NetworkService implements INetworkService {
         }
       }
 
-      // 阶段三：雷霆强杀 (Hard Kill / 兜底防线)
+      // 阶段三：雷霆强杀 (Hard Kill / 兜底防线，/T 同时杀子进程避免漏杀)
       if (!isDead) {
         logger.warn('Process unresponsive to soft kill, executing hard kill fallback', { port, pid });
         try {
-          await execAsync(`taskkill /F /PID ${pid}`, { windowsHide: true });
-          logger.info('Force killed process on port', { port, pid });
-          // 等待系统释放端口句柄
+          await execAsync(`taskkill /F /T /PID ${pid}`, { windowsHide: true });
+          logger.info('Force killed process tree on port', { port, pid });
           await sleep(500);
         } catch (hardErr) {
           logger.warn('Hard kill trigger failed', { port, pid, error: (hardErr as Error).message });
@@ -296,6 +356,14 @@ export class NetworkService implements INetworkService {
     return true
   }
 
+  private async isPortAvailableForAllocation(port: number, scope: PortAllocationScope = 'unified'): Promise<boolean> {
+    if (!this.isPortAvailable(port, scope)) {
+      return false
+    }
+
+    return await this.checkSystemPort(port)
+  }
+
   /**
    * 检查端口是否已被已添加的应用使用
    * 查询 applications 表中的 network_config JSON 字段
@@ -382,13 +450,8 @@ export class NetworkService implements INetworkService {
     }
 
     try {
-      // 将直接强拉 /F 改为走刚刚升级后的无损退出降级管线 (Graceful Termination)
-      await this.killProcessOnPort(port);
-
-      // 执行完毕后验证一下端口是否已经彻底空闲
-      const isFree = await this.isPortFree(port);
-      return isFree;
-
+      await this.releasePort(port)
+      return true
     } catch (e) {
       logger.error('Failed to force release port in Pipeline', { port, error: (e as Error).message });
       return false;

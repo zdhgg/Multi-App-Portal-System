@@ -1,30 +1,8 @@
 <template>
   <div class="app-configuration">
-    <!-- 配置头部 -->
-    <div class="config-header">
-      <div class="header-info">
-        <h2>
-          <el-icon><Setting /></el-icon>
-          {{ appName }} - 应用配置
-        </h2>
-        <p class="config-description">
-          配置应用的运行参数、环境变量、端口设置等
-        </p>
-      </div>
-      <div class="header-actions">
-        <el-button @click="loadTemplate" :loading="loadingTemplate">
-          <el-icon><Document /></el-icon>
-          加载模板
-        </el-button>
-        <el-button @click="validateConfig" :loading="validating">
-          <el-icon><CircleCheck /></el-icon>
-          验证配置
-        </el-button>
-        <el-button type="primary" @click="saveConfiguration" :loading="saving">
-          <el-icon><Check /></el-icon>
-          保存配置
-        </el-button>
-      </div>
+    <!-- 配置说明 -->
+    <div class="config-intro">
+      <p>配置应用的运行参数、环境变量、端口设置等</p>
     </div>
 
     <!-- 配置表单 -->
@@ -95,19 +73,92 @@
         </el-form-item>
       </el-card>
 
-      <!-- 端口配置迁移提示 -->
-      <el-card class="config-section port-migration-card">
+      <!-- 端口配置 -->
+      <el-card class="config-section">
         <template #header>
           <div class="section-header">
             <el-icon><Connection /></el-icon>
             <span>端口配置</span>
-            <el-tag type="info" size="small">已迁移</el-tag>
           </div>
         </template>
 
-        <div class="port-migration-compact">
-          <span class="port-migration-text">端口分配与冲突管理已迁移到端口管理中心。</span>
-          <el-button type="primary" @click="navigateToPortManagement">前往端口管理中心</el-button>
+        <el-row :gutter="20" class="port-primary-row">
+          <el-col :span="12">
+            <el-form-item label="主端口" prop="primaryPort">
+              <el-input-number
+                v-model="configuration.primaryPort"
+                :min="1"
+                :max="65535"
+                :step="1"
+                placeholder="主端口号"
+                style="width: 100%"
+              />
+              <div class="form-help-text">
+                应用的主要访问端口（1-65535）
+              </div>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="协议" prop="protocol">
+              <el-select
+                v-model="configuration.protocol"
+                placeholder="选择协议"
+                style="width: 100%"
+              >
+                <el-option label="HTTP" value="http" />
+                <el-option label="HTTPS" value="https" />
+              </el-select>
+              <div class="form-help-text">
+                应用使用的网络协议
+              </div>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <div class="secondary-port-panel">
+          <div class="secondary-port-panel-header">
+            <div>
+              <div class="secondary-port-title">次要端口</div>
+              <div class="form-help-text secondary-port-help">
+                {{ hasSecondaryPorts ? '可在下方修改或删除' : '全栈应用的后端端口等' }}
+              </div>
+            </div>
+            <div v-if="hasSecondaryPorts" class="secondary-port-status">
+              已配置 {{ configuration.secondaryPorts?.length || 0 }} 个次要端口
+            </div>
+            <el-button
+              v-else
+              @click="addSecondaryPort"
+              size="small"
+            >
+              <el-icon><Plus /></el-icon>
+              添加次要端口
+            </el-button>
+          </div>
+
+          <template v-if="configuration.secondaryPorts && configuration.secondaryPorts.length > 0">
+            <div
+              v-for="(port, index) in configuration.secondaryPorts"
+              :key="index"
+              class="secondary-port-item"
+            >
+              <el-input-number
+                v-model="configuration.secondaryPorts[index]"
+                :min="1"
+                :max="65535"
+                :step="1"
+                placeholder="端口号"
+                style="width: 200px"
+              />
+              <el-button
+                type="danger"
+                size="small"
+                @click="removeSecondaryPort(index)"
+                :icon="Delete"
+                circle
+              />
+            </div>
+          </template>
         </div>
       </el-card>
 
@@ -264,6 +315,24 @@
       </el-card>
     </el-form>
 
+    <!-- 底部操作栏 -->
+    <div class="config-footer">
+      <div class="footer-left">
+        <el-button @click="loadTemplate" :loading="loadingTemplate" size="small">
+          <el-icon><Document /></el-icon>
+          加载模板
+        </el-button>
+      </div>
+      <div class="footer-right">
+        <el-button @click="validateConfig" :loading="validating">
+          验证配置
+        </el-button>
+        <el-button type="primary" @click="saveConfiguration" :loading="saving">
+          保存配置
+        </el-button>
+      </div>
+    </div>
+
     <!-- 模板选择对话框 -->
     <el-dialog
       v-model="templateDialogVisible"
@@ -299,7 +368,10 @@
             </div>
             <p class="template-description">{{ template.description }}</p>
             <div class="template-meta">
-              <span class="tech-stack">{{ template.techStack }}</span>
+              <span class="tech-stack tech-stack-inline">
+                <el-icon class="tech-stack-icon"><component :is="getTechStackElIcon(template.techStack)" /></el-icon>
+                {{ getTechStackDisplayName(template.techStack) }}
+              </span>
               <span class="builtin" v-if="template.isBuiltin">内置模板</span>
             </div>
           </div>
@@ -388,6 +460,7 @@ import {
   type ConfigurationTemplate,
   type ValidationResult
 } from '@/services'
+import { getTechStackElIcon, getTechStackDisplayName } from '@/utils/techStackUtils'
 
 // Props
 interface Props {
@@ -424,6 +497,9 @@ const configuration = reactive<AppConfiguration>({
   startCommand: '',
   stopCommand: '',
   accessPath: props.initialAccessPath || '',
+  primaryPort: undefined,
+  secondaryPorts: [],
+  protocol: 'http',
   ports: [],
   environmentVariables: [],
   startupParameters: [],
@@ -518,6 +594,10 @@ const filteredTemplates = computed(() => {
   return templates.value.filter(t => t.techStack === selectedTechStack.value)
 })
 
+const hasSecondaryPorts = computed(() => (
+  Array.isArray(configuration.secondaryPorts) && configuration.secondaryPorts.length > 0
+))
+
 const applyDefaultConfiguration = (techStack: string) => {
   const defaultConfig = appConfigApiService.getDefaultConfiguration(
     techStack,
@@ -566,13 +646,40 @@ const applyInitialAccessPathFallback = () => {
 const initializeConfiguration = async () => {
   try {
     configuration.appId = props.appId
-    // 尝试加载现有配置
+
+    // Load application details to get port configuration
+    const appResponse = await appsApiService.getApp(props.appId)
+
+    if (appResponse.success && appResponse.data) {
+      const app = appResponse.data
+
+      // Load port configuration from application
+      if (app.network) {
+        configuration.primaryPort = app.network.primaryPort
+        configuration.secondaryPorts = app.network.secondaryPorts ? [...app.network.secondaryPorts] : []
+        configuration.protocol = app.network.protocol || 'http'
+      }
+    }
+
+    // Try to load existing configuration
     const response = await appConfigApiService.getAppConfiguration(props.appId)
     if (response.success && response.data) {
       Object.assign(configuration, response.data)
+      // Ensure port configuration from app takes precedence if not in config
+      if (appResponse.success && appResponse.data?.network) {
+        if (configuration.primaryPort === undefined) {
+          configuration.primaryPort = appResponse.data.network.primaryPort
+        }
+        if (!configuration.secondaryPorts || configuration.secondaryPorts.length === 0) {
+          configuration.secondaryPorts = appResponse.data.network.secondaryPorts ? [...appResponse.data.network.secondaryPorts] : []
+        }
+        if (!configuration.protocol) {
+          configuration.protocol = appResponse.data.network.protocol || 'http'
+        }
+      }
       applyInitialAccessPathFallback()
     } else if (props.techStack) {
-      // 使用默认配置
+      // Use default configuration
       applyDefaultConfiguration(props.techStack)
       applyInitialAccessPathFallback()
     }
@@ -587,8 +694,6 @@ const initializeConfiguration = async () => {
   applyInitialAccessPathFallback()
 }
 
-// 端口配置方法已迁移到端口管理中心
-
 const addEnvironmentVariable = () => {
   configuration.environmentVariables.push({
     key: '',
@@ -601,6 +706,25 @@ const addEnvironmentVariable = () => {
 
 const removeEnvironmentVariable = (index: number) => {
   configuration.environmentVariables.splice(index, 1)
+}
+
+const addSecondaryPort = () => {
+  if (!configuration.secondaryPorts) {
+    configuration.secondaryPorts = []
+  }
+
+  if (configuration.secondaryPorts.length > 0) {
+    ElMessage.info('已存在次要端口，请在下方修改')
+    return
+  }
+
+  configuration.secondaryPorts.push(8080)
+}
+
+const removeSecondaryPort = (index: number) => {
+  if (configuration.secondaryPorts) {
+    configuration.secondaryPorts.splice(index, 1)
+  }
 }
 
 const loadTemplate = async () => {
@@ -672,8 +796,19 @@ const syncConfigurationToApplication = async () => {
   const normalizedPath = normalizeAccessPath(configuration.accessPath)
   configuration.accessPath = normalizedPath
 
-  const payload: Record<string, string> = {
+  const payload: Record<string, any> = {
     access_path: normalizedPath || ''
+  }
+
+  // Sync port configuration
+  if (configuration.primaryPort !== undefined) {
+    payload.primaryPort = configuration.primaryPort
+  }
+  if (configuration.secondaryPorts !== undefined) {
+    payload.secondaryPorts = configuration.secondaryPorts
+  }
+  if (configuration.protocol !== undefined) {
+    payload.protocol = configuration.protocol
   }
 
   if (String(props.techStack || '').trim().toLowerCase() === 'external-exe') {
@@ -763,13 +898,6 @@ const getCategoryDisplayName = (category: string) => {
   }
   return names[category] || category
 }
-
-// 端口配置迁移方法
-const navigateToPortManagement = () => {
-  if (typeof window !== 'undefined') {
-    window.open('/ports', '_blank')
-  }
-}
 </script>
 
 <style scoped>
@@ -783,33 +911,30 @@ const navigateToPortManagement = () => {
   flex-direction: column;
 }
 
-.config-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 16px;
-  padding: 16px 20px;
-  background: white;
-  border-radius: 0;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  flex-shrink: 0;
-}
-
-.header-info h2 {
-  margin: 0 0 8px 0;
-  color: #303133;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.config-description {
-  margin: 0;
-  color: #606266;
+.config-intro {
+  padding: 16px 20px 8px;
+  color: #6b7280;
   font-size: 14px;
 }
 
-.header-actions {
+.config-intro p {
+  margin: 0;
+}
+
+.config-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: white;
+  border-top: 1px solid #e5e7eb;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.footer-right {
   display: flex;
   gap: 12px;
 }
@@ -823,6 +948,16 @@ const navigateToPortManagement = () => {
 
 .config-section {
   margin-bottom: 16px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  box-shadow: none !important;
+}
+
+.config-section :deep(.el-card__header) {
+  padding: 14px 20px;
+  background-color: #f9fafb !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  background-image: none !important;
 }
 
 .form-help-text {
@@ -837,7 +972,8 @@ const navigateToPortManagement = () => {
   align-items: center;
   gap: 8px;
   font-weight: 600;
-  position: relative;
+  color: #374151;
+  font-size: 15px;
 }
 
 .add-btn {
@@ -956,6 +1092,16 @@ const navigateToPortManagement = () => {
   font-weight: 500;
 }
 
+.tech-stack-inline {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tech-stack-icon {
+  margin-right: 4px;
+  font-size: 14px;
+}
+
 .builtin {
   color: #67c23a;
 }
@@ -1023,21 +1169,61 @@ const navigateToPortManagement = () => {
   margin-bottom: 4px;
 }
 
-/* 端口迁移卡片样式 */
-.port-migration-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px;
-  background: #f5f7fa;
-  border: 1px dashed #c0c4cc;
+.port-primary-row {
+  margin-bottom: 4px;
+}
+
+.secondary-port-panel {
+  margin-top: 2px;
+  padding: 14px 16px;
+  background: #fafafa;
+  border: 1px solid #ebeef5;
   border-radius: 8px;
 }
 
-.port-migration-text {
+.secondary-port-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.secondary-port-title {
   color: #606266;
   font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.secondary-port-help {
+  margin-top: 4px;
+}
+
+.secondary-port-status {
+  min-height: 32px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: #409eff;
+  background: #ecf5ff;
+  border: 1px solid #d9ecff;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.secondary-port-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.secondary-port-item:last-child {
+  margin-bottom: 0;
 }
 
 .runtime-grid {

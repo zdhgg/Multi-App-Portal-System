@@ -104,6 +104,9 @@ export interface UpdateApplicationInput {
   readonly directory?: string
   readonly buildScript?: string
   readonly build_script?: string
+  readonly primaryPort?: number
+  readonly secondaryPorts?: readonly number[]
+  readonly protocol?: 'http' | 'https'
 }
 
 // =============================================================================
@@ -286,7 +289,9 @@ export interface DetectionService {
 }
 
 export interface NetworkService {
-  allocatePort(): Promise<number>
+  allocatePort(scope?: 'frontend' | 'backend' | 'unified'): Promise<number>
+  allocateSpecificPort?(port: number, scope?: 'frontend' | 'backend' | 'unified'): Promise<number>
+  allocatePortPair?(): Promise<{ primaryPort: number; secondaryPort: number }>
   releasePort(port: number): Promise<void>
   isPortFree(port: number): Promise<boolean>
   checkConflicts(ports: readonly number[]): Promise<readonly PortConflict[]>

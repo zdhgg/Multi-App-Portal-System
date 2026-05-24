@@ -51,6 +51,11 @@ export interface App {
   status: 'online' | 'offline' | 'error' | 'maintenance'
   frontend_port?: number
   backend_port?: number
+  network?: {
+    primaryPort: number
+    secondaryPorts: number[]
+    protocol: 'http' | 'https'
+  }
   access_path?: string
   pinned_to_homepage?: boolean
   created_at: string
@@ -91,6 +96,9 @@ export interface AppUpdateRequest {
   status?: 'online' | 'offline' | 'error' | 'maintenance'
   frontend_port?: number
   backend_port?: number
+  primaryPort?: number
+  secondaryPorts?: number[]
+  protocol?: 'http' | 'https'
 }
 
 export interface AppStatusUpdateRequest {
@@ -632,6 +640,11 @@ function mapApplicationDtoToApp(dto: ApplicationDto): App {
     status: mapStateToStatus(dto.state),
     frontend_port: frontendPort,
     backend_port: backendPort,
+    network: network.primaryPort !== undefined ? {
+      primaryPort: network.primaryPort,
+      secondaryPorts: Array.isArray(network.secondaryPorts) ? network.secondaryPorts : [],
+      protocol: (network.protocol === 'http' || network.protocol === 'https') ? network.protocol : 'http'
+    } : undefined,
     access_path: (metadata as any).accessPath ?? (metadata as any).access_path ?? undefined,
     build_script: dto.build_script ?? dto.buildScript,
     pinned_to_homepage: Boolean((metadata as any).pinned),

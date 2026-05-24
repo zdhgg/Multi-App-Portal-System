@@ -177,7 +177,14 @@
               <template #default="{ row }">
                 <div class="app-name-cell">
                   <div class="app-icon">
-                    {{ getAppIcon(getTechStackValue(row)) }}
+                    <img v-if="isIconImageUrl(row.icon)" :src="row.icon" class="app-custom-icon" />
+                    <el-icon v-else-if="resolveElementIcon(row.icon)" :size="20">
+                      <component :is="resolveElementIcon(row.icon)" />
+                    </el-icon>
+                    <span v-else-if="row.icon" class="app-icon-text">{{ getIconText(row.icon) }}</span>
+                    <el-icon v-else :size="20">
+                      <component :is="getTechStackElIcon(getTechStackValue(row))" />
+                    </el-icon>
                   </div>
                   <div class="app-info">
                     <div class="app-name">{{ row.name }}</div>
@@ -197,7 +204,7 @@
                     effect="light"
                     class="tech-stack-tag"
                   >
-                    <span class="tech-stack-icon">{{ getTechStackIcon(getTechStackValue(row)) }}</span>
+                    <el-icon class="tech-stack-icon"><component :is="getTechStackElIcon(getTechStackValue(row))" /></el-icon>
                     {{ getTechStackDisplayName(getTechStackValue(row)) }}
                   </el-tag>
                   <!-- 构建工具 - 简化为小字显示 -->
@@ -249,6 +256,7 @@
                       <el-button
                         size="small"
                         type="warning"
+                        plain
                         @click="toggleApp(row)"
                         :loading="row._loading"
                         icon="VideoPause"
@@ -264,8 +272,8 @@
                     <!-- 启动方式选择下拉菜单 -->
                     <el-tooltip
                       v-else-if="row.status !== 'online' && hasOperationPermission('start')"
-                      :content="getSmartDisplayInfo(row).tooltips.start"
                       placement="top"
+                      :content="getSmartDisplayInfo(row).tooltips.start"
                     >
                       <el-dropdown
                         @command="(command: StartCommand) => handleStartApp(row, command as any)"
@@ -274,6 +282,7 @@
                         <el-button
                           size="small"
                           type="success"
+                          plain
                           :loading="row._loading"
                           icon="VideoPlay"
                           :class="[
@@ -326,6 +335,7 @@
                       <el-button
                         size="small"
                         type="info"
+                        plain
                         :class="['action-btn', 'more-btn']"
                       >
                         更多
@@ -428,7 +438,7 @@
     <!-- 应用配置对话框 -->
     <el-dialog
       v-model="configDialogVisible"
-      :title="`配置应用 - ${currentConfigApp?.name || ''}`"
+      :title="`应用配置：${currentConfigApp?.name || ''}`"
       width="90%"
       top="5vh"
       :close-on-click-modal="false"
@@ -609,6 +619,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, h } from 'vue'
+import * as Icons from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { Connection, VideoPlay, VideoPause, Setting, Delete, Monitor, Document, ArrowDown, Cpu, Search, Upload, FolderOpened, Edit } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -628,6 +639,7 @@ import PM2FixDialog from '@/components/PM2FixDialog.vue'
 import AppAppearanceEditor from '@/components/AppAppearanceEditor.vue'
 import {
   getTechStackIcon,
+  getTechStackElIcon,
   getTechStackDisplayName,
   getTechStackTagType,
   extractTechStackOptions
@@ -652,7 +664,7 @@ type RuntimeLogType = 'combined' | 'out' | 'error'
 type RuntimeLogTarget = 'all' | 'frontend' | 'backend'
 
 // 扩展App类型以支持UI状态和字段兼容性
-interface AppWithUIState extends Omit<App, 'status'> {
+interface AppWithUIState extends Omit<App, 'status' | 'network'> {
   _loading?: boolean
   _deleting?: boolean
   _buildLoading?: boolean
@@ -683,6 +695,7 @@ interface AppWithUIState extends Omit<App, 'status'> {
   network?: {
     primaryPort?: number
     secondaryPorts?: number[]
+    protocol?: 'http' | 'https'
     [key: string]: any
   }
   path?: string
@@ -719,6 +732,21 @@ const route = useRoute()
 const router = useRouter()
 const pendingPortRefreshTimers = new Set<ReturnType<typeof setTimeout>>()
 let activePortConflictNotification: { close: () => void } | null = null
+
+const resolveElementIcon = (icon?: string) => {
+  if (!icon) return null
+  return (Icons as Record<string, any>)[icon] || null
+}
+
+const isIconImageUrl = (icon?: string) => {
+  if (!icon) return false
+  return icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('/') || icon.startsWith('data:image')
+}
+
+const getIconText = (icon: string) => {
+  const value = icon.trim()
+  return value.length > 2 ? value.charAt(0).toUpperCase() : value
+}
 
 // 搜索和过滤相关
 const searchQuery = ref('')
@@ -3589,6 +3617,20 @@ const getCategoryLabel = (category: string) => {
   flex-shrink: 0;
 }
 
+.app-custom-icon {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.app-icon-text {
+  color: #409eff;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .app-info {
   flex: 1;
   min-width: 0;
@@ -4927,23 +4969,23 @@ const getCategoryLabel = (category: string) => {
   align-items: center;
   gap: 10px;
   min-height: 56px;
-  padding: 10px 14px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.84);
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.05);
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e4e7ed;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
 }
 
 .management-toolbar-stat-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--primary-600);
-  font-size: 22px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(64, 158, 255, 0.1);
+  color: #409eff;
+  font-size: 20px;
 }
 
 .management-toolbar-stat-label {
@@ -4960,8 +5002,8 @@ const getCategoryLabel = (category: string) => {
 }
 
 .management-toolbar-stat-success .management-toolbar-stat-icon {
-  background: rgba(34, 197, 94, 0.12);
-  color: var(--success-600, #16a34a);
+  background: rgba(103, 194, 58, 0.1);
+  color: #67c23a;
 }
 
 .management-toolbar-actions {
@@ -4973,10 +5015,9 @@ const getCategoryLabel = (category: string) => {
 }
 
 .management-toolbar-actions .el-button {
-  min-height: 44px;
-  padding: 0 18px;
-  border-radius: 999px;
-  font-weight: 700;
+  min-height: 36px;
+  padding: 0 16px;
+  font-weight: 500;
 }
 
 .management-stats {
@@ -4990,11 +5031,11 @@ const getCategoryLabel = (category: string) => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 18px 20px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.05);
+  padding: 16px 20px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e4e7ed;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
 }
 
 .management-metric-highlight {
@@ -5272,6 +5313,19 @@ const getCategoryLabel = (category: string) => {
     max-width: 100%;
     width: 100%;
   }
+}
+
+.config-dialog :deep(.el-dialog__header) {
+  background: white !important;
+  background-image: none !important;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 20px 24px;
+  margin-right: 0;
+}
+
+.config-dialog :deep(.el-dialog__title) {
+  color: #111827 !important;
+  font-weight: 600;
 }
 </style>
 

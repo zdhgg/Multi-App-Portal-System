@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NetworkService } from '../NetworkService'
 import { PortSnapshotManager } from '../../utils/portSnapshot'
 
-const createConfigManagerStub = () => ({
-  getPortConfig: () => ({
+const createConfigManagerStub = (
+  ranges = {
     frontendRange: {
       start: 3001,
       end: 3100,
@@ -13,7 +13,12 @@ const createConfigManagerStub = () => ({
       start: 8001,
       end: 8100,
       description: 'backend'
-    },
+    }
+  }
+) => ({
+  getPortConfig: () => ({
+    frontendRange: ranges.frontendRange,
+    backendRange: ranges.backendRange,
     reservedPorts: [],
     allocationPolicy: {
       randomizeStartPort: true,
@@ -31,6 +36,12 @@ const createConfigManagerStub = () => ({
     }
   }),
   on: vi.fn()
+})
+
+const createDatabaseStub = (apps: any[]) => ({
+  prepare: vi.fn(() => ({
+    all: vi.fn(() => apps)
+  }))
 })
 
 describe('NetworkService conflict detection', () => {
@@ -71,5 +82,43 @@ describe('NetworkService conflict detection', () => {
       }
     ])
     expect(checkSystemPortSpy).not.toHaveBeenCalled()
+  })
+
+  it('fails releasePort when the port is still occupied after cleanup attempt', async () => {
+    const service = new NetworkService(createConfigManagerStub() as any)
+
+    vi.spyOn(service as any, 'killProcessOnPort').mockResolvedValue(undefined)
+    vi.spyOn(service as any, 'checkSystemPort').mockResolvedValue(false)
+
+    await expect(service.releasePort(8010)).rejects.toThrow('Port 8010 remains occupied after release attempt')
+  })
+
+  it('allocates paired fullstack ports by offset and skips unavailable pairs', async () => {
+    const service = new NetworkService(
+      createConfigManagerStub({
+        frontendRange: { start: 3011, end: 3012, description: 'frontend' },
+        backendRange: { start: 8011, end: 8012, description: 'backend' }
+      }) as any,
+      createDatabaseStub([
+        {
+          id: 'existing-app',
+          name: 'Existing App',
+          network_config: JSON.stringify({
+            primaryPort: 3009,
+            secondaryPorts: [8011],
+            protocol: 'http'
+          })
+        }
+      ]) as any
+    )
+
+    vi.spyOn(service as any, 'checkSystemPort').mockResolvedValue(true)
+
+    const pair = await service.allocatePortPair()
+
+    expect(pair).toEqual({
+      primaryPort: 3012,
+      secondaryPort: 8012
+    })
   })
 })

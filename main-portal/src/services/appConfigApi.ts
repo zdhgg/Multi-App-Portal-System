@@ -64,6 +64,9 @@ export interface AppConfiguration {
   accessPath?: string
   
   // 端口配置
+  primaryPort?: number
+  secondaryPorts?: number[]
+  protocol?: 'http' | 'https'
   ports: PortConfiguration[]
   
   // 环境变量

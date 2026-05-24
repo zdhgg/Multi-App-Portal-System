@@ -257,13 +257,17 @@ describe('ApplicationService lifecycle policy', () => {
       }
     })
     const repository = new InMemoryApplicationRepository([app])
-    const networkService = {
-      allocatePort: vi.fn(async () => 3200),
-      releasePort: vi.fn(async () => {}),
-      checkConflicts: vi.fn(async () => [
+    const checkConflicts = vi
+      .fn()
+      .mockResolvedValueOnce([
         { port: 3005, currentOwner: 'node', requestedBy: 'application' },
         { port: 8005, currentOwner: 'node', requestedBy: 'application' }
       ])
+      .mockResolvedValueOnce([])
+    const networkService = {
+      allocatePort: vi.fn(async () => 3200),
+      releasePort: vi.fn(async () => {}),
+      checkConflicts
     }
     const processManager = {
       start: vi.fn(async () => {}),
@@ -274,7 +278,8 @@ describe('ApplicationService lifecycle policy', () => {
 
     await service.stop(app.id)
 
-    expect(networkService.checkConflicts).toHaveBeenCalledWith([3005, 8005])
+    expect(checkConflicts).toHaveBeenNthCalledWith(1, [3005, 8005])
+    expect(checkConflicts).toHaveBeenNthCalledWith(2, [3005, 8005])
     expect(processManager.stop).toHaveBeenCalledWith(app.id)
     expect(networkService.releasePort).toHaveBeenCalledTimes(2)
     expect(networkService.releasePort).toHaveBeenNthCalledWith(1, 3005)
@@ -284,6 +289,48 @@ describe('ApplicationService lifecycle policy', () => {
     expect(stored?.state).toBe('stopped')
     expect(stored?.deploymentMode).toBe('unknown')
     expect(stored?.pm2ProcessName).toBeNull()
+  })
+
+  it('rejects stop when runtime ports remain active after release attempts', async () => {
+    const app = createBaseApp({
+      state: 'running',
+      deploymentMode: 'development',
+      network: {
+        primaryPort: 3010,
+        secondaryPorts: [8010],
+        protocol: 'http'
+      }
+    })
+    const repository = new InMemoryApplicationRepository([app])
+    const networkService = {
+      allocatePort: vi.fn(async () => 3200),
+      releasePort: vi.fn(async (port: number) => {
+        if (port === 8010) {
+          throw new Error('Port 8010 remains occupied after release attempt')
+        }
+      }),
+      checkConflicts: vi.fn(async () => [
+        { port: 8010, currentOwner: 'node', requestedBy: 'application', pid: 22864 }
+      ])
+    }
+    const processManager = {
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {})
+    }
+
+    const service = new ApplicationService(repository as any, networkService as any, processManager as any)
+
+    await expect(service.stop(app.id)).rejects.toMatchObject({
+      code: 'STOP_INCOMPLETE'
+    })
+
+    expect(processManager.stop).toHaveBeenCalledWith(app.id)
+    expect(networkService.releasePort).toHaveBeenNthCalledWith(1, 3010)
+    expect(networkService.releasePort).toHaveBeenNthCalledWith(2, 8010)
+
+    const stored = await repository.findById(app.id)
+    expect(stored?.state).toBe('running')
+    expect(stored?.deploymentMode).toBe('development')
   })
 
   it('rejects start when directory does not exist', async () => {
@@ -451,11 +498,11 @@ describe('ApplicationService lifecycle policy', () => {
   it('auto allocates fullstack secondary port from backend range', async () => {
     const repository = new InMemoryApplicationRepository([])
     const networkService = {
-      allocatePort: vi.fn(async (scope?: 'frontend' | 'backend' | 'unified') => {
-        if (scope === 'frontend') return 3004
-        if (scope === 'backend') return 8004
-        return 3004
-      }),
+      allocatePort: vi.fn(async () => 3004),
+      allocatePortPair: vi.fn(async () => ({
+        primaryPort: 3004,
+        secondaryPort: 8004
+      })),
       releasePort: vi.fn(async () => {}),
       checkConflicts: vi.fn(async () => [])
     }
@@ -485,8 +532,47 @@ describe('ApplicationService lifecycle policy', () => {
 
     expect(created.network.primaryPort).toBe(3004)
     expect(created.network.secondaryPorts).toEqual([8004])
-    expect(networkService.allocatePort).toHaveBeenCalledWith('frontend')
-    expect(networkService.allocatePort).toHaveBeenCalledWith('backend')
+    expect(networkService.allocatePortPair).toHaveBeenCalled()
+    expect(networkService.allocatePort).not.toHaveBeenCalled()
+  })
+
+  it('auto allocates the next fullstack port pair when a pair is unavailable', async () => {
+    const repository = new InMemoryApplicationRepository([])
+    const networkService = {
+      allocatePort: vi.fn(async () => 3011),
+      allocatePortPair: vi.fn(async () => ({
+        primaryPort: 3012,
+        secondaryPort: 8012
+      })),
+      releasePort: vi.fn(async () => {}),
+      checkConflicts: vi.fn(async () => [])
+    }
+    const processManager = {
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {})
+    }
+    const configManager = {
+      getPortConfig: vi.fn(() => ({
+        frontendRange: { start: 3001, end: 3100, description: 'frontend' },
+        backendRange: { start: 8001, end: 8100, description: 'backend' }
+      }))
+    }
+
+    const service = new ApplicationService(
+      repository as any,
+      networkService as any,
+      processManager as any,
+      configManager as any
+    )
+
+    const created = await service.create({
+      name: 'Paired Ports App',
+      directory: process.cwd(),
+      techStack: 'fullstack'
+    })
+
+    expect(created.network.primaryPort).toBe(3012)
+    expect(created.network.secondaryPorts).toEqual([8012])
   })
 
   it('rejects out-of-range backend port for fullstack creation', async () => {
@@ -531,11 +617,11 @@ describe('ApplicationService lifecycle policy', () => {
     const fixture = createMonorepoFullStackFixture()
     const repository = new InMemoryApplicationRepository([])
     const networkService = {
-      allocatePort: vi.fn(async (scope?: 'frontend' | 'backend' | 'unified') => {
-        if (scope === 'frontend') return 3006
-        if (scope === 'backend') return 8006
-        return 3006
-      }),
+      allocatePort: vi.fn(async () => 3006),
+      allocatePortPair: vi.fn(async () => ({
+        primaryPort: 3006,
+        secondaryPort: 8006
+      })),
       releasePort: vi.fn(async () => {}),
       checkConflicts: vi.fn(async () => [])
     }

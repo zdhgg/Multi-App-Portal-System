@@ -2,6 +2,30 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.4.0] - 2026-05-24
+
+### Added
+
+- 新增全栈应用前后端端口配对分配能力，支持按前端/后端端口范围自动分配同偏移端口组。
+- 应用配置页恢复主端口、次要端口和协议编辑能力，并同步写回应用网络配置。
+- 新增统一图标选择组件，支持 Element Plus 图标、自定义文本/Emoji 和图片链接。
+- 为全栈端口配对、端口释放失败和应用生命周期补充后端回归测试。
+
+### Changed
+
+- 强化 Windows 端口释放链路，改为精确匹配监听端口并终止进程树，避免误杀相邻端口或遗漏子进程。
+- 停止应用后增加端口释放最终校验；端口仍被占用时返回明确的 `STOP_INCOMPLETE` 错误。
+- 应用配置 API 统一迁移到 `/app-configurations`，并保留 `/app-configuration` 作为兼容别名。
+- 门户首页、应用卡片、应用详情、管理页、系统设置和侧栏切换到更克制的产品界面样式。
+- 将根项目、前端、后端、系统配置、锁文件、前端内置更新记录和主要发布文档版本统一提升到 `1.4.0`。
+
+### Fixed
+
+- 修复应用网络配置更新时误用不存在的端口冲突字段导致类型检查失败的问题，并只检查新增/变更端口的外部占用。
+- 修复前端管理页动态图标索引类型不安全导致 `vue-tsc` 失败的问题。
+- 修复配置端口接口只拿到应用 ID 时无法解析完整应用信息，导致端口配置服务缺少目录和技术栈上下文的问题。
+- 修复旧版前端仍请求 `/app-configuration` 时后端路由不可用的兼容问题。
+
 ## [1.3.9] - 2026-04-27
 
 ### Added
@@ -268,6 +292,7 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.4.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.4.0
 [1.3.9]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.9
 [1.3.8]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.8
 [1.3.7]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.7

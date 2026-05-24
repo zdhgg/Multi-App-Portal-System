@@ -819,6 +819,55 @@ export class ApplicationsController {
             }
             result.buildScript = normalizedBuildScript;
         }
+        // Validate port configuration
+        if (Object.prototype.hasOwnProperty.call(body, 'primaryPort')) {
+            const primaryPort = body.primaryPort;
+            if (typeof primaryPort === 'number') {
+                if (!Number.isInteger(primaryPort) || primaryPort < 1 || primaryPort > 65535) {
+                    throw new ApplicationError('primaryPort must be a valid TCP port (1-65535)', 'VALIDATION_ERROR', {
+                        field: 'primaryPort',
+                        value: primaryPort
+                    });
+                }
+                result.primaryPort = primaryPort;
+            } else if (primaryPort !== null && primaryPort !== undefined) {
+                throw new ApplicationError('primaryPort must be a number', 'VALIDATION_ERROR', {
+                    field: 'primaryPort'
+                });
+            }
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'secondaryPorts')) {
+            const secondaryPorts = body.secondaryPorts;
+            if (Array.isArray(secondaryPorts)) {
+                const validPorts = secondaryPorts.every(port =>
+                    typeof port === 'number' &&
+                    Number.isInteger(port) &&
+                    port >= 1 &&
+                    port <= 65535
+                );
+                if (!validPorts) {
+                    throw new ApplicationError('All secondary ports must be valid TCP ports (1-65535)', 'VALIDATION_ERROR', {
+                        field: 'secondaryPorts'
+                    });
+                }
+                result.secondaryPorts = secondaryPorts;
+            } else if (secondaryPorts !== null && secondaryPorts !== undefined) {
+                throw new ApplicationError('secondaryPorts must be an array', 'VALIDATION_ERROR', {
+                    field: 'secondaryPorts'
+                });
+            }
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'protocol')) {
+            const protocol = body.protocol;
+            if (protocol === 'http' || protocol === 'https') {
+                result.protocol = protocol;
+            } else if (protocol !== null && protocol !== undefined) {
+                throw new ApplicationError('protocol must be either "http" or "https"', 'VALIDATION_ERROR', {
+                    field: 'protocol',
+                    value: protocol
+                });
+            }
+        }
         if (Object.keys(result).length === 0) {
             throw new ApplicationError('No valid fields provided to update', 'VALIDATION_ERROR');
         }
@@ -1446,6 +1495,7 @@ export class ApplicationsController {
             case 'FORBIDDEN_OPERATION': return 403;
             case 'INVALID_STATE_TRANSITION': return 409;
             case 'STATE_POLICY_VIOLATION': return 409;
+            case 'STOP_INCOMPLETE': return 409;
             case 'APPLICATION_DIRECTORY_NOT_FOUND': return 422;
             case 'INVALID_NETWORK_CONFIGURATION': return 422;
             default: return 500;

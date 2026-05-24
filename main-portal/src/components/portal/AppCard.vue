@@ -1,18 +1,23 @@
 <template>
   <div class="app-card" :class="[statusClass, { 'app-offline': !app.isRunning }]" :style="cardStyle">
-    <div class="card-accent" aria-hidden="true"></div>
-
     <div class="card-header">
       <div class="app-identity">
         <div class="app-icon-shell">
-          <div class="app-icon" :class="{ 'is-letter': isGenericIcon }">
-            {{ displayIcon }}
+          <img v-if="isValidUrl(app.icon)" :src="app.icon" class="app-custom-icon" />
+          <div v-else class="app-icon" :style="cardStyle">
+            <el-icon v-if="getResolvedIcon(app.icon)" :size="28">
+              <component :is="getResolvedIcon(app.icon)" />
+            </el-icon>
+            <span v-else-if="app.icon" class="icon-emoji">{{ app.icon }}</span>
+            <el-icon v-else :size="28">
+              <component :is="getTechStackElIcon(app.techStack)" />
+            </el-icon>
           </div>
         </div>
 
         <div class="app-headline">
           <span class="tech-stack-pill" :title="techStackInfo.displayName">
-            <span class="tech-stack-icon">{{ techStackInfo.icon }}</span>
+            <el-icon class="tech-stack-icon"><component :is="getTechStackElIcon(app.techStack)" /></el-icon>
             {{ techStackInfo.displayName }}
           </span>
           <h3 class="app-name" :title="app.name">{{ app.name }}</h3>
@@ -27,7 +32,7 @@
       </div>
     </div>
 
-    <p class="app-description" :title="descriptionText">{{ descriptionText }}</p>
+    <p v-if="descriptionText" class="app-description" :title="descriptionText">{{ descriptionText }}</p>
 
     <div class="meta-grid">
       <div class="meta-panel meta-panel-wide">
@@ -39,16 +44,21 @@
             class="port-chip"
             :class="`port-${port.type}`"
           >
-            <span class="port-type">{{ getPortShortLabel(port.type) }}</span>
+            <el-icon class="port-icon"><component :is="getPortIcon(port.type)" /></el-icon>
             <span class="port-number">{{ port.port }}</span>
           </span>
           <span v-if="portItems.length === 0" class="meta-value">N/A</span>
         </div>
       </div>
 
-      <div class="meta-panel">
+      <div v-if="showDeploymentMode" class="meta-panel">
         <span class="meta-label">运行模式</span>
-        <span class="meta-value">{{ deploymentModeText || '未识别' }}</span>
+        <span class="meta-value meta-value-inline">
+          <el-icon class="mode-icon" :class="deploymentModeClass">
+            <component :is="app.deploymentMode === 'production' ? Promotion : SetUp" />
+          </el-icon>
+          {{ deploymentModeText }}
+        </span>
       </div>
 
       <div class="meta-panel">
@@ -107,8 +117,18 @@ import {
   Link,
   More,
   Refresh,
-  InfoFilled
+  InfoFilled,
+  Monitor,
+  Cpu,
+  Coin,
+  Box,
+  ChromeFilled,
+  DataBoard,
+  Promotion,
+  SetUp,
+  Platform
 } from '@element-plus/icons-vue'
+import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import type { App, AppPort } from '@/types/app'
 import { getAllPorts } from '@/types/app'
 import { getTechStackInfo } from '@/utils/techStackUtils'
@@ -156,34 +176,44 @@ const getHashIndex = (str: string) => {
 const techStackInfo = computed(() => getTechStackInfo(props.app.techStack))
 const portItems = computed(() => getAllPorts(props.app))
 
-// 智能拦截判定：无论前后是否有不可见的空白字符，只要包含火箭即替换为炫彩头像
-const isGenericIcon = computed(() => {
-  const currentIcon = (props.app.icon || techStackInfo.value.icon || '').trim()
-  return !currentIcon || currentIcon.includes('🚀') || currentIcon.includes('◆')
-})
+const getTechStackElIcon = (techStack?: string) => {
+  const ts = (techStack || '').toLowerCase()
+  if (ts.includes('vue') || ts.includes('react') || ts.includes('angular') || ts.includes('vite') || ts.includes('html') || ts.includes('nuxt') || ts.includes('next')) return ChromeFilled
+  if (ts.includes('node') || ts.includes('express')) return DataBoard
+  if (ts.includes('full')) return Box
+  return Platform
+}
 
-// 智能选择展示字符或图标
-const displayIcon = computed(() => {
-  if (isGenericIcon.value) return props.app.name.charAt(0).toUpperCase()
-  return props.app.icon || techStackInfo.value.icon || '◆'
-})
+const getResolvedIcon = (iconStr?: string) => {
+  if (!iconStr) return null
+  return (ElementPlusIconsVue as any)[iconStr] || null
+}
+
+const isValidUrl = (url?: string) => {
+  if (!url) return false
+  return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/') || url.startsWith('data:image')
+}
+
+const getPortIcon = (type: string) => {
+  if (type === 'frontend') return Monitor
+  if (type === 'backend') return Cpu
+  if (type === 'database') return Coin
+  return Link
+}
 
 // 为占位头像分配特定的色板主题
 const appTheme = computed(() => {
-  if (isGenericIcon.value) {
-    const palette = COLOR_PALETTES[getHashIndex(props.app.name)]
-    return { accent: palette.start, accentEnd: palette.end }
-  }
-  return { 
-    accent: props.app.color || techStackInfo.value.color || '#2563eb',
-    accentEnd: 'rgba(37, 99, 235, 0.86)'
-  }
+  const palette = COLOR_PALETTES[getHashIndex(props.app.name)]
+  return { accent: palette.start, accentEnd: palette.end }
 })
 
-const cardStyle = computed(() => ({
-  '--app-accent': appTheme.value.accent,
-  '--app-accent-end': appTheme.value.accentEnd
-}))
+const cardStyle = computed(() => {
+  const baseAccent = props.app.color || techStackInfo.value.color || '#3b82f6'
+  return {
+    '--app-accent': props.app.isRunning ? baseAccent : '#94a3b8',
+    '--app-accent-end': appTheme.value.accentEnd
+  }
+})
 
 const statusClass = computed(() => {
   if (props.app.isRunning) return 'status-online'
@@ -223,16 +253,7 @@ const deploymentModeText = computed(() => {
 const showDeploymentMode = computed(() => deploymentModeText.value.length > 0)
 
 const descriptionText = computed(() => {
-  const description = props.app.description?.trim()
-  if (description) {
-    return description
-  }
-
-  if (props.app.isRunning) {
-    return `${techStackInfo.value.displayName} 已接入门户，可直接打开并访问。`
-  }
-
-  return `${techStackInfo.value.displayName} 已接入门户，当前处于离线或待启动状态。`
+  return props.app.description?.trim() || ''
 })
 
 const uptimeText = computed(() => {
@@ -317,32 +338,24 @@ const formatUptime = (uptime: number) => {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  min-height: 332px;
-  padding: 22px;
-  border-radius: 28px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9));
-  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(16px);
-  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.35s ease, border-color 0.35s ease, filter 0.35s ease, opacity 0.35s ease;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
   animation: cardEnter 0.45s ease both;
 }
 
-/* 在线应用（极高优先级的高亮光晕与起浮） */
+/* 在线应用 */
 .app-card:not(.app-offline) {
-  border-color: rgba(59, 130, 246, 0.25);
-  box-shadow: 
-    0 24px 54px rgba(37, 99, 235, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 1);
-  transform: translateY(-2px); /* 默认比离线卡片更拔高一层 */
+  border-top: 3px solid var(--app-accent);
 }
 
 .app-card:not(.app-offline):hover {
-  transform: translateY(-8px);
-  border-color: rgba(59, 130, 246, 0.5);
-  box-shadow: 
-    0 32px 64px rgba(37, 99, 235, 0.16),
-    0 0 0 1px rgba(59, 130, 246, 0.15); /* 悬浮时散发微光边框 */
+  transform: translateY(-4px);
+  border-color: #cbd5e1;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
 .app-card:nth-child(2n) {
@@ -353,32 +366,18 @@ const formatUptime = (uptime: number) => {
   animation-delay: 0.08s;
 }
 
-.card-accent {
-  position: absolute;
-  inset: 0 auto auto 0;
-  width: 100%;
-  height: 4px;
-  background: linear-gradient(90deg, var(--app-accent), rgba(37, 99, 235, 0.18));
-  transition: background 0.3s ease;
-}
-
-/* 离线应用（全局沉底、黑白褪色、高度半透明化） */
+/* 离线应用 */
 .app-offline {
-  background: linear-gradient(180deg, rgba(236, 242, 248, 0.3), rgba(226, 232, 240, 0.1));
-  border-color: rgba(148, 163, 184, 0.12);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
-  /* 核心魔法：应用内的所有内容（包括各色彩色徽章、蓝字、端口按钮）统统被全局物理灰度化！ */
-  filter: grayscale(0.85); 
-  opacity: 0.65; /* 彻底隐入背景色，模拟失效感 */
+  background: #f9fafb;
+  border-color: #e5e7eb;
+  opacity: 0.85;
 }
 
-/* 离线卡片的轻微呼吸反馈（悬浮时稍微回复彩色，表示它可以被管理） */
 .app-offline:hover {
   transform: translateY(-2px);
-  filter: grayscale(0.35); /* 悬浮时回复一点点颜色供用户识别 */
-  opacity: 0.95;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
-  border-color: rgba(148, 163, 184, 0.28);
+  opacity: 1;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border-color: #cbd5e1;
 }
 
 .card-header {
@@ -400,32 +399,48 @@ const formatUptime = (uptime: number) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 62px;
-  height: 62px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
 }
 
 .app-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, var(--app-accent), var(--app-accent-end));
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--app-accent);
   color: white;
   font-size: 24px;
-  box-shadow: 0 16px 24px rgba(37, 99, 235, 0.18);
   transition: transform 0.3s ease;
 }
 
+.icon-emoji {
+  font-size: 24px;
+  font-family: var(--font-number);
+  line-height: 1;
+}
+
+.app-custom-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+  transition: all 0.3s ease;
+}
+
+.app-offline .app-custom-icon {
+  filter: grayscale(100%);
+  opacity: 0.7;
+}
+
 .app-icon.is-letter {
-  font-family: var(--font-number); /* 字母使用更现代化的数字字体 */
+  font-family: var(--font-number);
   font-weight: 800;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .app-headline {
@@ -437,15 +452,21 @@ const formatUptime = (uptime: number) => {
 .tech-stack-pill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 30px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.08);
-  color: var(--primary-600);
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: #eff6ff; /* light blue */
+  color: #3b82f6; /* blue */
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
+  transition: all 0.3s ease;
+}
+
+.app-offline .tech-stack-pill {
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 .tech-stack-icon {
@@ -453,12 +474,13 @@ const formatUptime = (uptime: number) => {
 }
 
 .app-name {
-  margin-top: 12px;
+  margin-top: 8px;
   min-height: calc(1.25em * 2);
-  color: var(--text-strong);
-  font-size: 24px;
+  color: #1e293b;
+  font-size: 18px;
+  font-weight: 600;
   line-height: 1.25;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   word-break: break-word;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -479,12 +501,12 @@ const formatUptime = (uptime: number) => {
 .mode-pill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   border: 1px solid transparent;
   line-height: 1;
   white-space: nowrap;
@@ -533,11 +555,11 @@ const formatUptime = (uptime: number) => {
 }
 
 .app-description {
-  min-height: 48px;
-  margin-top: 16px;
+  min-height: 40px;
+  margin-top: 10px;
   color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -548,15 +570,15 @@ const formatUptime = (uptime: number) => {
 .meta-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 20px;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .meta-panel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 4px;
+  gap: 4px;
+  padding: 4px 0;
   border-radius: 0;
   background: transparent;
   border: none;
@@ -589,47 +611,67 @@ const formatUptime = (uptime: number) => {
 .port-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  padding: 0 10px;
-  border-radius: 999px;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
+  background: #f1f5f9;
 }
 
-.port-type {
-  color: var(--text-secondary);
+.port-icon {
+  font-size: 14px;
+  margin-right: 2px;
+  display: flex;
+}
+
+.mode-icon {
+  margin-right: 4px;
+  font-size: 14px;
+  display: flex;
+}
+
+.tech-stack-icon {
+  margin-right: 4px;
+  font-size: 14px;
+  display: flex;
+}
+
+.meta-value-inline {
+  display: inline-flex;
+  align-items: center;
 }
 
 .port-number {
   font-family: var(--font-number);
-  color: var(--text-strong);
+  color: #1e293b;
 }
 
 .port-frontend {
-  background: rgba(5, 150, 105, 0.12);
+  background: rgba(5, 150, 105, 0.08);
 }
 
 .port-backend {
-  background: rgba(37, 99, 235, 0.12);
+  background: rgba(37, 99, 235, 0.08);
 }
 
 .port-api {
-  background: rgba(217, 119, 6, 0.12);
+  background: rgba(217, 119, 6, 0.08);
 }
 
 .port-websocket {
-  background: rgba(14, 165, 233, 0.12);
+  background: rgba(14, 165, 233, 0.08);
 }
 
 .port-database {
-  background: rgba(100, 116, 139, 0.12);
+  background: rgba(100, 116, 139, 0.08);
 }
 
 .card-footer {
   margin-top: auto;
-  padding-top: 18px;
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
 }
 
 .action-buttons {
@@ -640,38 +682,39 @@ const formatUptime = (uptime: number) => {
 
 .access-button {
   flex: 1;
-  min-height: 44px;
-  border-radius: 999px;
-  font-weight: 700;
+  min-height: 36px;
+  border-radius: 6px;
+  font-weight: 600;
   transition: all 0.2s ease;
 }
 
 .access-button:not(.el-button--primary) {
-  background: rgba(148, 163, 184, 0.08); /* 赋予次级按钮一个轻微的背景深度 */
-  border-color: rgba(148, 163, 184, 0.2);
-  color: var(--text-secondary);
+  background: white;
+  border-color: #e5e7eb;
+  color: #475569;
 }
 
 .access-button:not(.el-button--primary):hover {
-  background: rgba(148, 163, 184, 0.14);
-  color: var(--text-strong);
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1e293b;
 }
 
 .more-button {
-  min-width: 44px;
-  min-height: 44px;
-  border-color: rgba(148, 163, 184, 0.18);
-  color: var(--text-secondary);
+  min-width: 36px;
+  min-height: 36px;
+  border-color: #e5e7eb;
+  color: #475569;
 }
 
 .refresh-button {
-  min-height: 44px;
+  min-height: 36px;
   padding: 0 16px;
-  border-radius: 999px;
-  border-color: rgba(148, 163, 184, 0.2);
-  background: rgba(148, 163, 184, 0.08);
-  color: var(--text-secondary);
-  font-weight: 700;
+  border-radius: 6px;
+  border-color: #e5e7eb;
+  background: white;
+  color: #475569;
+  font-weight: 600;
   white-space: nowrap;
 }
 

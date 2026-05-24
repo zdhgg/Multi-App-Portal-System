@@ -30,26 +30,28 @@ export interface PortConfigurationResult {
 /**
  * 应用配置管理API服务
  */
+const APP_CONFIGURATION_BASE_PATH = '/app-configurations'
+
 export class AppConfigurationApiService {
   /**
    * 动态配置应用端口
    */
   async configureAppPorts(appId: string, ports: DynamicPortConfiguration): Promise<ApiResponse<PortConfigurationResult>> {
-    return await apiService.post(`/app-configuration/${appId}/configure-ports`, ports)
+    return await apiService.post(`${APP_CONFIGURATION_BASE_PATH}/${appId}/configure-ports`, ports)
   }
 
   /**
    * 回滚应用配置
    */
   async rollbackConfiguration(appId: string): Promise<ApiResponse<{ appId: string, rolledBackAt: string }>> {
-    return await apiService.post(`/app-configuration/${appId}/rollback`)
+    return await apiService.post(`${APP_CONFIGURATION_BASE_PATH}/${appId}/rollback`)
   }
 
   /**
    * 获取技术栈配置选项
    */
   async getTechStackConfigOptions(techStack: string): Promise<ApiResponse<TechStackConfigOptions>> {
-    return await apiService.get(`/app-configuration/tech-stacks/${encodeURIComponent(techStack)}/config-options`)
+    return await apiService.get(`${APP_CONFIGURATION_BASE_PATH}/tech-stacks/${encodeURIComponent(techStack)}/config-options`)
   }
 
   /**
@@ -61,7 +63,7 @@ export class AppConfigurationApiService {
     ports: DynamicPortConfiguration
     testedAt: string
   }>> {
-    return await apiService.post('/app-configuration/test-port-config', {
+    return await apiService.post(`${APP_CONFIGURATION_BASE_PATH}/test-port-config`, {
       appPath,
       techStack,
       ports
@@ -72,7 +74,7 @@ export class AppConfigurationApiService {
    * 清理配置备份
    */
   async clearBackups(appId: string): Promise<ApiResponse<{ appId: string, clearedAt: string }>> {
-    return await apiService.delete(`/app-configuration/${appId}/backups`)
+    return await apiService.delete(`${APP_CONFIGURATION_BASE_PATH}/${appId}/backups`)
   }
 
   /**
@@ -84,7 +86,7 @@ export class AppConfigurationApiService {
     reasoning: string[]
     alternatives: DynamicPortConfiguration[]
   }>> {
-    return await apiService.get(`/app-configuration/${appId}/port-suggestions`)
+    return await apiService.get(`${APP_CONFIGURATION_BASE_PATH}/${appId}/port-suggestions`)
   }
 
   /**
@@ -102,7 +104,7 @@ export class AppConfigurationApiService {
       failed: number
     }
   }>> {
-    return await apiService.post('/app-configuration/batch-configure-ports', {
+    return await apiService.post(`${APP_CONFIGURATION_BASE_PATH}/batch-configure-ports`, {
       configurations
     })
   }
@@ -121,7 +123,7 @@ export class AppConfigurationApiService {
     warnings: string[]
     suggestions: DynamicPortConfiguration
   }>> {
-    return await apiService.post('/app-configuration/validate-ports', { ports })
+    return await apiService.post(`${APP_CONFIGURATION_BASE_PATH}/validate-ports`, { ports })
   }
 
   /**
@@ -134,7 +136,7 @@ export class AppConfigurationApiService {
     lastConfiguredAt?: string
     hasBackup: boolean
   }>> {
-    return await apiService.get(`/app-configuration/${appId}/current-ports`)
+    return await apiService.get(`${APP_CONFIGURATION_BASE_PATH}/${appId}/current-ports`)
   }
 
   /**
@@ -154,7 +156,7 @@ export class AppConfigurationApiService {
     }>
     warnings: string[]
   }>> {
-    return await apiService.post(`/app-configuration/${appId}/preview-port-config`, { ports })
+    return await apiService.post(`${APP_CONFIGURATION_BASE_PATH}/${appId}/preview-port-config`, { ports })
   }
 }
 

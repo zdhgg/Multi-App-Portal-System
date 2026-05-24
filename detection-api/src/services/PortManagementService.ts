@@ -164,42 +164,129 @@ export class PortManagementService extends EventEmitter {
         }
     }
 
+    /**
+     * 使用 netstat 直接检测端口是否被监听（Windows 可靠方案）
+     * 替代 createServer().listen() 在 Windows 上不可靠的问题
+     */
     private async checkPortListening(port: number): Promise<boolean> {
-        return new Promise((resolve) => {
-            const server = createServer();
-            server.once('error', (err: any) => {
-                if (err.code === 'EADDRINUSE') resolve(true);
-                else resolve(false);
+        if (process.platform !== 'win32') {
+            // 非 Windows 平台保留原有方案
+            return new Promise((resolve) => {
+                const server = createServer();
+                server.once('error', (err: any) => {
+                    if (err.code === 'EADDRINUSE') resolve(true);
+                    else resolve(false);
+                });
+                server.once('listening', () => {
+                    server.close();
+                    resolve(false);
+                });
+                server.listen(port);
             });
-            server.once('listening', () => {
-                server.close();
-                resolve(false);
-            });
-            server.listen(port);
-        });
+        }
+
+        // Windows：使用 netstat 精确检测（避免 createServer 误判）
+        try {
+            // 使用 findstr 的正则精确匹配 `:8010` 结尾（端口边界），避免误匹配 38010、80100 等
+            const { stdout } = await execAsync(
+                `netstat -ano | findstr /R /C:":${port}$" /C:":${port} "`,
+                { windowsHide: true }
+            );
+            const lines = stdout.trim().split('\n').filter(l => l.trim());
+            for (const line of lines) {
+                const trimmed = line.trim();
+                // 必须包含 LISTENING 状态（排除 TIME_WAIT、ESTABLISHED 等）
+                if (trimmed.includes('LISTENING')) {
+                    return true;
+                }
+            }
+            return false;
+        } catch {
+            // findstr 没有匹配结果说明端口未被监听
+            return false;
+        }
     }
 
+    /**
+     * 精确获取占用端口的进程信息（修复模糊匹配问题）
+     * - 端口号必须精确匹配（边界检测），避免误匹配 38010、80100
+     * - 优先返回 LISTENING 状态的进程
+     * - 同时返回进程名称
+     */
     private async getProcessInfo(port: number): Promise<{ pid: number | null; name: string | null }> {
         try {
             if (process.platform === 'win32') {
-                const { stdout } = await execAsync(`netstat -ano | findstr :${port}`, { windowsHide: true });
-                const lines = stdout.trim().split('\n');
+                // 精确匹配端口号（:8010 结尾或后跟空格），避免误匹配 38010、80100 等
+                const { stdout } = await execAsync(
+                    `netstat -ano | findstr /R /C:":${port}$" /C:":${port} "`,
+                    { windowsHide: true }
+                );
+                const lines = stdout.trim().split('\n').filter(l => l.trim());
+
+                let listeningPid: number | null = null;
+
                 for (const line of lines) {
-                    if (line.includes('LISTENING')) {
-                        const parts = line.trim().split(/\s+/);
-                        const pid = parseInt(parts[parts.length - 1]);
-                        return { pid, name: null }; // Getting name requires another call, skipping for performance
+                    const trimmed = line.trim();
+                    if (!trimmed.includes('LISTENING')) continue;
+
+                    const parts = trimmed.split(/\s+/);
+                    const pid = parseInt(parts[parts.length - 1]);
+
+                    if (!isNaN(pid) && pid > 0) {
+                        listeningPid = pid;
+                        break; // 找到 LISTENING 就停止
                     }
                 }
+
+                if (listeningPid === null) {
+                    // 没找到 LISTENING，行中可能有端口信息但不是 LISTENING 状态
+                    // 再尝试找第一行有效的 PID
+                    for (const line of lines) {
+                        const parts = line.trim().split(/\s+/);
+                        const pid = parseInt(parts[parts.length - 1]);
+                        if (!isNaN(pid) && pid > 0) {
+                            listeningPid = pid;
+                            break;
+                        }
+                    }
+                }
+
+                if (listeningPid !== null) {
+                    // 获取进程名称
+                    const processName = await this.getProcessNameByPid(listeningPid);
+                    return { pid: listeningPid, name: processName };
+                }
+
+                return { pid: null, name: null };
             } else {
-                const { stdout } = await execAsync(`lsof -i :${port} -t`, { windowsHide: true });
+                // Unix/Linux: 使用 lsof
+                const { stdout } = await execAsync(`lsof -i :${port} -t 2>/dev/null`, { windowsHide: true });
                 const pid = parseInt(stdout.trim());
-                return { pid, name: null };
+                if (!isNaN(pid)) {
+                    return { pid, name: null };
+                }
+                return { pid: null, name: null };
             }
         } catch {
-            // Ignore errors
+            return { pid: null, name: null };
         }
-        return { pid: null, name: null };
+    }
+
+    /**
+     * 通过 PID 获取进程名称（Windows tasklist）
+     */
+    private async getProcessNameByPid(pid: number): Promise<string | null> {
+        try {
+            const { stdout } = await execAsync(
+                `tasklist /FI "PID eq ${pid}" /FO CSV /NH`,
+                { windowsHide: true }
+            );
+            // 格式: "process.exe","1234",...
+            const match = stdout.trim().match(/^"([^"]+)"/);
+            return match ? match[1] : null;
+        } catch {
+            return null;
+        }
     }
 
     private getServiceName(port: number): string | undefined {
@@ -449,46 +536,175 @@ export class PortManagementService extends EventEmitter {
     // 5. Compatibility Methods (for PortConfigController & Legacy Routes)
     // ===============================================================================
 
+    /**
+     * 强制释放端口（增强版：修复子进程漏杀、检测不可靠问题）
+     * - 精确查找占用端口的进程 PID
+     * - 使用 /T 参数同时杀死进程树（避免子进程漏杀）
+     * - 重试期间使用 netstat 确认端口状态（避免 createServer 误判）
+     * - 多级降级：软杀 → 硬杀树 → PID 遍历杀
+     */
     async forceReleasePort(port: number): Promise<boolean> {
         try {
+            // 第一步：精确检测端口是否被监听
             const wasListening = await this.checkPortListening(port);
-
-            if (wasListening) {
-                const processInfo = await this.getProcessInfo(port);
-                if (processInfo.pid) {
-                    try {
-                        if (process.platform === 'win32') {
-                            await execAsync(`taskkill /F /PID ${processInfo.pid}`, { windowsHide: true });
-                        } else {
-                            await execAsync(`kill -9 ${processInfo.pid}`, { windowsHide: true });
-                        }
-                        logger.info(`Killed process ${processInfo.pid} on port ${port}`);
-                    } catch (e) {
-                        logger.warn(`Failed to kill process on port ${port}`, e);
-                    }
-                }
+            if (!wasListening) {
+                logger.info(`端口 ${port} 当前未被监听，无需释放`);
+                return true;
             }
 
-            for (let attempt = 0; attempt < 5; attempt++) {
-                if (!(await this.checkPortListening(port))) {
-                    break;
-                }
-
-                await new Promise((resolve) => setTimeout(resolve, 300));
+            // 第二步：精确获取占用端口的进程
+            const processInfo = await this.getProcessInfo(port);
+            if (!processInfo.pid) {
+                logger.warn(`无法获取端口 ${port} 的占用进程 PID，尝试 PID 遍历方案`);
+                return await this.forceReleasePortByEnumeration(port);
             }
 
-            const stillListening = await this.checkPortListening(port);
-            if (stillListening) {
-                logger.warn(`Port ${port} is still listening after force release attempt`);
-                return false;
+            logger.info(`检测到端口 ${port} 被进程 PID=${processInfo.pid} (${processInfo.name || 'unknown'}) 占用`);
+
+            // 第三步：尝试多级杀进程策略
+            const killed = await this.killProcessTree(processInfo.pid, port);
+            if (!killed) {
+                logger.warn(`无法终止端口 ${port} 的主进程，尝试 PID 遍历降级方案`);
+                return await this.forceReleasePortByEnumeration(port);
             }
 
-            await this.releasePort(port);
+            // 第四步：等待并验证端口已释放（使用 netstat 确认，不再依赖 createServer）
+            const released = await this.waitForPortRelease(port, 8, 400);
+            if (!released) {
+                // 最后尝试：遍历所有 netstat 中的 PID 再次强杀
+                logger.warn(`端口 ${port} 仍未释放，尝试 PID 遍历降级方案`);
+                return await this.forceReleasePortByEnumeration(port);
+            }
+
+            // 第五步：从内存/数据库中清理分配记录
+            try {
+                await this.releasePort(port);
+            } catch {
+                // releasePort 失败不影响最终结果（端口已释放）
+            }
+
+            logger.info(`端口 ${port} 已成功释放`);
             return true;
         } catch (error) {
-            logger.error(`Failed to force release port ${port}`, error);
+            logger.error(`强制释放端口 ${port} 失败`, { error: (error as Error).message });
             return false;
         }
+    }
+
+    /**
+     * 多级杀进程策略
+     * 1. 软杀（SIGTERM / 不带 /F）：给进程优雅退出的机会
+     * 2. 硬杀进程树（SIGKILL / 带 /F /T）：强制终止主进程及所有子进程
+     */
+    private async killProcessTree(pid: number, port: number): Promise<boolean> {
+        try {
+            if (process.platform === 'win32') {
+                // 阶段一：软杀进程树（让进程有机会优雅退出）
+                try {
+                    await execAsync(`taskkill /T /PID ${pid}`, { windowsHide: true });
+                    logger.info(`软杀进程树成功 PID=${pid} (端口 ${port})`);
+                    // 等待进程响应软杀信号
+                    await new Promise(r => setTimeout(r, 600));
+                } catch {
+                    // 软杀失败是正常的（权限、进程不响应），继续硬杀
+                    logger.debug(`软杀 PID=${pid} 失败，继续硬杀`);
+                }
+
+                // 阶段二：硬杀进程树（带 /F，强制终止进程及所有子进程）
+                try {
+                    await execAsync(`taskkill /F /T /PID ${pid}`, { windowsHide: true });
+                    logger.info(`硬杀进程树成功 PID=${pid} (端口 ${port})`);
+                    await new Promise(r => setTimeout(r, 400));
+                    return true;
+                } catch (killErr) {
+                    logger.warn(`硬杀进程树 PID=${pid} 失败`, { error: (killErr as Error).message });
+                    return false;
+                }
+            } else {
+                // Unix/Linux: SIGTERM 软杀 → SIGKILL 硬杀
+                try {
+                    process.kill(pid, 'SIGTERM');
+                    await new Promise(r => setTimeout(r, 600));
+                } catch { }
+
+                try {
+                    process.kill(pid, 'SIGKILL');
+                    return true;
+                } catch {
+                    return false;
+                }
+            }
+        } catch (error) {
+            logger.error(`杀进程树失败 PID=${pid}`, { error: (error as Error).message });
+            return false;
+        }
+    }
+
+    /**
+     * 降级方案：遍历 netstat 输出中的所有 PID，逐一杀死
+     * 用于主进程检测失败或主进程杀不死的情况
+     */
+    private async forceReleasePortByEnumeration(port: number): Promise<boolean> {
+        try {
+            // 精确匹配端口（边界检测）
+            const { stdout } = await execAsync(
+                `netstat -ano | findstr /R /C:":${port}$" /C:":${port} "`,
+                { windowsHide: true }
+            );
+            const lines = stdout.trim().split('\n').filter(l => l.trim());
+            const pids = new Set<number>();
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                const parts = trimmed.split(/\s+/);
+                const pid = parseInt(parts[parts.length - 1]);
+                if (!isNaN(pid) && pid > 0) {
+                    pids.add(pid);
+                }
+            }
+
+            if (pids.size === 0) {
+                // 没有找到 PID，端口可能已经释放
+                return true;
+            }
+
+            logger.info(`遍历杀方案：端口 ${port} 涉及 ${pids.size} 个进程 PIDs=${[...pids].join(',')}`);
+
+            let allKilled = true;
+            for (const pid of pids) {
+                const killed = await this.killProcessTree(pid, port);
+                if (!killed) allKilled = false;
+            }
+
+            if (!allKilled) {
+                logger.warn(`遍历杀方案部分失败，端口 ${port} 可能仍被占用`);
+            }
+
+            // 等待释放
+            const released = await this.waitForPortRelease(port, 6, 500);
+            return released;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * 等待端口释放（使用 netstat 确认，不再依赖 createServer）
+     */
+    private async waitForPortRelease(port: number, maxAttempts: number, intervalMs: number): Promise<boolean> {
+        for (let i = 0; i < maxAttempts; i++) {
+            // 每次检测前清除端口快照缓存，强制刷新
+            // 注意：这里直接用 checkPortListening（已修复为 netstat）
+            const stillListening = await this.checkPortListening(port);
+            if (!stillListening) {
+                logger.info(`端口 ${port} 已释放 (尝试 ${i + 1}/${maxAttempts})`);
+                return true;
+            }
+            if (i < maxAttempts - 1) {
+                await new Promise(r => setTimeout(r, intervalMs));
+            }
+        }
+        return false;
     }
 
     async getPortStatus(port: number): Promise<any> {

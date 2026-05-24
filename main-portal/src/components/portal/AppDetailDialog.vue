@@ -16,20 +16,29 @@
       </div>
     </template>
 
-    <div v-if="app" class="app-detail" :style="detailStyle">
+    <div v-if="app" class="app-detail" :class="{ 'is-offline': !app.isRunning }" :style="detailStyle">
       <section class="detail-hero">
         <div class="detail-identity">
           <div class="detail-icon-shell">
-            <div class="detail-icon">{{ appIcon }}</div>
+            <img v-if="isValidUrl(app.icon)" :src="app.icon" class="detail-custom-icon" />
+            <div v-else class="detail-icon">
+              <el-icon v-if="getResolvedIcon(app.icon)" :size="36">
+                <component :is="getResolvedIcon(app.icon)" />
+              </el-icon>
+              <span v-else-if="app.icon" class="icon-emoji">{{ app.icon }}</span>
+              <el-icon v-else :size="36">
+                <component :is="getTechStackElIcon(app.techStack)" />
+              </el-icon>
+            </div>
           </div>
 
           <div class="detail-copy">
             <span class="tech-stack-pill">
-              <span class="tech-stack-icon">{{ techStackInfo.icon }}</span>
+              <el-icon class="tech-stack-icon"><component :is="getTechStackElIcon(app.techStack)" /></el-icon>
               {{ techStackInfo.displayName }}
             </span>
             <h3 class="detail-title">{{ app.name }}</h3>
-            <p class="detail-description">{{ descriptionText }}</p>
+            <p v-if="descriptionText" class="detail-description">{{ descriptionText }}</p>
 
             <div class="detail-status-group">
               <div class="status-pill" :class="statusClass">
@@ -40,7 +49,11 @@
                 {{ deploymentModeText }}
               </div>
               <div class="meta-pill">{{ portSummaryText }}</div>
+              <div class="meta-pill" v-if="app?.isRunning">
+                运行 {{ uptimeText }}
+              </div>
             </div>
+            <div class="detail-last-updated">最后同步于 {{ lastUpdatedText }}</div>
           </div>
         </div>
 
@@ -65,28 +78,6 @@
         </div>
       </section>
 
-      <section class="metrics-grid">
-        <article class="metric-panel">
-          <span class="metric-label">访问入口</span>
-          <strong class="metric-value">{{ primaryPortDisplay }}</strong>
-          <span class="metric-help">{{ primaryAccessHelp }}</span>
-        </article>
-        <article class="metric-panel">
-          <span class="metric-label">运行模式</span>
-          <strong class="metric-value">{{ deploymentModeText || '未识别' }}</strong>
-          <span class="metric-help">{{ deploymentModeHelp }}</span>
-        </article>
-        <article class="metric-panel">
-          <span class="metric-label">运行时间</span>
-          <strong class="metric-value">{{ uptimeText }}</strong>
-          <span class="metric-help">用于快速判断服务存活时长</span>
-        </article>
-        <article class="metric-panel">
-          <span class="metric-label">最近更新</span>
-          <strong class="metric-value">{{ lastUpdatedText }}</strong>
-          <span class="metric-help">门户最近一次同步到的应用状态</span>
-        </article>
-      </section>
 
       <section class="detail-section">
         <div class="section-header">
@@ -156,34 +147,6 @@
           </div>
         </div>
       </section>
-
-      <section class="detail-section detail-section-compact">
-        <div class="section-header">
-          <div>
-            <span class="section-eyebrow">Metadata</span>
-            <h4 class="section-title">附加信息</h4>
-          </div>
-        </div>
-
-        <div class="metadata-grid">
-          <div class="metadata-item">
-            <span class="meta-label">技术栈原始值</span>
-            <span class="meta-value">{{ app.techStack }}</span>
-          </div>
-          <div class="metadata-item">
-            <span class="meta-label">状态字段</span>
-            <span class="meta-value">{{ app.status || 'unknown' }}</span>
-          </div>
-          <div class="metadata-item" v-if="app.directory">
-            <span class="meta-label">项目目录</span>
-            <span class="meta-value meta-break">{{ app.directory }}</span>
-          </div>
-          <div class="metadata-item" v-if="app.directUrl || app.lanAccessUrl">
-            <span class="meta-label">备用地址</span>
-            <span class="meta-value meta-break">{{ app.lanAccessUrl || app.directUrl }}</span>
-          </div>
-        </div>
-      </section>
     </div>
 
     <template #footer>
@@ -221,7 +184,18 @@ import {
 import type { App, AppPort } from '@/types/app'
 import { getAllPorts, getAppAccessUrl, resolveAppProtocol } from '@/types/app'
 import { generateAppAccessUrl } from '@/utils/networkUtils'
-import { getTechStackInfo } from '@/utils/techStackUtils'
+import { getTechStackInfo, getTechStackElIcon } from '@/utils/techStackUtils'
+import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+
+const getResolvedIcon = (iconStr?: string) => {
+  if (!iconStr) return null
+  return (ElementPlusIconsVue as any)[iconStr] || null
+}
+
+const isValidUrl = (url?: string) => {
+  if (!url) return false
+  return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/') || url.startsWith('data:image')
+}
 
 const props = defineProps<{
   visible: boolean
@@ -239,11 +213,13 @@ const dialogVisible = computed({
 })
 
 const techStackInfo = computed(() => getTechStackInfo(props.app?.techStack || ''))
-const appIcon = computed(() => props.app?.icon || techStackInfo.value.icon || '◆')
 const portItems = computed(() => (props.app ? getAllPorts(props.app) : []))
-const detailStyle = computed(() => ({
-  '--detail-accent': props.app?.color || techStackInfo.value.color || '#2563eb'
-}))
+const detailStyle = computed(() => {
+  const baseColor = props.app?.color || techStackInfo.value.color || '#2563eb'
+  return {
+    '--detail-accent': props.app?.isRunning ? baseColor : '#94a3b8'
+  }
+})
 
 const statusClass = computed(() => {
   if (!props.app) return 'status-offline'
@@ -283,20 +259,7 @@ const deploymentModeClass = computed(() => {
 })
 
 const descriptionText = computed(() => {
-  const description = props.app?.description?.trim()
-  if (description) {
-    return description
-  }
-
-  if (!props.app) {
-    return '暂无应用详情。'
-  }
-
-  if (props.app.isRunning) {
-    return `${techStackInfo.value.displayName} 已接入门户，可作为统一访问入口直接打开。`
-  }
-
-  return `${techStackInfo.value.displayName} 已接入门户，当前处于离线或待启动状态。`
+  return props.app?.description?.trim() || ''
 })
 
 const fullAccessUrl = computed(() => {
@@ -450,11 +413,11 @@ const getPortDescription = (type: AppPort['type']) => {
 }
 
 .app-detail-dialog :deep(.el-dialog__body) {
-  padding: 0 26px 24px;
+  padding: 0 20px 20px;
 }
 
 .app-detail-dialog :deep(.el-dialog__footer) {
-  padding: 0 26px 24px;
+  padding: 0 20px 20px;
 }
 
 .dialog-header-minimal {
@@ -493,8 +456,8 @@ const getPortDescription = (type: AppPort['type']) => {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
-  padding-bottom: 24px;
+  gap: 16px;
+  padding-bottom: 16px;
 }
 
 .detail-identity {
@@ -507,25 +470,49 @@ const getPortDescription = (type: AppPort['type']) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 84px;
-  height: 84px;
-  border-radius: 26px;
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.82);
   border: 1px solid rgba(148, 163, 184, 0.16);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.detail-custom-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  object-fit: cover;
 }
 
 .detail-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
-  border-radius: 22px;
-  background: linear-gradient(135deg, var(--detail-accent), rgba(37, 99, 235, 0.86));
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: var(--detail-accent);
   color: white;
   font-size: 32px;
-  box-shadow: 0 18px 30px rgba(37, 99, 235, 0.18);
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.15);
+  transition: all 0.3s ease;
+}
+
+.is-offline .detail-icon {
+  background: var(--detail-accent);
+  box-shadow: none;
+}
+
+.is-offline .detail-custom-icon {
+  filter: grayscale(100%);
+  opacity: 0.7;
+}
+
+.icon-emoji {
+  font-size: 32px;
+  font-family: var(--font-number);
+  line-height: 1;
 }
 
 .detail-copy {
@@ -543,6 +530,12 @@ const getPortDescription = (type: AppPort['type']) => {
   color: var(--primary-600);
   font-size: 12px;
   font-weight: 700;
+  transition: all 0.3s ease;
+}
+
+.is-offline .tech-stack-pill {
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 .tech-stack-icon {
@@ -570,6 +563,12 @@ const getPortDescription = (type: AppPort['type']) => {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 18px;
+}
+
+.detail-last-updated {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-tertiary);
 }
 
 .status-pill,
@@ -651,53 +650,15 @@ const getPortDescription = (type: AppPort['type']) => {
   border-color: rgba(148, 163, 184, 0.2);
 }
 
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.metric-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 18px;
-  border-radius: 24px;
-  background: rgba(248, 250, 252, 0.86);
-  border: 1px solid rgba(148, 163, 184, 0.12);
-}
-
-.metric-label,
-.meta-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-
-.metric-value {
-  color: var(--text-strong);
-  font-size: 20px;
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.metric-help {
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
 .detail-section {
-  padding: 22px;
-  border-radius: 28px;
+  padding: 18px;
+  border-radius: 20px;
   background: rgba(255, 255, 255, 0.84);
   border: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .detail-section-compact {
-  padding-top: 20px;
+  padding-top: 16px;
 }
 
 .section-header {
@@ -705,7 +666,7 @@ const getPortDescription = (type: AppPort['type']) => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .section-eyebrow {
@@ -731,10 +692,9 @@ const getPortDescription = (type: AppPort['type']) => {
 }
 
 .access-main,
-.access-meta,
-.metadata-item {
-  padding: 18px;
-  border-radius: 22px;
+.access-meta {
+  padding: 12px 16px;
+  border-radius: 12px;
   background: rgba(248, 250, 252, 0.88);
   border: 1px solid rgba(148, 163, 184, 0.12);
 }
@@ -796,10 +756,9 @@ const getPortDescription = (type: AppPort['type']) => {
 .port-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-height: 136px;
-  padding: 16px;
-  border-radius: 24px;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 16px;
   border: 1px solid rgba(148, 163, 184, 0.12);
   background: rgba(248, 250, 252, 0.86);
 }
@@ -827,7 +786,7 @@ const getPortDescription = (type: AppPort['type']) => {
 .port-number {
   font-family: var(--font-number);
   color: var(--text-strong);
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1;
   font-weight: 700;
 }
@@ -860,12 +819,6 @@ const getPortDescription = (type: AppPort['type']) => {
 
 .port-empty {
   justify-content: center;
-}
-
-.metadata-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
 }
 
 .dialog-footer {

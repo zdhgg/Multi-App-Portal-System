@@ -83,21 +83,7 @@
 
       <!-- 页面主体容器 -->
       <main class="page-main" :class="{ 'with-footer': hasFooterSlot }">
-        <!-- 页面标题区域 -->
-        <div v-if="showPageTitle" class="page-title-section">
-          <div class="page-title-content">
-            <div class="title-main">
-              <h1 class="page-title">{{ currentPageTitle }}</h1>
-              <div v-if="currentPageDescription" class="page-description">
-                {{ currentPageDescription }}
-              </div>
-            </div>
-            <div class="title-actions">
-              <slot name="title-actions"></slot>
-            </div>
-          </div>
-        </div>
-
+        <!-- 页面主体容器 -->
         <!-- 内容区 -->
         <div class="content-container">
           <router-view v-slot="{ Component, route }">
@@ -209,6 +195,13 @@ const breadcrumbItems = computed((): BreadcrumbItem[] => {
     if (path.includes('/config')) {
       items.push({ title: '端口配置' })
     }
+  } else if (path.startsWith('/ports')) {
+    items.push({ title: '端口管理', path: '/ports' })
+    if (path !== '/ports' && route.meta?.title) {
+      items.push({ title: route.meta.title as string })
+    }
+  } else if (path.startsWith('/pm2')) {
+    items.push({ title: 'PM2进程管理', path: '/pm2' })
   }
 
   if (route.meta?.breadcrumb) {
@@ -359,13 +352,7 @@ defineExpose({
 .page-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .page-main.with-footer { padding-bottom: 0; }
 
-/* 标题区 */
-.page-title-section { background: white; border-bottom: 1px solid #e2e8f0; padding: 20px; }
-.page-title-content { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
-.title-main { flex: 1; min-width: 0; }
-.page-title { margin: 0 0 8px 0; font-size: 28px; font-weight: 700; color: #1e293b; line-height: 1.2; }
-.page-description { font-size: 16px; color: #64748b; line-height: 1.5; }
-.title-actions { flex-shrink: 0; display: flex; align-items: flex-start; gap: 12px; }
+/* 标题区已移除，保留内容滚动容器 */
 
 /* 内容滚动容器 */
 .content-container { flex: 1; overflow: auto; position: relative; }
@@ -387,19 +374,13 @@ defineExpose({
 @media (max-width: 768px) {
   .mobile-menu-btn { display: flex; }
   .content-header { padding: 10px 12px; min-height: 56px; }
-  .page-title-section { padding: 16px 12px; }
-  .page-title-content { flex-direction: column; align-items: stretch; gap: 16px; }
-  .page-title { font-size: 24px; }
-  .page-description { font-size: 14px; }
-  .title-actions { align-self: stretch; justify-content: flex-end; }
   .page-actions { gap: 4px; }
   .breadcrumb-nav { order: 1; flex-basis: 100%; margin-top: 8px; }
   .page-footer { padding: 12px 16px; }
 }
 @media (max-width: 480px) {
   .content-header { padding: 6px 8px; flex-wrap: wrap; }
-  .page-title-section { padding: 12px 8px; }
-  .page-title { font-size: 20px; }
+  .content-header { padding: 6px 8px; flex-wrap: wrap; }
   .breadcrumb-nav { margin-top: 4px; }
 }
 
@@ -423,6 +404,5 @@ defineExpose({
 @media print {
   .content-header, .page-footer { display: none; }
   .admin-content { background: white; }
-  .page-title-section { border-bottom: none; padding: 0 0 20px 0; }
 }
 </style>

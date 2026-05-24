@@ -57,6 +57,7 @@ export class ApplicationService implements IApplicationService {
     const normalizedBuildScript = this.normalizeExecutablePath(input.buildScript ?? input.build_script)
     const normalizedTechStack = (input.techStack || '').trim().toLowerCase()
     const shouldAutoAllocateSecondary = await this.shouldAutoAllocateSecondaryPort(normalizedDirectory, normalizedTechStack)
+    const hasPrimaryInput = typeof input.primaryPort === 'number'
     const hasSecondaryInput = Array.isArray(input.secondaryPorts) && input.secondaryPorts.length > 0
     const usesSplitPortRanges = shouldAutoAllocateSecondary || hasSecondaryInput
 
@@ -92,29 +93,27 @@ export class ApplicationService implements IApplicationService {
       let primaryPort: number
       let secondaryPorts: number[] = []
 
-      if (input.primaryPort) {
-        // Use provided primary port
-        primaryPort = input.primaryPort
+      if (usesSplitPortRanges && (!hasPrimaryInput || !hasSecondaryInput)) {
+        const pairedAllocation = await this.allocateSplitPortConfiguration(
+          input.primaryPort,
+          input.secondaryPorts
+        )
+        primaryPort = pairedAllocation.primaryPort
+        secondaryPorts = pairedAllocation.secondaryPorts
+        allocatedPortsForRollback.push(...pairedAllocation.allocatedPorts)
       } else {
-        // 全栈应用主端口固定从前端范围分配，其他应用保持原有逻辑
-        const primaryScope: PortAllocationScope = usesSplitPortRanges ? 'frontend' : 'unified'
-        primaryPort = await this.networkService.allocatePort(primaryScope)
-        allocatedPortsForRollback.push(primaryPort)
-      }
+        if (hasPrimaryInput) {
+          primaryPort = input.primaryPort as number
+        } else {
+          // 全栈应用主端口固定从前端范围分配，其他应用保持原有逻辑
+          const primaryScope: PortAllocationScope = usesSplitPortRanges ? 'frontend' : 'unified'
+          primaryPort = await this.networkService.allocatePort(primaryScope)
+          allocatedPortsForRollback.push(primaryPort)
+        }
 
-      if (hasSecondaryInput) {
-        // Use provided secondary ports
-        secondaryPorts = [...(input.secondaryPorts as readonly number[])]
-      } else if (shouldAutoAllocateSecondary) {
-        const secondaryPort = await this.allocatePortExcluding(new Set([primaryPort]), 'backend')
-        secondaryPorts = [secondaryPort]
-        allocatedPortsForRollback.push(secondaryPort)
-
-        logger.info('Auto-allocated secondary port for fullstack application', {
-          name: input.name,
-          primaryPort,
-          secondaryPort
-        })
+        if (hasSecondaryInput) {
+          secondaryPorts = [...(input.secondaryPorts as readonly number[])]
+        }
       }
 
       // 检测全栈项目配置
@@ -271,12 +270,82 @@ export class ApplicationService implements IApplicationService {
       nextDirectory !== app.directory ||
       nextBuildScript !== this.normalizeExecutablePath(app.buildScript ?? app.build_script)
     
+    // Handle port updates if provided
+    let nextNetwork = app.network
+    if (input.primaryPort !== undefined || input.secondaryPorts !== undefined || input.protocol !== undefined) {
+      const newPrimaryPort = input.primaryPort ?? app.network.primaryPort
+      const newSecondaryPorts = input.secondaryPorts !== undefined
+        ? [...input.secondaryPorts]
+        : [...app.network.secondaryPorts]
+      const newProtocol = input.protocol ?? app.network.protocol
+
+      // Validate primary port
+      if (!Number.isInteger(newPrimaryPort) || newPrimaryPort < 1 || newPrimaryPort > 65535) {
+        throw new ApplicationError(
+          'primaryPort must be a valid TCP port (1-65535)',
+          'VALIDATION_ERROR',
+          { primaryPort: newPrimaryPort }
+        )
+      }
+
+      // Validate secondary ports
+      const invalidSecondaryPorts = newSecondaryPorts.filter(
+        port => !Number.isInteger(port) || port < 1 || port > 65535 || port === newPrimaryPort
+      )
+      if (invalidSecondaryPorts.length > 0) {
+        throw new ApplicationError(
+          'All secondary ports must be valid TCP ports and different from primary port',
+          'VALIDATION_ERROR',
+          { invalidPorts: invalidSecondaryPorts }
+        )
+      }
+
+      // Check for port conflicts if ports changed
+      const portsChanged =
+        newPrimaryPort !== app.network.primaryPort ||
+        JSON.stringify([...newSecondaryPorts].sort((a, b) => a - b)) !==
+          JSON.stringify([...app.network.secondaryPorts].sort((a, b) => a - b))
+
+      if (portsChanged) {
+        const allNewPorts = [newPrimaryPort, ...newSecondaryPorts]
+        const existingPorts = new Set(this.getConfiguredPorts(app))
+        const portsToCheck = allNewPorts.filter(port => !existingPorts.has(port))
+        const conflicts = portsToCheck.length > 0
+          ? await this.networkService.checkConflicts(portsToCheck)
+          : []
+
+        if (conflicts.length > 0) {
+          throw new ApplicationError(
+            `端口冲突：${conflicts.map(c => `端口 ${c.port} 已被 ${c.currentOwner || '其他进程'} 使用`).join(', ')}`,
+            'PORT_CONFLICTS',
+            { conflicts }
+          )
+        }
+
+        logger.info('Updating application ports', {
+          appId: id,
+          appName: app.name,
+          oldPrimaryPort: app.network.primaryPort,
+          newPrimaryPort,
+          oldSecondaryPorts: app.network.secondaryPorts,
+          newSecondaryPorts
+        })
+      }
+
+      nextNetwork = {
+        primaryPort: newPrimaryPort,
+        secondaryPorts: newSecondaryPorts,
+        protocol: newProtocol
+      }
+    }
+
     // Create updated application
     const updatedApp: Application = {
       ...app,
       name: input.name ?? app.name,
       directory: nextDirectory,
       techStack: nextTechStack,
+      network: nextNetwork,
       buildScript: nextBuildScript,
       build_script: nextBuildScript,
       deploymentMode: runtimeTargetChanged ? 'unknown' : (app.deploymentMode ?? 'unknown'),
@@ -432,6 +501,7 @@ export class ApplicationService implements IApplicationService {
 
   async stop(id: string): Promise<void> {
     const app = await this.findById(id)
+    const configuredPorts = this.getConfiguredPorts(app)
 
     if (app.state === 'stopped') {
       const hasActivePorts = await this.hasActiveRuntimePorts(app)
@@ -454,27 +524,70 @@ export class ApplicationService implements IApplicationService {
     // 传递应用ID而不是整个应用对象
     await this.processManager.stop(id as any)
 
-    // 释放端口 (with null checks)
-    try {
-      if (app.network?.primaryPort) {
+    const portReleaseErrors: Array<{ port: number; reason: string }> = []
+
+    if (app.network?.primaryPort) {
+      try {
         await this.networkService.releasePort(app.network.primaryPort)
         logger.info('Released primary port', { port: app.network.primaryPort, appId: id })
+      } catch (error) {
+        portReleaseErrors.push({
+          port: app.network.primaryPort,
+          reason: error instanceof Error ? error.message : String(error)
+        })
       }
+    }
 
-      if (Array.isArray(app.network?.secondaryPorts)) {
-        for (const port of app.network.secondaryPorts) {
-          if (port) {
-            await this.networkService.releasePort(port)
-            logger.info('Released secondary port', { port, appId: id })
-          }
+    if (Array.isArray(app.network?.secondaryPorts)) {
+      for (const port of app.network.secondaryPorts) {
+        if (!port) {
+          continue
+        }
+
+        try {
+          await this.networkService.releasePort(port)
+          logger.info('Released secondary port', { port, appId: id })
+        } catch (error) {
+          portReleaseErrors.push({
+            port,
+            reason: error instanceof Error ? error.message : String(error)
+          })
         }
       }
-    } catch (error) {
-      logger.error('Failed to release ports', {
+    }
+
+    const remainingConflicts = configuredPorts.length > 0
+      ? await this.networkService.checkConflicts(configuredPorts)
+      : []
+
+    if (portReleaseErrors.length > 0 || remainingConflicts.length > 0) {
+      const occupiedPorts = Array.from(new Set(remainingConflicts.map(conflict => conflict.port)))
+      const failedPorts = Array.from(new Set(portReleaseErrors.map(item => item.port)))
+      const relevantPorts = Array.from(new Set([...failedPorts, ...occupiedPorts]))
+
+      logger.error('Application stop incomplete, runtime ports are still active', {
         appId: id,
-        error: error instanceof Error ? error.message : String(error)
+        appName: app.name,
+        configuredPorts,
+        failedPorts,
+        occupiedPorts,
+        portReleaseErrors,
+        remainingConflicts
       })
-      // 不抛出错误,继续更新状态
+
+      throw new ApplicationError(
+        `应用停止失败：端口 ${relevantPorts.join(', ')} 仍被占用`,
+        'STOP_INCOMPLETE',
+        {
+          appId: id,
+          appName: app.name,
+          failedPorts,
+          occupiedPorts,
+          releaseErrors: portReleaseErrors,
+          conflicts: remainingConflicts,
+          suggestion: '请使用管理员权限运行门户后重试，或手动结束占用进程'
+        }
+      )
     }
 
     await this.repository.updateState(id, 'stopped')
@@ -1267,6 +1380,144 @@ export class ApplicationService implements IApplicationService {
     )
   }
 
+  private async allocateSplitPortConfiguration(
+    primaryPortInput: number | undefined,
+    secondaryPortsInput: readonly number[] | undefined
+  ): Promise<{
+    primaryPort: number
+    secondaryPorts: number[]
+    allocatedPorts: number[]
+  }> {
+    const secondaryPorts = Array.isArray(secondaryPortsInput) ? [...secondaryPortsInput] : []
+    const hasPrimaryInput = typeof primaryPortInput === 'number'
+    const hasSecondaryInput = secondaryPorts.length > 0
+
+    if (!hasPrimaryInput && !hasSecondaryInput) {
+      const pair = await this.allocateFullStackPortPair()
+      logger.info('Auto-allocated paired ports for fullstack application', pair)
+      return {
+        primaryPort: pair.primaryPort,
+        secondaryPorts: [pair.secondaryPort],
+        allocatedPorts: [pair.primaryPort, pair.secondaryPort]
+      }
+    }
+
+    if (hasPrimaryInput && !hasSecondaryInput) {
+      const secondaryPort = await this.allocateBackendPortMatchingPrimary(primaryPortInput as number)
+      return {
+        primaryPort: primaryPortInput as number,
+        secondaryPorts: [secondaryPort],
+        allocatedPorts: [secondaryPort]
+      }
+    }
+
+    if (!hasPrimaryInput && hasSecondaryInput) {
+      const primaryPort = await this.allocateFrontendPortMatchingBackend(secondaryPorts[0])
+      return {
+        primaryPort,
+        secondaryPorts,
+        allocatedPorts: [primaryPort]
+      }
+    }
+
+    return {
+      primaryPort: primaryPortInput as number,
+      secondaryPorts,
+      allocatedPorts: []
+    }
+  }
+
+  private async allocateFullStackPortPair(): Promise<PortPairAllocation> {
+    if (typeof this.networkService.allocatePortPair === 'function') {
+      return await this.networkService.allocatePortPair()
+    }
+
+    const primaryPort = await this.networkService.allocatePort('frontend')
+    try {
+      const secondaryPort = await this.allocateBackendPortMatchingPrimary(primaryPort)
+      return { primaryPort, secondaryPort }
+    } catch (error) {
+      try {
+        await this.networkService.releasePort(primaryPort)
+      } catch (releaseError) {
+        logger.warn('Failed to release primary port after paired allocation fallback failed', {
+          primaryPort,
+          error: releaseError instanceof Error ? releaseError.message : String(releaseError)
+        })
+      }
+      throw error
+    }
+  }
+
+  private async allocateBackendPortMatchingPrimary(primaryPort: number): Promise<number> {
+    const { frontend, backend } = this.getConfiguredPortRanges()
+    const offset = primaryPort - frontend.start
+    const secondaryPort = backend.start + offset
+
+    if (!this.isPortInRange(secondaryPort, backend)) {
+      throw new ApplicationError(
+        `无法为主端口 ${primaryPort} 匹配后端端口：对应端口 ${secondaryPort} 不在后端端口范围 ${backend.start}-${backend.end} 内`,
+        'PORT_PAIR_UNAVAILABLE',
+        { primaryPort, secondaryPort, portRanges: { frontend, backend } }
+      )
+    }
+
+    return await this.allocateSpecificPortOrThrow(secondaryPort, 'backend', {
+      primaryPort,
+      secondaryPort,
+      portRanges: { frontend, backend }
+    })
+  }
+
+  private async allocateFrontendPortMatchingBackend(secondaryPort: number): Promise<number> {
+    const { frontend, backend } = this.getConfiguredPortRanges()
+    const offset = secondaryPort - backend.start
+    const primaryPort = frontend.start + offset
+
+    if (!this.isPortInRange(primaryPort, frontend)) {
+      throw new ApplicationError(
+        `无法为后端端口 ${secondaryPort} 匹配主端口：对应端口 ${primaryPort} 不在前端端口范围 ${frontend.start}-${frontend.end} 内`,
+        'PORT_PAIR_UNAVAILABLE',
+        { primaryPort, secondaryPort, portRanges: { frontend, backend } }
+      )
+    }
+
+    return await this.allocateSpecificPortOrThrow(primaryPort, 'frontend', {
+      primaryPort,
+      secondaryPort,
+      portRanges: { frontend, backend }
+    })
+  }
+
+  private async allocateSpecificPortOrThrow(
+    port: number,
+    scope: PortAllocationScope,
+    context: Record<string, unknown>
+  ): Promise<number> {
+    if (typeof this.networkService.allocateSpecificPort !== 'function') {
+      throw new ApplicationError(
+        '当前网络服务不支持全栈端口配对分配',
+        'PORT_ALLOCATION_UNSUPPORTED',
+        context
+      )
+    }
+
+    try {
+      return await this.networkService.allocateSpecificPort(port, scope)
+    } catch (error) {
+      throw new ApplicationError(
+        `对应的${scope === 'backend' ? '后端' : '前端'}端口 ${port} 不可用，请换用同编号的一组端口`,
+        'PORT_PAIR_UNAVAILABLE',
+        {
+          ...context,
+          unavailablePort: port,
+          scope,
+          cause: error instanceof Error ? error.message : String(error)
+        }
+      )
+    }
+  }
+
   private async releaseAllocatedPortsOnFailure(ports: readonly number[]): Promise<void> {
     for (const port of ports) {
       try {
@@ -1456,8 +1707,15 @@ export class ApplicationService implements IApplicationService {
 
 type PortAllocationScope = 'frontend' | 'backend' | 'unified'
 
+interface PortPairAllocation {
+  primaryPort: number
+  secondaryPort: number
+}
+
 interface NetworkService {
   allocatePort(scope?: PortAllocationScope): Promise<number>
+  allocateSpecificPort?(port: number, scope?: PortAllocationScope): Promise<number>
+  allocatePortPair?(): Promise<PortPairAllocation>
   releasePort(port: number): Promise<void>
   checkConflicts(ports: readonly number[]): Promise<readonly PortConflict[]>
 }

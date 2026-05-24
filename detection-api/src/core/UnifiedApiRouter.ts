@@ -129,7 +129,7 @@ export class UnifiedApiRouter {
         logger.info('✅ Config exporter service initialized');
         // 初始化应用配置服务（App Configuration Routes依赖）
         try {
-          initConfigService(database);
+          initConfigService(database, this.serviceContainer.get('applicationService'));
           logger.info('✅ App configuration service initialized');
         } catch (e) {
           logger.warn('⚠️ Failed to initialize app configuration service', { error: e });

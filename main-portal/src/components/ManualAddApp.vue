@@ -188,21 +188,7 @@
       </el-form-item>
 
       <el-form-item label="应用图标">
-        <el-select
-          v-model="form.icon"
-          placeholder="选择图标"
-          style="width: 200px"
-          :teleported="false"
-        >
-          <el-option
-            v-for="icon in iconOptions"
-            :key="icon.value"
-            :label="icon.label"
-            :value="icon.value"
-          >
-            <span>{{ icon.value }} {{ icon.label }}</span>
-          </el-option>
-        </el-select>
+        <IconSelect v-model="form.icon" :color="form.color" />
       </el-form-item>
 
       <el-form-item label="主题颜色">
@@ -324,6 +310,7 @@ import {
 } from '@/services/appsApi'
 import { usePortConfigStore } from '@/stores/portConfig'
 import { getTechStackOptions } from '@/utils/techStackUtils'
+import IconSelect from '@/components/common/IconSelect.vue'
 
 interface Props {
   modelValue: boolean
@@ -435,8 +422,8 @@ const form = reactive({
   executablePath: '',
   primaryPort: undefined as number | undefined,
   secondaryPort: undefined as number | undefined,
-  icon: '🚀',
-  color: '#007bff'
+  icon: 'Platform',
+  color: '#3498db'
 })
 
 const isExternalExeApp = computed(() => form.techStack === 'external-exe')
@@ -563,19 +550,6 @@ const rules: FormRules = {
     { validator: validateExecutablePath, trigger: 'blur' }
   ]
 }
-
-const iconOptions: Array<{ value: string; label: string }> = [
-  { value: '🚀', label: '火箭' },
-  { value: '⚡', label: '闪电' },
-  { value: '🎯', label: '目标' },
-  { value: '💻', label: '电脑' },
-  { value: '🌐', label: '网络' },
-  { value: '📱', label: '手机' },
-  { value: '🔧', label: '工具' },
-  { value: '⚙️', label: '齿轮' },
-  { value: '🎨', label: '调色板' },
-  { value: '📊', label: '图表' }
-]
 
 const techStackOptions = computed(() => {
   const excluded = new Set(['typescript', 'javascript', 'vite', 'webpack'])

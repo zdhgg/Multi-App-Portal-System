@@ -54,6 +54,8 @@ router.use('/pm2', pm2Router)
 
 // App configuration endpoints - operator只读，admin可写
 router.use('/app-configurations', requireAuth, operatorReadOnly, appConfigurationRouter)
+// Backward-compatible alias for older portal builds and legacy docs.
+router.use('/app-configuration', requireAuth, operatorReadOnly, appConfigurationRouter)
 
 // Build analysis and history endpoints - 已在UnifiedApiRouter中处理（此处为legacy入口）
 router.use('/build', requireAuth, operatorReadOnly, buildRouter)

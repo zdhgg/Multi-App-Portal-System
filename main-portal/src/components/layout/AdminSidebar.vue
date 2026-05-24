@@ -3,7 +3,9 @@
     <!-- 侧栏头部 -->
     <div class="sidebar-header">
       <div class="logo-area">
-        <div class="logo-icon">🌐</div>
+        <div class="logo-icon">
+          <el-icon><Platform /></el-icon>
+        </div>
         <transition name="fade">
           <div v-if="!isCollapsed" class="logo-text">
             <div class="app-name">智能门户</div>
@@ -27,7 +29,9 @@
       <div class="nav-section">
         <!-- 门户首页 -->
         <router-link to="/portal" class="nav-item portal-link" active-class="">
-          <div class="nav-icon">🏠</div>
+          <div class="nav-icon">
+            <el-icon><House /></el-icon>
+          </div>
           <transition name="fade">
             <span v-if="!isCollapsed" class="nav-text">门户首页</span>
           </transition>
@@ -47,7 +51,9 @@
             class="nav-item"
             :class="{ 'active': isActiveRoute(item.path) }"
           >
-            <div class="nav-icon">{{ item.icon }}</div>
+            <div class="nav-icon">
+              <el-icon><component :is="item.icon" /></el-icon>
+            </div>
             <transition name="fade">
               <span v-if="!isCollapsed" class="nav-text">{{ item.title }}</span>
             </transition>
@@ -64,7 +70,9 @@
             class="nav-item"
             :class="{ 'active': isActiveRoute(item.path) }"
           >
-            <div class="nav-icon">{{ item.icon }}</div>
+            <div class="nav-icon">
+              <el-icon><component :is="item.icon" /></el-icon>
+            </div>
             <transition name="fade">
               <span v-if="!isCollapsed" class="nav-text">{{ item.title }}</span>
             </transition>
@@ -81,7 +89,9 @@
             class="nav-item"
             :class="{ 'active': isActiveRoute(item.path) }"
           >
-            <div class="nav-icon">{{ item.icon }}</div>
+            <div class="nav-icon">
+              <el-icon><component :is="item.icon" /></el-icon>
+            </div>
             <transition name="fade">
               <span v-if="!isCollapsed" class="nav-text">{{ item.title }}</span>
             </transition>
@@ -90,7 +100,9 @@
 
         <!-- 游客显示 -->
         <div v-else class="nav-item disabled">
-          <div class="nav-icon">🔒</div>
+          <div class="nav-icon">
+            <el-icon><Lock /></el-icon>
+          </div>
           <transition name="fade">
             <span v-if="!isCollapsed" class="nav-text">需要登录</span>
           </transition>
@@ -157,7 +169,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { Expand, Fold, Avatar, User, SwitchButton, InfoFilled } from '@element-plus/icons-vue'
+import { Expand, Fold, Avatar, User, SwitchButton, InfoFilled, House, Grid, Connection, Monitor, Setting, Platform, Lock } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import UserProfile from '@/components/UserProfile.vue'
 import AboutDialog from '@/components/AboutDialog.vue'
@@ -197,17 +209,17 @@ const aboutDialogVisible = ref(false)
 
 // Phase 1 RBAC: 管理员菜单（全部功能）
 const adminMenuItems: MenuItem[] = [
-  { path: '/management', title: '应用管理', icon: '🧩', description: '管理已检测应用' },
-  { path: '/ports',      title: '端口管理', icon: '⚙️', description: '端口分配、规则与配置' },
-  { path: '/pm2',        title: 'PM2 管理', icon: '🧭', description: 'PM2 进程管理与可视化' },
-  { path: '/admin',      title: '系统设置', icon: '🛠️', description: '系统配置与管理' }
+  { path: '/management', title: '应用管理', icon: 'Grid', description: '管理已检测应用' },
+  { path: '/ports',      title: '端口管理', icon: 'Connection', description: '端口分配、规则与配置' },
+  { path: '/pm2',        title: 'PM2 管理', icon: 'Monitor', description: 'PM2 进程管理与可视化' },
+  { path: '/admin',      title: '系统设置', icon: 'Setting', description: '系统配置与管理' }
 ]
 
 // Phase 1 RBAC: 操作员菜单（不含系统设置）
 const operatorMenuItems: MenuItem[] = [
-  { path: '/management', title: '应用管理', icon: '🧩', description: '管理已检测应用（只读+操作）' },
-  { path: '/ports',      title: '端口管理', icon: '⚙️', description: '端口状态查看（只读）' },
-  { path: '/pm2',        title: 'PM2 管理', icon: '🧭', description: 'PM2 进程查看（只读）' }
+  { path: '/management', title: '应用管理', icon: 'Grid', description: '管理已检测应用（只读+操作）' },
+  { path: '/ports',      title: '端口管理', icon: 'Connection', description: '端口状态查看（只读）' },
+  { path: '/pm2',        title: 'PM2 管理', icon: 'Monitor', description: 'PM2 进程查看（只读）' }
 ]
 
 // 普通用户菜单（当前为空）
@@ -308,7 +320,7 @@ onMounted(() => {
 }
 
 .logo-area { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
-.logo-icon { font-size: 20px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg,#667eea,#764ba2); border-radius: 8px; color: white; font-weight: bold; flex-shrink: 0; }
+.logo-icon { font-size: 20px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: #409eff; border-radius: 8px; color: white; font-weight: bold; flex-shrink: 0; }
 .logo-text { min-width: 0; }
 .app-name { font-size: 16px; font-weight: 600; color: #1e293b; line-height: 1.2; }
 .app-version { font-size: 12px; color: #64748b; }
@@ -335,21 +347,21 @@ onMounted(() => {
 .nav-section:last-child { margin-top: auto; margin-bottom: 0; }
 .section-title { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .5px; padding: 0 20px 8px; margin-bottom: 8px; }
 
-.nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 20px; margin: 0 12px; border-radius: 8px; transition: all 0.2s ease; cursor: pointer; text-decoration: none; color: #475569; position: relative; min-height: 44px; }
-.nav-item:hover { background: rgba(99,102,241,0.08); color: #4f46e5; transform: translateX(2px); }
-.nav-item.active { background: linear-gradient(135deg,#667eea,#764ba2); color: white; box-shadow: 0 4px 12px rgba(102,126,234,0.4); }
-.nav-item.portal-link { background: #f8fafc; border: 1px solid #e2e8f0; color: #6366f1; }
-.nav-item.portal-link:hover { background: #f1f5f9; border-color: #c7d2fe; }
+.nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 20px; margin: 0 12px; border-radius: 8px; transition: all 0.2s ease; cursor: pointer; text-decoration: none; color: #606266; position: relative; min-height: 44px; }
+.nav-item:hover { background: #f5f7fa; color: #409eff; transform: translateX(2px); }
+.nav-item.active { background: #ecf5ff; color: #409eff; font-weight: 600; box-shadow: none; }
+.nav-item.portal-link { background: #fafbfc; border: 1px solid #ebeef5; color: #409eff; }
+.nav-item.portal-link:hover { background: #f5f7fa; border-color: #d9ecff; }
 .nav-item.disabled { opacity: .5; cursor: not-allowed; }
 .nav-item.disabled:hover { background: transparent; transform: none; }
-.nav-icon { font-size: 18px; width: 20px; text-align: center; flex-shrink: 0; }
+.nav-icon { font-size: 18px; width: 20px; text-align: center; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .nav-text { font-size: 14px; font-weight: 500; line-height: 1.2; white-space: nowrap; }
 .nav-badge { background: #ef4444; color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: auto; }
 
 /* 用户信息 */
 .user-section { border-top: 1px solid #e2e8f0; padding-top: 20px; margin-bottom: 0; }
 .user-info { display: flex; align-items: center; gap: 12px; padding: 12px 20px; margin: 0 12px 12px; background: #fff; border-radius: 8px; border: 1px solid #e2e8f0; }
-.user-avatar { width: 36px; height: 36px; background: linear-gradient(135deg,#667eea,#764ba2); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+.user-avatar { width: 36px; height: 36px; background: #409eff; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
 .user-details { flex: 1; min-width: 0; }
 .username { font-size: 14px; font-weight: 600; color: #1e293b; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .user-role { font-size: 12px; padding: 2px 8px; border-radius: 12px; display: inline-block; margin-top: 2px; }

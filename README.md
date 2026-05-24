@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.3.9-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.3.9-success.svg)
+![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.4.0-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.3.9`
-- **GitHub Release**: [v1.3.9: 应用运行时间显示修复补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.9)
+- **当前版本**: `1.4.0`
+- **GitHub Release**: [v1.4.0: 全栈端口治理与门户图标体验更新](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.4.0)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -51,6 +51,7 @@
 ### 🖧 高级智能端口治理
 - **高速全局探测**: $O(1)$ 内存级快照查询，彻底告别数百个端口扫描导致的界面卡顿与 CPU 浪涌
 - **L4/L7 混合探活**: 原生 `ECONNREFUSED` 毫秒级防假死探测机制
+- **全栈端口配对**: 前端/后端端口可按配置范围自动分配同偏移端口组，并支持在应用配置中显式调整
 - **无损生命周期管理**: 端口释放实施 "SIGTERM (软关闭) → 智能监测倒计时 → SIGKILL (强杀兜底)" 的优雅降级管线，保护数据库与文件锁安全
 - **高危防火墙 UX**: 面向核心系统级架构的物理按键隔离锁定，以及聚合折叠式拓扑渲染，极大降低操作白噪
 
@@ -244,6 +245,20 @@ VITE_WS_BASE=
 ## 📝 更新日志
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
+
+### v1.4.0 (2026-05-24) — 全栈端口治理与门户图标体验更新
+- 🔌 **全栈端口配对**
+  - 全栈应用现在会按前端/后端端口范围自动分配同偏移端口组，减少前后端端口错位和手动调整成本
+  - 应用配置页恢复主端口、次要端口和协议编辑，并会同步写回应用网络配置
+- 🧹 **端口释放可靠性**
+  - Windows 端口释放改为精确匹配监听端口并终止进程树，避免相邻端口误匹配和子进程残留
+  - 停止应用后会最终校验端口是否真实释放；仍被占用时返回明确错误，便于管理员处理
+- 🎨 **图标与界面整理**
+  - 新增统一图标选择组件，支持 Element Plus 图标、自定义文本/Emoji 和图片链接
+  - 门户首页、应用卡片、详情弹窗、管理页、系统设置和侧栏调整为更克制的产品界面样式
+- 🔁 **兼容与版本同步**
+  - 应用配置 API 统一迁移到 `/app-configurations`，并保留 `/app-configuration` 兼容旧前端
+  - 同步根项目、前后端包、系统配置、锁文件、前端内置更新记录和主要发布文档版本到 `1.4.0`
 
 ### v1.3.9 (2026-04-27) — 应用运行时间显示修复补丁
 - ⏱ **运行时间展示修复**
@@ -450,4 +465,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.3.9 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.4.0 - 让应用管理更简单、更智能！*

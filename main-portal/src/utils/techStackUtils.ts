@@ -1,11 +1,20 @@
 import { configApiService, type TechStackConfig, type TechStackConfigResponse } from '@/services/configApi'
 import techStackConfig from '@/config/techStackConfig.json'
+import { Platform, Box, ChromeFilled, DataBoard } from '@element-plus/icons-vue'
 
 export interface TechStackInfo {
   icon: string
   displayName: string
   color: string
   tagType: 'primary' | 'success' | 'info' | 'warning' | 'danger'
+}
+
+export function getTechStackElIcon(techStack?: string) {
+  const ts = (techStack || '').toLowerCase()
+  if (ts.includes('vue') || ts.includes('react') || ts.includes('angular') || ts.includes('vite') || ts.includes('html') || ts.includes('nuxt') || ts.includes('next')) return ChromeFilled
+  if (ts.includes('node') || ts.includes('express')) return DataBoard
+  if (ts.includes('full')) return Box
+  return Platform
 }
 
 export interface TechStackOption {

@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.4.0',
+    date: '2026-05-24',
+    title: '全栈端口治理与门户图标体验更新',
+    items: [
+      { type: 'feature', description: '全栈应用支持按前端/后端端口范围自动分配同偏移端口组，减少端口错位和手动调整成本' },
+      { type: 'feature', description: '应用配置页恢复主端口、次要端口和协议编辑，并会同步写回应用网络配置' },
+      { type: 'improvement', description: 'Windows 端口释放改为精确匹配监听端口并终止进程树，降低相邻端口误匹配和子进程残留风险' },
+      { type: 'feature', description: '新增统一图标选择组件，支持 Element Plus 图标、自定义文本/Emoji 和图片链接' },
+      { type: 'improvement', description: '同步根项目、前后端包、系统配置、锁文件和主要发布文档版本到 1.4.0' }
+    ]
+  },
+  {
     version: '1.3.9',
     date: '2026-04-27',
     title: '应用运行时间显示修复补丁',

@@ -251,7 +251,12 @@ const forceReleasePort = async (row: { port: number; appId?: string; appName?: s
       }
     }
   } catch (error) {
-    ElMessage.error(appId && appId !== 'system' ? `停止应用失败，端口 ${port} 未释放` : `释放端口 ${port} 失败`)
+    const detail = error instanceof Error ? error.message : ''
+    if (appId && appId !== 'system') {
+      ElMessage.error(detail ? `停止应用失败: ${detail}` : `停止应用失败，端口 ${port} 未释放`)
+    } else {
+      ElMessage.error(detail ? `释放端口 ${port} 失败: ${detail}` : `释放端口 ${port} 失败`)
+    }
   } finally {
     loading.ports[port] = false
   }

@@ -5,7 +5,6 @@
 
 import { Router, Request, Response } from 'express';
 import { AppConfigurationService } from '../services/appConfigurationService';
-import { ServiceContainer } from '../core/ServiceContainer.js';
 import { logger } from '../utils/logger';
 import type { AppConfiguration } from '../models/AppConfiguration';
 
@@ -13,10 +12,12 @@ const router = Router();
 
 // 配置服务实例缓存
 let configService: AppConfigurationService | null = null;
+let applicationService: { findById(id: string): Promise<any> } | null = null;
 
 // 初始化配置服务
-export function initConfigService(database: any): void {
+export function initConfigService(database: any, appService?: { findById(id: string): Promise<any> }): void {
   configService = new AppConfigurationService(database);
+  applicationService = appService || null;
 }
 
 // 获取配置服务实例
@@ -25,6 +26,21 @@ function getConfigService(): AppConfigurationService {
     throw new Error('Configuration service not initialized. Call initConfigService first.');
   }
   return configService;
+}
+
+async function getApplicationForPortConfig(appId: string): Promise<any | null> {
+  if (!applicationService) {
+    throw new Error('Application service not initialized. Cannot resolve app for port configuration.');
+  }
+
+  try {
+    return await applicationService.findById(appId);
+  } catch (error: any) {
+    if (error?.code === 'APPLICATION_NOT_FOUND' || error?.message === 'Application not found') {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -338,7 +354,8 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
 /**
  * 动态配置应用端口
- * POST /api/app-configuration/:appId/configure-ports
+ * POST /api/app-configurations/:appId/configure-ports
+ * POST /api/app-configuration/:appId/configure-ports (legacy alias)
  */
 router.post('/:appId/configure-ports', async (req, res) => {
   try {
@@ -355,11 +372,8 @@ router.post('/:appId/configure-ports', async (req, res) => {
       })
     }
 
-    // 获取应用信息
-    const configSvc = getConfigService()
-    // Note: Application info retrieved from configService
-    const app = { id: appId } // Simplified - application validation should be done through configService
-
+    // 获取完整应用信息，端口配置服务需要 directory、techStack、fullStack 等字段
+    const app = await getApplicationForPortConfig(appId)
     if (!app) {
       return res.status(404).json({
         success: false,
@@ -402,7 +416,8 @@ router.post('/:appId/configure-ports', async (req, res) => {
 
 /**
  * 回滚应用配置
- * POST /api/app-configuration/:appId/rollback
+ * POST /api/app-configurations/:appId/rollback
+ * POST /api/app-configuration/:appId/rollback (legacy alias)
  */
 router.post('/:appId/rollback', async (req, res) => {
   try {

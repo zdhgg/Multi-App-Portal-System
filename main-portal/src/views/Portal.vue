@@ -4,51 +4,28 @@
       <header class="portal-header">
         <section class="hero-panel">
           <div class="hero-copy">
-            <span class="hero-eyebrow">Application Control Center</span>
-            <h1 class="portal-title">智能应用门户</h1>
-            <p class="portal-subtitle">集中访问、筛选并管理接入门户的核心应用服务。</p>
-
-            <div class="hero-meta">
-              <div class="system-status" :class="systemStatusClass">
-                <span class="status-indicator"></span>
-                <span class="status-text">{{ systemStatusText }}</span>
+            <div class="hero-title-row">
+              <h1 class="portal-title">智能应用门户</h1>
+              <div class="hero-meta">
+                <div class="system-status" :class="systemStatusClass">
+                  <span class="status-indicator"></span>
+                  <span class="status-text">{{ systemStatusText }}</span>
+                </div>
+                <span class="meta-chip" :class="{ connected: wsConnected }">
+                  {{ connectionStatusText }}
+                </span>
+                <span class="meta-chip meta-chip-muted">
+                  更新于 {{ formatTime(lastUpdateTime) }}
+                </span>
               </div>
-              <span class="meta-chip" :class="{ connected: wsConnected }">
-                {{ connectionStatusText }}
-              </span>
-              <span class="meta-chip meta-chip-muted">
-                更新于 {{ formatTime(lastUpdateTime) }}
-              </span>
             </div>
+            <p class="portal-subtitle">集中访问、筛选并管理接入门户的核心应用服务。</p>
           </div>
 
           <div class="hero-side">
             <div class="user-panel">
               <span class="panel-label">当前账户</span>
               <UserProfile />
-            </div>
-
-            <div class="hero-stats">
-              <article class="metric-card">
-                <span class="metric-label">总应用数</span>
-                <strong class="metric-value">{{ stats.total }}</strong>
-                <span class="metric-help">首页展示规模</span>
-              </article>
-              <article class="metric-card metric-card-success">
-                <span class="metric-label">在线应用</span>
-                <strong class="metric-value">{{ stats.running }}</strong>
-                <span class="metric-help">{{ stats.running }} 个可访问</span>
-              </article>
-              <article class="metric-card">
-                <span class="metric-label">离线应用</span>
-                <strong class="metric-value">{{ stats.offline }}</strong>
-                <span class="metric-help">待启动 / 待排查</span>
-              </article>
-              <article class="metric-card metric-card-highlight">
-                <span class="metric-label">当前视图</span>
-                <strong class="metric-value">{{ filteredApps.length }}</strong>
-                <span class="metric-help">{{ activeFilterLabel }}</span>
-              </article>
             </div>
           </div>
         </section>
@@ -704,36 +681,14 @@ onUnmounted(() => {
   position: relative;
   overflow: hidden;
   padding: 22px 24px 18px;
-  background:
-    radial-gradient(circle at top left, rgba(37, 99, 235, 0.16), transparent 30%),
-    radial-gradient(circle at top right, rgba(14, 165, 233, 0.14), transparent 24%),
-    linear-gradient(180deg, #eef4ff 0%, #f7f9fc 48%, #eef2f8 100%);
+  background: #f8fafc;
 }
 
 .portal-container::before,
 .portal-container::after {
-  content: '';
-  position: absolute;
-  border-radius: 999px;
-  filter: blur(24px);
-  pointer-events: none;
+  display: none;
 }
 
-.portal-container::before {
-  width: 320px;
-  height: 320px;
-  top: -80px;
-  right: -40px;
-  background: rgba(59, 130, 246, 0.18);
-}
-
-.portal-container::after {
-  width: 260px;
-  height: 260px;
-  bottom: 120px;
-  left: -60px;
-  background: rgba(14, 165, 233, 0.16);
-}
 
 .portal-shell {
   max-width: 1380px;
@@ -751,99 +706,83 @@ onUnmounted(() => {
 
 .hero-panel {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 24px 26px;
-  min-height: 250px;
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--surface-border);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 252, 0.76));
-  box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(20px);
-  overflow: hidden;
+  padding: 16px 20px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   position: relative;
   animation: fadeUp 0.55s ease both;
 }
 
 .hero-panel::after {
-  content: '';
-  position: absolute;
-  inset: auto -80px -120px auto;
-  width: 280px;
-  height: 280px;
-  background: radial-gradient(circle, rgba(37, 99, 235, 0.12), transparent 70%);
+  display: none;
 }
 
 .hero-copy {
-  flex: 1 1 360px;
-  max-width: 600px;
+  flex: 1 1 auto;
+  max-width: 800px;
   min-width: 0;
-  order: 1; /* 排列在左侧 */
 }
 
-.hero-eyebrow {
-  display: inline-flex;
+.hero-title-row {
+  display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.08);
-  color: var(--primary-600);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .portal-title {
-  margin-top: 14px;
-  font-size: clamp(30px, 4.2vw, 44px);
-  line-height: 1.08;
-  letter-spacing: -0.04em;
-  color: var(--text-strong);
-}
-
-.portal-subtitle {
-  max-width: 620px;
-  margin-top: 12px;
-  font-size: 16px;
-  color: var(--text-secondary);
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: #1e293b;
 }
 
 .hero-meta {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 20px;
+  gap: 8px;
+}
+
+.portal-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #64748b;
 }
 
 .system-status,
 .meta-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 999px;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
   border: 1px solid transparent;
 }
 
 .system-status.status-success {
-  background: var(--success-50);
-  color: var(--success-500);
+  background: #f0fdf4;
+  color: #16a34a;
 }
 
 .system-status.status-warning {
-  background: var(--warning-50);
-  color: var(--warning-500);
+  background: #fefce8;
+  color: #ca8a04;
 }
 
 .system-status.status-error {
-  background: var(--danger-50);
-  color: var(--danger-500);
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .status-indicator {
@@ -872,7 +811,6 @@ onUnmounted(() => {
 }
 
 .hero-side {
-  /* 魔法属性：打破父级包裹，使内部元素直接参与父级 flex 布局 */
   display: contents; 
 }
 
@@ -888,9 +826,8 @@ onUnmounted(() => {
   background: transparent;
   border: none;
   box-shadow: none;
-  order: 3; /* 排列在最右 */
+  order: 2; /* 排列在右侧 */
   flex: 0 0 auto;
-  align-self: flex-start;
 }
 
 
@@ -898,104 +835,6 @@ onUnmounted(() => {
   display: none;
 }
 
-.hero-stats {
-  order: 2; /* 排列在中间 */
-  flex: 0 1 480px; /* 控制大盘的合理最大宽度 */
-  margin: auto; /* 在 flex 布局中，margin: auto 能够吸收左右剩余空间，实现完美居中！ */
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  padding: 0;
-  box-sizing: border-box; 
-  overflow: visible; /* 恢复可见性 */
-  border-radius: 0;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  animation: fadeUp 0.62s ease both;
-  width: 100%;
-}
-
-.metric-card {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-areas:
-    'value label'
-    'value help';
-  column-gap: 16px;
-  row-gap: 4px;
-  align-items: center;
-  padding: 20px 24px;
-  box-sizing: border-box;
-  border-radius: 26px; /* 恢复独立圆角 */
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.04);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  position: relative;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.metric-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 40px rgba(31, 38, 135, 0.08);
-}
-
-/* 移除老分割线 */
-.metric-card::before,
-.metric-card::after {
-  display: none !important;
-}
-
-/* 赋予4个卡片各自独特的“环境光晕透明”与底部色彩描边 */
-.metric-card:nth-child(1) {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.65) 30%, rgba(148, 163, 184, 0.22));
-  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
-}
-
-.metric-card-success {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.65) 30%, rgba(16, 185, 129, 0.16)) !important;
-  border-bottom: 1px solid rgba(16, 185, 129, 0.35) !important;
-}
-
-.metric-card:nth-child(3) {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.65) 30%, rgba(245, 158, 11, 0.16));
-  border-bottom: 1px solid rgba(245, 158, 11, 0.35);
-}
-
-.metric-card-highlight {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.65) 30%, rgba(59, 130, 246, 0.16)) !important;
-  border-bottom: 1px solid rgba(59, 130, 246, 0.35) !important;
-}
-
-
-.metric-label {
-  grid-area: label;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-
-.metric-value {
-  grid-area: value;
-  font-family: var(--font-number);
-  font-size: clamp(22px, 2.2vw, 30px);
-  line-height: 1;
-  letter-spacing: -0.04em;
-  color: var(--text-strong);
-}
-
-.metric-help {
-  grid-area: help;
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.4;
-}
 
 .portal-main {
   display: flex;
@@ -1055,8 +894,8 @@ onUnmounted(() => {
 .toolbar-filter,
 .empty-action-primary,
 .empty-action-secondary {
-  min-height: 34px;
-  border-radius: 999px;
+  min-height: 32px;
+  border-radius: 6px;
   font-weight: 600;
 }
 
@@ -1077,8 +916,8 @@ onUnmounted(() => {
 
 .toolbar-filter {
   min-height: 32px;
-  padding: 0 18px;
-  border-radius: 11px;
+  padding: 0 16px;
+  border-radius: 6px;
   border: none !important;
   background: transparent !important;
   color: var(--text-secondary) !important;
@@ -1091,11 +930,11 @@ onUnmounted(() => {
 .toolbar-filter.is-active {
   background: #fff !important;
   color: var(--primary-600) !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .toolbar-filter:hover:not(.is-active) {
-  background: rgba(255, 255, 255, 0.25) !important;
+  background: rgba(255, 255, 255, 0.6) !important;
   color: var(--text-primary) !important;
 }
 
@@ -1109,12 +948,13 @@ onUnmounted(() => {
 
 .toolbar-action-more {
   border-color: rgba(148, 163, 184, 0.18) !important;
-  background: rgba(255, 255, 255, 0.6) !important;
+  background: white !important;
   color: var(--text-secondary) !important;
+  border-radius: 6px !important;
 }
 
 .toolbar-action-more:hover {
-  background: #fff !important;
+  background: #f8fafc !important;
   color: var(--primary-600) !important;
 }
 
@@ -1128,9 +968,9 @@ onUnmounted(() => {
 .summary-pill {
   display: inline-flex;
   align-items: center;
-  min-height: 30px;
+  min-height: 28px;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: rgba(37, 99, 235, 0.1);
   color: var(--primary-600);
   font-size: 12px;
