@@ -281,7 +281,7 @@ const systemStatusText = computed(() => {
 })
 
 const filteredApps = computed(() => {
-  let result = apps.value
+  let result = [...apps.value]
 
   if (activeFilter.value === 'running') {
     result = result.filter(app => app.isRunning)
@@ -296,6 +296,10 @@ const filteredApps = computed(() => {
       app.description?.toLowerCase().includes(query) ||
       app.techStack.toLowerCase().includes(query)
     )
+  }
+
+  if (activeFilter.value === 'all') {
+    result.sort((a, b) => Number(b.isRunning) - Number(a.isRunning))
   }
 
   return result
