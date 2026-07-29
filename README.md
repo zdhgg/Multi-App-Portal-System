@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.4.0-success.svg)
+![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.4.1-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.4.0`
-- **GitHub Release**: [v1.4.0: 全栈端口治理与门户图标体验更新](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.4.0)
+- **当前版本**: `1.4.1`
+- **GitHub Release**: [v1.4.1: 仓库治理与生产安全加固补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.4.1)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -246,6 +246,20 @@ VITE_WS_BASE=
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.4.1 (2026-07-29) — 仓库治理与生产安全加固补丁
+- 🧹 **仓库与 Diff 治理**
+  - 顶层 `node_modules` 已退出 Git 跟踪，依赖由 package manifest 与 lockfile 统一管理
+  - 新增 `.gitattributes` 固定跨平台换行规则，避免 LF/CRLF 造成整文件差异
+- 🔐 **依赖与生产安全**
+  - 更新兼容范围内的关键依赖与安全覆盖版本，并为生产环境启用可配置 CSP
+  - 生产密钥改为写入忽略跟踪的 `detection-api/.env`，仓库配置只保留非敏感示例
+- 🧪 **验证稳定性**
+  - 后端测试排除 `dist`，运行态同步测试不再受本机 3006/8006 监听影响
+  - 前后端类型检查、183 项测试和 Vite 8 生产构建均已通过
+- 🚀 **运维体验**
+  - 生产冷启动就绪超时调整为 60 秒，减少数据库检查和项目发现期间的误报
+  - 应用总览优先展示正在运行的应用，便于快速定位当前服务
+
 ### v1.4.0 (2026-05-24) — 全栈端口治理与门户图标体验更新
 - 🔌 **全栈端口配对**
   - 全栈应用现在会按前端/后端端口范围自动分配同偏移端口组，减少前后端端口错位和手动调整成本
@@ -465,4 +479,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.4.0 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.4.1 - 让应用管理更简单、更智能！*

@@ -2,6 +2,29 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.4.1] - 2026-07-29
+
+### Added
+
+- 新增 `.gitattributes`，统一源码、配置文件与 Windows 脚本的换行规则，减少跨平台整文件 Diff。
+- 为生产环境新增可配置 CSP 策略，并补充 `CSP_CONNECT_SRC`、`CSP_FRAME_SRC` 示例与安全运维说明。
+
+### Changed
+
+- 将历史误提交的顶层 `node_modules` 从 Git 索引移除，依赖继续由 package manifest 与 lockfile 管理。
+- 更新前后端依赖与安全覆盖版本，修复兼容范围内的 Axios、js-yaml、form-data、Multer、Morgan 与 PostCSS 公告项。
+- 生产配置改为非敏感示例，真实 JWT、PM2 确认令牌与本机配置统一写入忽略跟踪的 `detection-api/.env`。
+- 前端生产构建默认关闭 source map，并调整 Vite 8 vendor chunk 划分逻辑。
+- 生产启动就绪超时由 20 秒调整为 60 秒，降低数据库检查和项目发现期间的冷启动误报。
+- 应用总览默认优先展示正在运行的应用，提升日常运维扫描效率。
+- 将根项目、前端、后端、系统配置、锁文件、前端内置更新记录和发布文档版本统一提升到 `1.4.1`。
+
+### Fixed
+
+- 修复 PM2 状态同步测试依赖本机固定端口，可能被正在运行的 Training-system 干扰的问题。
+- 修复 Vitest 4 重复收集 `dist` 编译测试的问题，后端测试现在只执行源码测试集。
+- 修复 Windows 配置脚本仍引用不存在的 `config` 目录，并改用跨平台 Node.js 复制命令。
+
 ## [1.4.0] - 2026-05-24
 
 ### Added
@@ -292,6 +315,7 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.4.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.4.1
 [1.4.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.4.0
 [1.3.9]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.9
 [1.3.8]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.3.8

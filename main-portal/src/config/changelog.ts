@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.4.1',
+    date: '2026-07-29',
+    title: '仓库治理与生产安全加固补丁',
+    items: [
+      { type: 'improvement', description: '顶层 node_modules 退出 Git 跟踪，并新增 .gitattributes 固定跨平台换行规则' },
+      { type: 'improvement', description: '更新兼容范围内的关键依赖与安全覆盖版本，生产环境新增可配置 CSP' },
+      { type: 'fix', description: '后端测试排除 dist，运行态同步测试不再受本机 3006/8006 监听影响' },
+      { type: 'improvement', description: '生产配置只保留非敏感示例，真实密钥统一写入忽略跟踪的 detection-api/.env' },
+      { type: 'improvement', description: '生产冷启动就绪超时调整为 60 秒，应用总览优先展示正在运行的应用' }
+    ]
+  },
+  {
     version: '1.4.0',
     date: '2026-05-24',
     title: '全栈端口治理与门户图标体验更新',
