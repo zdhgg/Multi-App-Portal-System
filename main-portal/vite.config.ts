@@ -8,6 +8,33 @@ const packageJson = JSON.parse(
 ) as { version?: string }
 const appVersion = typeof packageJson.version === 'string' ? packageJson.version : '1.3.3'
 
+const vendorChunks = [
+  {
+    name: 'vue-vendor',
+    packages: ['vue', 'vue-router', 'pinia']
+  },
+  {
+    name: 'element-plus',
+    packages: ['element-plus', '@element-plus/icons-vue']
+  },
+  {
+    name: 'echarts',
+    packages: ['echarts', 'vue-echarts']
+  }
+]
+
+const manualChunks = (id: string): string | undefined => {
+  const normalizedId = id.replace(/\\/g, '/')
+
+  for (const chunk of vendorChunks) {
+    if (chunk.packages.some((packageName) => normalizedId.includes(`/node_modules/${packageName}/`))) {
+      return chunk.name
+    }
+  }
+
+  return undefined
+}
+
 export default defineConfig({
   plugins: [vue()],
   test: {
@@ -75,19 +102,12 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: process.env.BUILD_SOURCEMAP === 'true',
     // 增加 chunk 大小警告限制（适应大型 UI 库）
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Vue 核心库
-          'vue-vendor': ['vue', 'vue-router', 'pinia'],
-          // Element Plus UI 组件库（体积较大，独立加载）
-          'element-plus': ['element-plus', '@element-plus/icons-vue'],
-          // ECharts 图表库（独立拆分，按需加载）
-          'echarts': ['echarts', 'vue-echarts']
-        }
+        manualChunks
       }
     }
   },

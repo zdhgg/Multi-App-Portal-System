@@ -30,8 +30,8 @@ describe('FilesystemController', () => {
     const req = createRequest()
     const res = createResponse()
 
-    vi.spyOn(controller as never, 'getDefaultBrowsePath' as never).mockReturnValue('D:\\My Programs')
-    vi.spyOn(controller as never, 'evaluatePathState' as never).mockResolvedValue({
+    vi.spyOn(controller as any, 'getDefaultBrowsePath').mockReturnValue('D:\\My Programs')
+    vi.spyOn(controller as any, 'evaluatePathState').mockResolvedValue({
       normalizedPath: 'D:\\My Programs',
       exists: true,
       isDirectory: true,
@@ -57,8 +57,8 @@ describe('FilesystemController', () => {
     const req = createRequest()
     const res = createResponse()
 
-    vi.spyOn(controller as never, 'getDefaultBrowsePath' as never).mockReturnValue('D:\\Restricted')
-    vi.spyOn(controller as never, 'evaluatePathState' as never).mockResolvedValue({
+    vi.spyOn(controller as any, 'getDefaultBrowsePath').mockReturnValue('D:\\Restricted')
+    vi.spyOn(controller as any, 'evaluatePathState').mockResolvedValue({
       normalizedPath: 'D:\\Restricted',
       exists: true,
       isDirectory: true,

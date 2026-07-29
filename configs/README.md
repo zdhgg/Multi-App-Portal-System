@@ -19,11 +19,11 @@
 - 启用所有调试功能
 
 ### production.env
-生产环境变量配置：
+生产环境变量示例：
 - 安全性增强
 - 性能优化设置
 - 禁用调试功能
-- **重要**：必须修改JWT_SECRET
+- **重要**：复制到 `detection-api/.env` 后必须填写 `JWT_SECRET` 和 `PM2_CONFIRMATION_TOKEN`
 
 ## 使用方法
 
@@ -35,17 +35,20 @@ cp configs/development.env detection-api/.env
 
 ### 生产环境
 ```bash
-# 复制生产环境配置并修改敏感信息
+# 复制生产环境配置示例并修改敏感信息
 cp configs/production.env detection-api/.env
-# 编辑 detection-api/.env 修改JWT_SECRET等敏感配置
+# 编辑 detection-api/.env，填写 JWT_SECRET、PM2_CONFIRMATION_TOKEN 等敏感配置
 ```
 
 ## 重要提醒
 
-1. **JWT_SECRET**: 生产环境必须使用强密钥
-2. **CORS_ORIGIN**: 生产环境必须设置正确的域名
-3. **LOG_LEVEL**: 生产环境建议使用warn或error
-4. **端口配置**: 所有配置已统一使用8002端口
+1. **不要把真实密钥写入仓库内的示例配置文件**
+2. **JWT_SECRET**: 生产环境必须使用强密钥
+3. **PM2_CONFIRMATION_TOKEN**: 高风险操作确认令牌必须使用随机值
+4. **CORS_ORIGIN**: 生产环境必须设置正确的域名
+5. **CSP_ENABLED**: 生产环境默认启用；如需外部 API/WebSocket 或 iframe，在 `CSP_CONNECT_SRC` / `CSP_FRAME_SRC` 中显式列出
+6. **LOG_LEVEL**: 生产环境建议使用warn或error
+7. **端口配置**: 所有配置已统一使用8002端口
 
 ## V2版本特性
 

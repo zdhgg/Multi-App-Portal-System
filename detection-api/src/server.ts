@@ -279,6 +279,18 @@ export class Server {
     const helmetEnabled = process.env.HELMET_ENABLED !== 'false'
     const rateLimitEnabled = process.env.RATE_LIMIT_ENABLED !== 'false'
     const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || '5mb'
+    const cspEnabled = process.env.CSP_ENABLED
+      ? process.env.CSP_ENABLED !== 'false'
+      : isProduction
+    const parseCspSources = (value?: string): string[] => {
+      if (!value) {
+        return []
+      }
+      return value
+        .split(/[,\s]+/)
+        .map(source => source.trim())
+        .filter(Boolean)
+    }
 
     if (trustProxy === 'true' || trustProxy === '1') {
       this.app.set('trust proxy', 1)
@@ -295,7 +307,23 @@ export class Server {
 
     if (helmetEnabled) {
       this.app.use(helmet({
-        contentSecurityPolicy: false,
+        contentSecurityPolicy: cspEnabled ? {
+          useDefaults: true,
+          directives: {
+            defaultSrc: ["'self'"],
+            baseUri: ["'self'"],
+            objectSrc: ["'none'"],
+            frameAncestors: ["'none'"],
+            formAction: ["'self'"],
+            scriptSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", 'data:', 'blob:'],
+            fontSrc: ["'self'", 'data:'],
+            connectSrc: ["'self'", 'ws:', 'wss:', ...parseCspSources(process.env.CSP_CONNECT_SRC)],
+            frameSrc: ["'self'", ...parseCspSources(process.env.CSP_FRAME_SRC)],
+            mediaSrc: ["'self'", 'blob:']
+          }
+        } : false,
         crossOriginEmbedderPolicy: false,
         hsts: isProduction ? {
           maxAge: 31536000,
@@ -378,6 +406,7 @@ export class Server {
       mode: corsMode, 
       isProduction,
       helmetEnabled,
+      cspEnabled,
       rateLimitEnabled,
       requestBodyLimit,
       corsOrigin: process.env.CORS_ORIGIN || '(not configured)'

@@ -65,7 +65,7 @@ $pm2ConfirmToken = New-HexSecret -ByteCount $Pm2ConfirmBytes
 $totpSecret = New-Base32Secret -ByteCount $TotpBytes
 
 Write-Output ""
-Write-Output "# ===== Backend (detection-api/.env or configs/production.env) ====="
+Write-Output "# ===== Backend (detection-api/.env) ====="
 Write-Output "JWT_SECRET=$jwtSecret"
 Write-Output "PM2_CONFIRMATION_TOKEN=$pm2ConfirmToken"
 Write-Output "ADMIN_MFA_TOTP_SECRET=$totpSecret"

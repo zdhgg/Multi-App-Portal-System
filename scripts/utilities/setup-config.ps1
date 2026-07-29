@@ -15,13 +15,13 @@ $configTarget = "detection-api\.env"
 
 switch ($Environment) {
     "development" {
-        $configSource = "config\development.env"
+        $configSource = "configs\development.env"
         Write-Host "📝 设置开发环境配置..." -ForegroundColor Green
     }
     "production" {
-        $configSource = "config\production.env"
+        $configSource = "configs\production.env"
         Write-Host "📝 设置生产环境配置..." -ForegroundColor Yellow
-        Write-Host "⚠️  注意：生产环境需要手动修改JWT_SECRET等敏感配置" -ForegroundColor Red
+        Write-Host "⚠️  注意：生产环境需要在 detection-api\.env 中手动填写JWT_SECRET、PM2_CONFIRMATION_TOKEN等敏感配置" -ForegroundColor Red
     }
 }
 
@@ -40,8 +40,9 @@ if (Test-Path $configSource) {
         Write-Host ""
         Write-Host "🔐 生产环境安全提醒:" -ForegroundColor Yellow
         Write-Host "  1. 修改 JWT_SECRET 为强密钥" -ForegroundColor Red
-        Write-Host "  2. 设置正确的 CORS_ORIGIN 域名" -ForegroundColor Red
-        Write-Host "  3. 检查所有敏感配置项" -ForegroundColor Red
+        Write-Host "  2. 修改 PM2_CONFIRMATION_TOKEN 为随机令牌" -ForegroundColor Red
+        Write-Host "  3. 设置正确的 CORS_ORIGIN 域名" -ForegroundColor Red
+        Write-Host "  4. 检查所有敏感配置项" -ForegroundColor Red
     }
     
 } else {

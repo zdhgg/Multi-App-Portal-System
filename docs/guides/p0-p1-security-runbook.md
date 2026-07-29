@@ -10,7 +10,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\management\generate-security-
 
 将输出值填入：
 
-- `configs/production.env`
+- `detection-api/.env`
 - `main-portal/.env.production`
 
 关键要求：
@@ -19,10 +19,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\management\generate-security-
 
 ## 2) 建议的生产安全开关
 
-后端（`configs/production.env`）：
+后端（`detection-api/.env`，可由 `configs/production.env` 示例复制生成）：
 
 - `AUTH_ENFORCEMENT=on`
 - `HELMET_ENABLED=true`
+- `CSP_ENABLED=true`
+- `CSP_CONNECT_SRC=<额外 API/WebSocket 源，留空表示仅同源和 ws/wss>`
+- `CSP_FRAME_SRC=<允许嵌入的额外 iframe 源，留空表示仅同源>`
 - `RATE_LIMIT_ENABLED=true`
 - `WS_AUTH_REQUIRED=true`
 - `WS_ALLOW_QUERY_TOKEN=false`
@@ -55,5 +58,5 @@ npm --prefix main-portal run build
 快速校验（应无输出）：
 
 ```powershell
-rg -n "^PM2_CONFIRMATION_TOKEN=CONFIRM$|^VITE_PM2_CONFIRM_TOKEN=CONFIRM$" configs/production.env main-portal/.env.production
+rg -n "^PM2_CONFIRMATION_TOKEN=CONFIRM$|^VITE_PM2_CONFIRM_TOKEN=CONFIRM$" detection-api/.env main-portal/.env.production
 ```

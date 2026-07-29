@@ -2,10 +2,14 @@
   "dependencies": {
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
-    "axios": "^1.11.0",
+    "axios": "^1.18.1",
     "node-fetch": "^2.7.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
+  },
+  "overrides": {
+    "form-data": "^4.0.6",
+    "js-yaml": "^4.3.0"
   },
   "version": "1.4.0"
 }

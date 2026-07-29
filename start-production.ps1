@@ -5,7 +5,9 @@ param(
     [switch]$RestartIfRunning = $false,
     [switch]$NonInteractive = $false,
     [int]$StartupWarmupSeconds = 2,
-    [int]$ReadyTimeoutSeconds = 20,
+    # Cold starts perform database checks and project discovery before binding 8002.
+    # Keep this above the observed production cold-start time to avoid false failures.
+    [int]$ReadyTimeoutSeconds = 60,
     [int]$RequiredHealthyResponses = 2
 )
 
@@ -776,6 +778,7 @@ Write-Host "[完成] 服务启动成功" -ForegroundColor Green
 # 等待服务完全启动
 Write-Host "`n等待服务完全启动..." -ForegroundColor Yellow
 Write-Host "   条件: PM2 在线、端口归属正确、/health 连续 $RequiredHealthyResponses 次通过" -ForegroundColor DarkGray
+Write-Host "   配置: 预热 $StartupWarmupSeconds 秒，就绪超时 $ReadyTimeoutSeconds 秒" -ForegroundColor DarkGray
 
 # 显示状态
 Write-Host ("`n" + ('=' * 60)) -ForegroundColor Cyan
