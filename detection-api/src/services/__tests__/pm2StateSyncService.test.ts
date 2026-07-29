@@ -412,6 +412,8 @@ describe('PM2StateSyncService manual runtime detection', () => {
       networkService as any
     )
 
+    vi.spyOn(service as any, 'isPortListening').mockResolvedValue(false)
+
     const result = await service.syncNow()
     const stored = repository.get('training-system')
 
