@@ -9,6 +9,7 @@ import { ConfigManager } from '../../services/configManager'
 import { AppPortBindingService } from '../../services/AppPortBindingService'
 import { PortManagementService } from '../../services/PortManagementService'
 import { ApplicationService } from '../../core/ApplicationService'
+import { PortInventorySafetyError, PortInventoryService } from '../../services/PortInventoryService'
 import { logger } from '../../utils/logger'
 import { exec } from 'child_process'
 import { promisify } from 'util'
@@ -33,6 +34,7 @@ export class PortConfigController {
   private appPortBindingService?: AppPortBindingService
   private portManager?: PortManagementService
   private applicationService?: ApplicationService
+  private portInventoryService?: PortInventoryService
 
   // 🚀 端口扫描缓存（避免频繁扫描）
   private statisticsCache: PortScanCache | null = null
@@ -43,12 +45,14 @@ export class PortConfigController {
     configManager: ConfigManager,
     appPortBindingService?: AppPortBindingService,
     portManager?: PortManagementService,
-    applicationService?: ApplicationService  // 🔧 新增参数
+    applicationService?: ApplicationService,
+    portInventoryService?: PortInventoryService
   ) {
     this.configManager = configManager
     this.appPortBindingService = appPortBindingService
     this.portManager = portManager
-    this.applicationService = applicationService  // 🔧 保存引用
+    this.applicationService = applicationService
+    this.portInventoryService = portInventoryService
     this.setupRoutes()
   }
 
@@ -90,6 +94,9 @@ export class PortConfigController {
     // 统计概览 (前端期望: /statistics/overview)
     this.router.get('/statistics/overview', this.getStatisticsOverview.bind(this))
 
+    // 统一端口清单：统计、列表和冲突共享同一份系统快照
+    this.router.get('/inventory', this.getPortInventory.bind(this))
+
     // 应用端口绑定 (前端期望: /app-bindings)
     this.router.get('/app-bindings', this.getAppBindings.bind(this))
 
@@ -102,7 +109,8 @@ export class PortConfigController {
     // 端口测试 (前端期望: /test-pid/:port)
     this.router.get('/test-pid/:port', this.testPortPid.bind(this))
 
-    // 清理僵尸端口 (前端期望: /cleanup/zombies)
+    // 清理失效分配：先预览，再由管理员确认执行
+    this.router.get('/cleanup/zombies', this.previewZombiePorts.bind(this))
     this.router.post('/cleanup/zombies', this.cleanupZombiePorts.bind(this))
 
     // 端口配置 (前端期望: /config/ports)
@@ -434,12 +442,47 @@ export class PortConfigController {
   // Phase 5: 前端兼容性方法实现
   // ===============================================================================
 
+  async getPortInventory(req: Request, res: Response): Promise<void> {
+    if (!this.portInventoryService) {
+      return res.apiError('端口清单服务未初始化', 503)
+    }
+
+    try {
+      const inventory = await this.portInventoryService.getInventory(req.query.refresh === 'true')
+      res.apiSuccess(inventory, '端口清单获取成功')
+    } catch (error) {
+      logger.error('获取统一端口清单失败', { error })
+      res.apiError(error instanceof Error ? error.message : '获取端口清单失败', 500)
+    }
+  }
+
   /**
    * 获取统计概览 - 前端兼容格式
    * 统一使用端口扫描检测实际监听端口，与下方表格数据保持一致
    * 🚀 支持缓存：避免频繁扫描端口
    */
   async getStatisticsOverview(req: Request, res: Response): Promise<void> {
+    if (this.portInventoryService) {
+      try {
+        const inventory = await this.portInventoryService.getInventory(req.query.refresh === 'true')
+        return res.apiSuccess({
+          total: inventory.summary.total,
+          allocated: inventory.summary.occupied,
+          totalAllocated: inventory.summary.occupied,
+          available: inventory.summary.available,
+          conflicts: inventory.summary.conflicts,
+          lastUpdated: inventory.capturedAt,
+          cached: inventory.cached,
+          cacheAge: inventory.cacheAgeMs,
+          snapshotId: inventory.snapshotId,
+          quality: inventory.quality
+        }, '端口统计概览获取成功')
+      } catch (error) {
+        logger.error('从统一清单获取端口统计失败', { error })
+        return res.apiError('获取端口统计概览失败', 500)
+      }
+    }
+
     try {
       // 🚀 检查缓存（支持 ?refresh=true 强制刷新）
       const forceRefresh = req.query.refresh === 'true'
@@ -663,6 +706,28 @@ export class PortConfigController {
    * 检测端口冲突
    */
   async detectConflicts(req: Request, res: Response): Promise<void> {
+    if (this.portInventoryService) {
+      try {
+        const inventory = await this.portInventoryService.getInventory(req.query.refresh === 'true')
+        const conflicts = inventory.ports
+          .filter(port => port.conflict)
+          .map(port => ({
+            port: port.port,
+            type: port.ownership,
+            severity: port.protected ? 'critical' : 'high',
+            description: port.conflictReason,
+            affectedApps: port.expectedApps.map(app => ({ id: app.id, name: app.name })),
+            process: port.observed,
+            snapshotId: inventory.snapshotId,
+            detectedAt: port.checkedAt
+          }))
+        return res.apiSuccess(conflicts, '端口冲突检测完成')
+      } catch (error) {
+        logger.error('从统一清单检测端口冲突失败', { error })
+        return res.apiError('端口冲突检测失败', 500)
+      }
+    }
+
     try {
       // 模拟冲突检测结果
       const conflicts = [] // 暂时返回空冲突列表
@@ -679,6 +744,54 @@ export class PortConfigController {
    * 🚀 支持缓存：避免频繁扫描端口
    */
   async getBackgroundScanStatus(req: Request, res: Response): Promise<void> {
+    if (this.portInventoryService) {
+      try {
+        const inventory = await this.portInventoryService.getInventory(req.query.refresh === 'true')
+        const activePorts = inventory.ports.map(port => ({
+          port: port.port,
+          status: port.state,
+          process: {
+            pid: port.observed.pid || 0,
+            name: port.observed.processName || '未知进程'
+          },
+          service: port.expectedApps[0]?.role || port.reserved?.category || 'other',
+          appId: port.expectedApps[0]?.id,
+          appName: port.expectedApps[0]?.name || port.reserved?.description,
+          portType: port.expectedApps[0]?.role || port.reserved?.category || 'other',
+          ownership: port.ownership,
+          address: port.address,
+          protocol: port.protocol,
+          timestamp: port.checkedAt
+        }))
+
+        return res.apiSuccess({
+          enabled: inventory.monitoring.enabled,
+          isRunning: false,
+          lastScanTime: inventory.capturedAt,
+          nextScanTime: null,
+          scanInterval: inventory.monitoring.pollIntervalMs,
+          realtimeData: {
+            isRunning: false,
+            activePorts,
+            lastScanTime: inventory.capturedAt,
+            cacheSize: activePorts.length
+          },
+          activePorts,
+          portRanges: {
+            frontend: inventory.scope.frontend,
+            backend: inventory.scope.backend
+          },
+          cached: inventory.cached,
+          cacheAge: inventory.cacheAgeMs,
+          quality: inventory.quality,
+          snapshotId: inventory.snapshotId
+        }, '后台扫描状态获取成功')
+      } catch (error) {
+        logger.error('从统一清单获取后台扫描状态失败', { error })
+        return res.apiError('获取后台扫描状态失败', 500)
+      }
+    }
+
     try {
       // 🚀 检查缓存（支持 ?refresh=true 强制刷新）
       const forceRefresh = req.query.refresh === 'true'
@@ -1270,10 +1383,16 @@ export class PortConfigController {
   async forceReleasePort(req: Request, res: Response): Promise<void> {
     try {
       const port = parseInt(req.params.port)
+      const expectedPid = Number.parseInt(String(req.body?.expectedPid || ''), 10)
+      const snapshotId = String(req.body?.snapshotId || '').trim()
 
       // 验证端口号
       if (isNaN(port) || port < 1 || port > 65535) {
         return res.apiError('无效的端口号', 400)
+      }
+
+      if (!Number.isInteger(expectedPid) || expectedPid < 1 || !snapshotId) {
+        return res.apiError('强制释放需要有效的 snapshotId 和 expectedPid', 400)
       }
 
       // 检查是否有端口管理器实例
@@ -1282,9 +1401,15 @@ export class PortConfigController {
         return res.apiError('端口管理器未初始化', 500)
       }
 
+      if (!this.portInventoryService) {
+        return res.apiError('端口清单服务未初始化，无法安全校验释放操作', 503)
+      }
+
+      await this.portInventoryService.validateForceRelease(port, expectedPid)
+
       // 调用端口管理器的强制释放方法，并校验端口是否真正释放
       const released = typeof this.portManager.forceReleasePort === 'function'
-        ? await this.portManager.forceReleasePort(port)
+        ? await this.portManager.forceReleasePort(port, expectedPid)
         : (await this.portManager.releasePort(port), true)
 
       if (!released) {
@@ -1293,10 +1418,30 @@ export class PortConfigController {
       }
 
       logger.info(`端口 ${port} 已强制释放`)
+      this.portInventoryService.invalidate('forceRelease')
       res.apiSuccess(null, `端口 ${port} 已强制释放`)
     } catch (error) {
       logger.error('强制释放端口失败', { error, port: req.params.port })
-      res.apiError(error instanceof Error ? error.message : '强制释放端口失败', 500)
+      const status = error instanceof PortInventorySafetyError ? error.statusCode : 500
+      res.apiError(error instanceof Error ? error.message : '强制释放端口失败', status)
+    }
+  }
+
+  private async previewZombiePorts(req: Request, res: Response): Promise<void> {
+    try {
+      if (!this.portManager) {
+        return res.apiError('端口管理器未初始化', 503)
+      }
+
+      const items = await this.portManager.detectZombiePorts()
+      res.apiSuccess({
+        count: items.length,
+        ports: items.map(item => item.port),
+        items
+      }, items.length > 0 ? `发现 ${items.length} 条失效分配` : '没有发现失效分配')
+    } catch (error) {
+      logger.error('预览失效端口分配失败', { error })
+      res.apiError(error instanceof Error ? error.message : '预览失效分配失败', 500)
     }
   }
 
@@ -1309,16 +1454,12 @@ export class PortConfigController {
 
       // 检查是否有端口管理器
       if (!this.portManager) {
-        logger.warn('端口管理器未初始化，使用降级方案')
-        return res.apiSuccess({
-          cleanedCount: 0,
-          cleanedPorts: [],
-          message: '端口管理器未初始化'
-        }, '无需清理')
+        return res.apiError('端口管理器未初始化', 503)
       }
 
       // 调用服务清理僵尸端口
       const result = await this.portManager.cleanupZombiePorts()
+      this.portInventoryService?.invalidate('cleanupZombiePorts')
 
       logger.info(`僵尸端口清理完成: 清理了 ${result.cleanedCount} 个端口`, {
         cleanedPorts: result.cleanedPorts,

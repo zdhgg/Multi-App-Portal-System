@@ -905,7 +905,9 @@ export class SimpleProcessManager implements ProcessManager {
     originalContent: string
   }> // 全栈项目进程组
   private readonly maxLogLines = 1000 // 增加日志容量
-  private readonly healthStartupGraceMs = 15000 // 启动后的宽限期，避免健康检查误杀冷启动进程
+  private readonly fullStackReadinessTimeoutMs = 90000
+  private readonly fullStackReadinessPollMs = 500
+  private readonly healthStartupGraceMs = 120000 // 覆盖全栈端口就绪等待，避免健康检查误杀冷启动进程
   private readonly healthFailureThreshold = 2 // 连续失败阈值，避免瞬时端口抖动或检测误差误杀进程
   private readonly healthFailureCounts = new Map<string, number>()
   private applicationRepository?: ApplicationRepository // 用于状态同步
@@ -1690,6 +1692,27 @@ export class SimpleProcessManager implements ProcessManager {
         this.fullStackGroups.set(app.id, group)
       }
 
+      if (errors.length === 0 && (frontendProcess || backendProcess)) {
+        try {
+          await this.waitForFullStackProcessesReady(app.id, fullStackConfig)
+        } catch (error) {
+          const errorMsg = `端口就绪检查失败: ${error instanceof Error ? error.message : String(error)}`
+          logger.error(errorMsg, { appId: app.id })
+          errors.push(errorMsg)
+        }
+      }
+
+      if (errors.length > 0 && this.fullStackGroups.has(app.id)) {
+        try {
+          await this.stopFullStack(app.id)
+        } catch (cleanupError) {
+          logger.error('Failed to clean up partial fullstack startup', {
+            appId: app.id,
+            error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+          })
+        }
+      }
+
       const success = errors.length === 0 && !!(frontendProcess || backendProcess)
 
       logger.info('Fullstack startup completed', {
@@ -1719,6 +1742,61 @@ export class SimpleProcessManager implements ProcessManager {
         errors
       }
     }
+  }
+
+  private async waitForFullStackProcessesReady(
+    appId: string,
+    config: import('./types').FullStackConfiguration
+  ): Promise<void> {
+    const processes = [
+      config.backendConfig
+        ? { processId: `${appId}-backend`, config: config.backendConfig }
+        : null,
+      config.frontendConfig
+        ? { processId: `${appId}-frontend`, config: config.frontendConfig }
+        : null
+    ].filter((entry): entry is {
+      processId: string
+      config: import('./types').ProcessConfiguration
+    } => entry !== null)
+
+    await Promise.all(processes.map(async ({ processId, config: processConfig }) => {
+      const processInfo = this.processes.get(processId)
+      if (!processInfo) {
+        throw new Error(`${processId} 未被进程管理器跟踪`)
+      }
+
+      await this.waitForProcessPortReady(processId, processInfo)
+      logger.info('Fullstack child process is ready', {
+        appId,
+        processId,
+        port: processConfig.port
+      })
+    }))
+  }
+
+  private async waitForProcessPortReady(
+    processId: string,
+    processInfo: ProcessInfo,
+    timeoutMs: number = this.fullStackReadinessTimeoutMs,
+    pollIntervalMs: number = this.fullStackReadinessPollMs
+  ): Promise<void> {
+    const startedAt = Date.now()
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const childProcess = processInfo.process
+      if (!childProcess || childProcess.killed || childProcess.exitCode !== null) {
+        throw new Error(`${processId} 在端口 ${processInfo.port} 就绪前退出`)
+      }
+
+      if (!processInfo.port || await this.isPortListening(processInfo.port)) {
+        return
+      }
+
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+    }
+
+    throw new Error(`${processId} 未能在 ${Math.round(timeoutMs / 1000)} 秒内监听端口 ${processInfo.port}`)
   }
 
   /**

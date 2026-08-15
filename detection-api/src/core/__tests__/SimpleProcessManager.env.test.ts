@@ -124,7 +124,7 @@ describe('SimpleProcessManager environment handling', () => {
 
     const isHealthy = await (manager as any).checkProcessHealth('app-1', {
       process: createMockChildProcess(),
-      startedAt: new Date(Date.now() - 60_000),
+      startedAt: new Date(Date.now() - 180_000),
       command: 'npm',
       args: ['run', 'dev'],
       cwd: process.cwd(),
@@ -137,6 +137,67 @@ describe('SimpleProcessManager environment handling', () => {
     expect(isHealthy).toBe(true)
     expect(isPortListeningSpy).toHaveBeenCalledWith(8123)
     expect(checkProcessRunningSpy).not.toHaveBeenCalled()
+  })
+
+  it('keeps a cold-starting process healthy during the extended startup grace period', async () => {
+    const manager = new SimpleProcessManager()
+    const isPortListeningSpy = vi.spyOn(manager as any, 'isPortListening').mockResolvedValue(false)
+
+    const isHealthy = await (manager as any).checkProcessHealth('app-1', {
+      process: createMockChildProcess(),
+      startedAt: new Date(Date.now() - 60_000),
+      command: 'npm',
+      args: ['run', 'dev'],
+      cwd: process.cwd(),
+      port: 8010,
+      logs: [],
+      processType: 'backend',
+      appName: 'app-1-backend'
+    })
+
+    expect(isHealthy).toBe(true)
+    expect(isPortListeningSpy).not.toHaveBeenCalled()
+  })
+
+  it('waits until a fullstack child process port is listening', async () => {
+    const manager = new SimpleProcessManager()
+    const processInfo = {
+      process: createMockChildProcess(),
+      startedAt: new Date(),
+      command: 'npm',
+      args: ['run', 'dev:watch'],
+      cwd: process.cwd(),
+      port: 8010,
+      logs: [],
+      processType: 'backend',
+      appName: 'app-1-backend'
+    }
+    const isPortListeningSpy = vi.spyOn(manager as any, 'isPortListening')
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true)
+
+    await (manager as any).waitForProcessPortReady('app-1-backend', processInfo, 1000, 0)
+
+    expect(isPortListeningSpy).toHaveBeenCalledTimes(2)
+    expect(isPortListeningSpy).toHaveBeenCalledWith(8010)
+  })
+
+  it('fails readiness immediately when a fullstack child exits before listening', async () => {
+    const manager = new SimpleProcessManager()
+    const childProcess = createMockChildProcess()
+    ;(childProcess as any).exitCode = 1
+
+    await expect((manager as any).waitForProcessPortReady('app-1-backend', {
+      process: childProcess,
+      startedAt: new Date(),
+      command: 'npm',
+      args: ['run', 'dev:watch'],
+      cwd: process.cwd(),
+      port: 8010,
+      logs: [],
+      processType: 'backend',
+      appName: 'app-1-backend'
+    }, 1000, 0)).rejects.toThrow('在端口 8010 就绪前退出')
   })
 
   it('requires consecutive health check failures before cleaning a process', async () => {

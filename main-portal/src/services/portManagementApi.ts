@@ -893,44 +893,17 @@ export class PortManagementApiService {
         }
       }
       
-      // 如果没有数据，返回默认值
-      console.warn('端口统计API返回空数据，使用默认值');
+      console.warn('端口统计API返回空数据');
       return {
-        success: true,
-        data: {
-          total: 3000,
-          allocated: 2, // 假设前端和后端至少在运行
-          totalAllocated: 2,
-          available: 2998,
-          conflicts: 0,
-          byType: { 'frontend': 1, 'backend': 1 },
-          byStatus: { 'active': 2 },
-          byTechStack: { 'node': 2 },
-          averageResponseTime: 150,
-          allocationSuccessRate: 95,
-          rangeUtilization: { '3000-3999': 1 }
-        }
+        success: false,
+        error: '端口统计服务未返回有效数据'
       }
     } catch (error) {
       console.error('Failed to get port statistics:', error)
       
-      // 即使出错也返回基本可用的数据
       return { 
-        success: true, 
-        data: {
-          total: 3000,
-          allocated: 2,
-          totalAllocated: 2,
-          available: 2998,
-          conflicts: 0,
-          byType: { 'frontend': 1, 'backend': 1 },
-          byStatus: { 'active': 2 },
-          byTechStack: { 'node': 2 },
-          averageResponseTime: 150,
-          allocationSuccessRate: 95,
-          rangeUtilization: { '3000-3999': 1 }
-        },
-        warning: '统计服务暂时不可用，显示估算数据'
+        success: false,
+        error: error instanceof Error ? error.message : '端口统计服务暂时不可用'
       }
     }
   }
@@ -1772,10 +1745,17 @@ export class PortManagementApiService {
 
 // WebSocket消息接口
 export interface WebSocketMessage {
-  type: 'port_statistics' | 'port_status' | 'port_allocation' | 'port_conflict'
-  data: any
-  timestamp: number
+  type: 'port_statistics' | 'port_status' | 'port_allocation' | 'port_conflict' | 'port_inventory_invalidated' | string
+  data?: any
+  payload?: any
+  timestamp: number | string
 }
+
+export type PortRealtimeConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'polling'
+
+export const unwrapPortRealtimePayload = (message: WebSocketMessage): any => (
+  message.payload !== undefined ? message.payload : message.data
+)
 
 // 实时端口监控WebSocket管理器
 export class PortRealtimeWebSocket {
@@ -1809,6 +1789,7 @@ export class PortRealtimeWebSocket {
     }
 
     try {
+      this.emitLocal('connection_state', 'connecting')
       // 获取WebSocket地址
       const wsUrl = resolvePortalWebSocketUrl()
       const token = getStoredAccessToken()
@@ -1819,6 +1800,7 @@ export class PortRealtimeWebSocket {
         debugLog('✅ Port monitoring WebSocket connected')
         this.reconnectAttempts = 0
         this.authFailureNotified = false
+        this.emitLocal('connection_state', 'connected')
       }
 
       this.ws.onmessage = (event) => {
@@ -1832,6 +1814,7 @@ export class PortRealtimeWebSocket {
 
       this.ws.onclose = (event) => {
         debugLog('❌ Port monitoring WebSocket disconnected')
+        this.ws = null
 
         // 认证失败时停止重连，避免持续刷日志与无效请求
         if (this.isAuthenticationClose(event)) {
@@ -1840,6 +1823,7 @@ export class PortRealtimeWebSocket {
             ElMessage.error('实时连接认证失效，请重新登录')
             window.dispatchEvent(new CustomEvent('auth:token-invalid', { detail: { source: 'port-monitoring-websocket' } }))
           }
+          this.emitLocal('connection_state', 'polling')
           return
         }
 
@@ -1863,7 +1847,7 @@ export class PortRealtimeWebSocket {
     if (typeListeners) {
       typeListeners.forEach(listener => {
         try {
-          listener(message.data)
+          listener(unwrapPortRealtimePayload(message))
         } catch (error) {
           console.error(`Error in WebSocket listener for ${message.type}:`, error)
         }
@@ -1893,15 +1877,28 @@ export class PortRealtimeWebSocket {
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('WebSocket max reconnection attempts reached')
+      this.emitLocal('connection_state', 'polling')
       return
     }
 
     this.reconnectAttempts++
+    this.emitLocal('connection_state', 'reconnecting')
     debugLog(`Attempting WebSocket reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts}...`)
 
     setTimeout(() => {
       this.connect()
     }, this.reconnectDelay * this.reconnectAttempts)
+  }
+
+  private emitLocal(type: string, payload: any): void {
+    const listeners = this.listeners.get(type)
+    listeners?.forEach(listener => {
+      try {
+        listener(payload)
+      } catch (error) {
+        console.error(`Error in WebSocket listener for ${type}:`, error)
+      }
+    })
   }
 
   private isAuthenticationClose(event: CloseEvent): boolean {

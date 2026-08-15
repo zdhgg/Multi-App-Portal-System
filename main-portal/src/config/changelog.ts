@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.5.0',
+    date: '2026-08-15',
+    title: '统一端口清单与运行态可靠性升级',
+    items: [
+      { type: 'feature', description: '新增统一端口清单，以同一份系统快照提供监听列表、容量统计、归属核验和冲突信息' },
+      { type: 'feature', description: '端口监控新增数据新鲜度、实时连接状态、失效分配预览确认和受保护端口安全操作' },
+      { type: 'improvement', description: '强制释放会重新核验当前 PID，全栈启动会等待前后端端口就绪并清理部分启动进程' },
+      { type: 'fix', description: '刷新失败时保留最后成功快照，避免伪造统计值、旧请求回写和启动成功后的离线状态覆盖' },
+      { type: 'improvement', description: '同步根项目、前后端包、系统配置、锁文件和主要发布文档版本到 1.5.0' }
+    ]
+  },
+  {
     version: '1.4.1',
     date: '2026-07-29',
     title: '仓库治理与生产安全加固补丁',

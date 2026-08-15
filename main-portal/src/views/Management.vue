@@ -654,6 +654,7 @@ import {
   findBestMatchedPM2Process,
   isLikelyPM2ManagedApp
 } from '@/utils/pm2ProcessMatching'
+import { syncRunningApplicationState } from '@/utils/runtimeStateRecovery'
 
 // 命令类型定义
 type StartCommand = 'native' | 'pm2-prod' | string
@@ -962,6 +963,44 @@ const showPortConflictNotification = (app: AppWithUIState, error: any) => {
       activePortConflictNotification = null
     }
   })
+}
+
+const syncRunningAppSnapshot = async (app: AppWithUIState) => {
+  const recovery = await syncRunningApplicationState(
+    () => pm2ApiService.syncState(),
+    () => appsApiService.getApp(app.id)
+  )
+
+  if (recovery.syncError) {
+    console.warn('运行状态同步失败，继续读取应用状态:', recovery.syncError)
+  }
+
+  if (recovery.lookupError) {
+    console.warn('运行状态同步后的应用状态读取失败:', recovery.lookupError)
+  }
+
+  return recovery.app
+}
+
+const reconcileRunningAppAfterPortConflict = async (app: AppWithUIState): Promise<boolean> => {
+  const runningApp = await syncRunningAppSnapshot(app)
+
+  if (!runningApp) {
+    return false
+  }
+
+  closePortConflictNotification()
+  Object.assign(app, runningApp, {
+    status: 'online',
+    isRunning: true
+  })
+  applyFilters()
+  queuePortMonitoringRefresh([0, 1200], `start-conflict-recovered:${app.id}`)
+  portalStore.loadApps().catch((error) => {
+    console.warn('同步首页应用状态失败:', error)
+  })
+  ElMessage.success(`应用 ${app.name} 已在运行，状态已同步`)
+  return true
 }
 
 // 技术栈动态加载
@@ -1848,7 +1887,6 @@ const configureAppPortsBeforeStart = async (app: AppWithUIState) => {
       const response = await appConfigurationApiService.configureAppPorts(app.id, ports)
       if (response.success) {
         debugLog('✅ 端口配置成功', response.data)
-        ElMessage.success(`应用 ${app.name} 端口配置成功`)
       } else {
         console.warn('⚠️ 端口配置失败，继续使用默认配置', response)
       }
@@ -2039,24 +2077,44 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
       showErrorMessage: false
     })
     if (response.success) {
-      app.status = 'online'
+      Object.assign(app, {
+        status: 'online',
+        isRunning: true
+      })
+      closePortConflictNotification()
       applyFilters() // 刷新过滤列表
       ElMessage.success(`应用 ${app.name} 已启动（开发模式）`)
       queuePortMonitoringRefresh([400, 1800], `native-start:${app.id}`)
 
-      // 主动刷新应用列表以确保状态同步（作为 WebSocket 的备用）
-      setTimeout(() => {
-        loadApps()
-      }, 1000)
+      // 保持启动接口确认的在线态；后台同步成功后只合并新鲜快照，避免旧离线数据覆盖界面。
+      void syncRunningAppSnapshot(app).then((runningApp) => {
+        if (runningApp) {
+          Object.assign(app, runningApp, {
+            status: 'online',
+            isRunning: true
+          })
+          applyFilters()
+        }
+
+        return portalStore.loadApps()
+      }).catch((error) => {
+        console.warn('启动后后台同步应用状态失败:', error)
+      })
     } else {
       throw new Error(response.message || '启动应用失败')
     }
   } catch (error: any) {
-    console.error(`${action}应用失败:`, error)
-
-    if (isPortConflictError(error)) {
+    const portConflict = isPortConflictError(error)
+    if (portConflict) {
       queuePortMonitoringRefresh([0, 1200], `start-conflict:${app.id}`)
+
+      const recovered = await reconcileRunningAppAfterPortConflict(app)
+      if (recovered) {
+        return
+      }
     }
+
+    console.error(`${action}应用失败:`, error)
 
     // 🔍 调试：打印完整的错误对象
     debugLog('🔍 Error object:', {
@@ -2171,7 +2229,7 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
       return // 直接返回，不再执行后续的错误处理
     }
 
-    if (isPortConflictError(error)) {
+    if (portConflict) {
       showPortConflictNotification(app, error)
       return
     }

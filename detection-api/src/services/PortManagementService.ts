@@ -543,7 +543,7 @@ export class PortManagementService extends EventEmitter {
      * - 重试期间使用 netstat 确认端口状态（避免 createServer 误判）
      * - 多级降级：软杀 → 硬杀树 → PID 遍历杀
      */
-    async forceReleasePort(port: number): Promise<boolean> {
+    async forceReleasePort(port: number, expectedPid?: number): Promise<boolean> {
         try {
             // 第一步：精确检测端口是否被监听
             const wasListening = await this.checkPortListening(port);
@@ -555,8 +555,20 @@ export class PortManagementService extends EventEmitter {
             // 第二步：精确获取占用端口的进程
             const processInfo = await this.getProcessInfo(port);
             if (!processInfo.pid) {
+                if (expectedPid) {
+                    logger.warn(`无法再次确认端口 ${port} 的 PID，拒绝按过期快照释放`);
+                    return false;
+                }
                 logger.warn(`无法获取端口 ${port} 的占用进程 PID，尝试 PID 遍历方案`);
                 return await this.forceReleasePortByEnumeration(port);
+            }
+
+            if (expectedPid && processInfo.pid !== expectedPid) {
+                logger.warn(`端口 ${port} 的 PID 已变化，拒绝释放`, {
+                    expectedPid,
+                    actualPid: processInfo.pid
+                });
+                return false;
             }
 
             logger.info(`检测到端口 ${port} 被进程 PID=${processInfo.pid} (${processInfo.name || 'unknown'}) 占用`);
@@ -564,6 +576,7 @@ export class PortManagementService extends EventEmitter {
             // 第三步：尝试多级杀进程策略
             const killed = await this.killProcessTree(processInfo.pid, port);
             if (!killed) {
+                if (expectedPid) return false;
                 logger.warn(`无法终止端口 ${port} 的主进程，尝试 PID 遍历降级方案`);
                 return await this.forceReleasePortByEnumeration(port);
             }
@@ -571,6 +584,7 @@ export class PortManagementService extends EventEmitter {
             // 第四步：等待并验证端口已释放（使用 netstat 确认，不再依赖 createServer）
             const released = await this.waitForPortRelease(port, 8, 400);
             if (!released) {
+                if (expectedPid) return false;
                 // 最后尝试：遍历所有 netstat 中的 PID 再次强杀
                 logger.warn(`端口 ${port} 仍未释放，尝试 PID 遍历降级方案`);
                 return await this.forceReleasePortByEnumeration(port);

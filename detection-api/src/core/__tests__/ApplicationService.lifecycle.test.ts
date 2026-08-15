@@ -134,7 +134,8 @@ const createMonorepoFullStackFixture = () => {
     name: '@fixture/api',
     private: true,
     scripts: {
-      dev: 'tsx watch src/main.ts'
+      dev: 'pnpm run build && node dist/main.js',
+      'dev:watch': 'tsx watch src/main.ts'
     },
     dependencies: {
       '@nestjs/core': '^11.0.0'
@@ -655,6 +656,7 @@ describe('ApplicationService lifecycle policy', () => {
       expect(created.fullStack?.isFullStack).toBe(true)
       expect(created.fullStack?.frontendConfig?.workingDirectory.toLowerCase()).toBe(fixture.webDir.toLowerCase())
       expect(created.fullStack?.backendConfig?.workingDirectory.toLowerCase()).toBe(fixture.apiDir.toLowerCase())
+      expect(created.fullStack?.backendConfig?.startCommand).toBe('npm run dev:watch')
       expect(created.fullStack?.frontendConfig?.environmentVariables?.WEB_PORT).toBe('3006')
       expect(created.fullStack?.backendConfig?.environmentVariables?.API_PORT).toBe('8006')
     } finally {

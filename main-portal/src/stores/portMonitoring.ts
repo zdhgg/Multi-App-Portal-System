@@ -1,38 +1,31 @@
-/**
- * 端口监控状态管理 - 统一的状态管理方案
- * 
- * 优化版本：作为端口管理页面的唯一数据源
- * - 统一管理端口统计数据
- * - 统一管理占用端口列表
- * - 提供缓存机制（30秒 TTL）
- * - 消除父子组件间的数据同步问题
- */
+import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { ref, computed, reactive } from 'vue'
-import { portManagementApiService } from '@/services/portManagementApi'
-import { debugLog } from '@/utils/debugControl'
+import {
+  portInventoryApi,
+  type PortInventoryRow,
+  type PortInventorySnapshot
+} from '@/services/portInventoryApi'
+import {
+  portRealtimeWebSocket,
+  type PortRealtimeConnectionState
+} from '@/services/portManagementApi'
+
+export type PortInventoryDataState =
+  | 'idle'
+  | 'initial-loading'
+  | 'refreshing'
+  | 'ready'
+  | 'partial'
+  | 'stale'
+  | 'error'
 
 export interface PortStatus {
   port: number
   status: 'listening' | 'allocated' | 'closed' | 'error'
-  process?: {
-    name: string
-    pid: number
-    user?: string
-  }
-  application?: {
-    id: string
-    name: string
-    type: string
-  }
-  performance: {
-    responseTime: number
-    lastCheck: Date
-  }
-  security?: {
-    riskLevel: 'low' | 'medium' | 'high'
-    issues: string[]
-  }
+  process?: { name: string; pid: number; user?: string }
+  application?: { id: string; name: string; type: string }
+  performance: { responseTime: number; lastCheck: Date }
+  security?: { riskLevel: 'low' | 'medium' | 'high'; issues: string[] }
 }
 
 export interface PortStatistics {
@@ -44,42 +37,29 @@ export interface PortStatistics {
   byStatus: Record<string, number>
 }
 
-export interface ScanProgress {
-  current: number
-  total: number
-  percentage: number
-  estimatedTimeRemaining: number
-  currentRange: string
+export interface OccupiedPortCompatibilityRow {
+  port: number
+  process: string
+  pid: number
+  status: string
+  appId?: string
+  appName?: string
+  portType?: string
+  ownership: PortInventoryRow['ownership']
+  address: string
+  protocol: string
 }
 
-// 缓存配置
-const CACHE_TTL = 30000 // 30秒缓存
-
 export const usePortMonitoringStore = defineStore('portMonitoring', () => {
-  // ==================== 核心统计数据（页面顶部显示） ====================
-  const quickStats = reactive({
-    total: 0,
-    occupied: 0,
-    available: 0,
-    conflicts: 0
-  })
-  
-  // 缓存管理
-  const cache = reactive({
-    statsTimestamp: 0,
-    portsTimestamp: 0,
-    isValid: (type: 'stats' | 'ports') => {
-      const timestamp = type === 'stats' ? cache.statsTimestamp : cache.portsTimestamp
-      return timestamp > 0 && (Date.now() - timestamp) < CACHE_TTL
-    },
-    invalidate: (type?: 'stats' | 'ports') => {
-      if (!type || type === 'stats') cache.statsTimestamp = 0
-      if (!type || type === 'ports') cache.portsTimestamp = 0
-    }
-  })
+  const snapshot = ref<PortInventorySnapshot | null>(null)
+  const dataState = ref<PortInventoryDataState>('idle')
+  const connectionState = ref<PortRealtimeConnectionState>('polling')
+  const lastAttemptTime = ref<Date | null>(null)
+  const lastSuccessTime = ref<Date | null>(null)
+  const lastScanTime = ref<Date | null>(null)
+  const currentError = ref<string | null>(null)
 
-  // 核心状态
-  const ports = ref<Map<number, PortStatus>>(new Map())
+  const quickStats = reactive({ total: 0, occupied: 0, available: 0, conflicts: 0 })
   const statistics = ref<PortStatistics>({
     total: 0,
     occupied: 0,
@@ -88,30 +68,8 @@ export const usePortMonitoringStore = defineStore('portMonitoring', () => {
     byType: {},
     byStatus: {}
   })
-  
-  // 占用端口列表（用于表格显示）
-  const occupiedPortsList = ref<Array<{
-    port: number
-    process: string
-    pid: number
-    status: string
-    appId?: string
-    appName?: string
-    portType?: string
-  }>>([])
-  
-  // 扫描状态
-  const scanProgress = ref<ScanProgress | null>(null)
-  const isScanning = ref(false)
-  const lastScanTime = ref<Date | null>(null)
-  const scanHistory = ref<Array<{
-    timestamp: Date
-    duration: number
-    portsFound: number
-    strategy: string
-  }>>([])
-
-  // 加载状态
+  const ports = ref<Map<number, PortStatus>>(new Map())
+  const occupiedPortsList = ref<OccupiedPortCompatibilityRow[]>([])
   const loadingStates = reactive({
     refresh: false,
     stats: false,
@@ -119,288 +77,50 @@ export const usePortMonitoringStore = defineStore('portMonitoring', () => {
     cleanup: false,
     release: new Map<number, boolean>()
   })
-
-  // 错误状态
   const errors = ref<Array<{
     id: string
     type: 'scan' | 'api' | 'network'
     message: string
     timestamp: Date
-    details?: any
+    details?: unknown
   }>>([])
 
-  // 计算属性
-  const activePorts = computed(() => 
-    Array.from(ports.value.values()).filter(p => 
-      p.status === 'listening' || p.status === 'allocated'
-    )
-  )
+  let requestVersion = 0
+  let currentRequest: Promise<PortInventorySnapshot> | null = null
+  let pollingTimer: ReturnType<typeof setTimeout> | null = null
+  let invalidationTimer: ReturnType<typeof setTimeout> | null = null
+  let monitoringConsumers = 0
 
-  const conflictPorts = computed(() =>
-    Array.from(ports.value.values()).filter(p => 
-      p.security?.riskLevel === 'high' || p.status === 'error'
-    )
-  )
+  const cache = reactive({
+    statsTimestamp: 0,
+    portsTimestamp: 0,
+    isValid: () => Boolean(snapshot.value && Date.now() - cache.statsTimestamp < 10000),
+    invalidate: () => {
+      cache.statsTimestamp = 0
+      cache.portsTimestamp = 0
+    }
+  })
 
+  const activePorts = computed(() => [...ports.value.values()])
+  const conflictPorts = computed(() => activePorts.value.filter(port => port.status === 'error'))
   const portsByType = computed(() => {
     const result: Record<string, PortStatus[]> = {}
-    activePorts.value.forEach(port => {
+    for (const port of activePorts.value) {
       const type = port.application?.type || 'unknown'
       if (!result[type]) result[type] = []
       result[type].push(port)
-    })
+    }
     return result
   })
-  
-  // ==================== 统一的数据获取方法 ====================
-  
-  /**
-   * 获取端口统计数据（带缓存）
-   * 这是页面顶部统计卡片的数据源
-   */
-  const fetchStatistics = async (force = false): Promise<void> => {
-    // 检查缓存
-    if (!force && cache.isValid('stats')) {
-      debugLog('📦 使用缓存的统计数据')
-      return
-    }
-    
-    loadingStates.stats = true
-    
-    try {
-      const result = await portManagementApiService.getPortStatistics()
-      
-      if (result.success && result.data) {
-        const data = result.data
-        
-        // 更新快速统计
-        quickStats.total = Number(data.total) || 0
-        quickStats.occupied = Number(data.totalAllocated ?? data.allocated ?? 0)
-        quickStats.available = Number(data.available) || Math.max(0, quickStats.total - quickStats.occupied)
-        quickStats.conflicts = Number(data.conflicts || 0)
-        
-        // 更新详细统计
-        statistics.value = {
-          total: quickStats.total,
-          occupied: quickStats.occupied,
-          available: quickStats.available,
-          conflicts: quickStats.conflicts,
-          byType: data.byType || {},
-          byStatus: data.byStatus || {}
-        }
-        
-        // 更新缓存时间戳
-        cache.statsTimestamp = Date.now()
-        
-        debugLog('📊 统计数据已更新:', quickStats)
-      }
-    } catch (error) {
-      console.error('获取统计数据失败:', error)
-      addError('api', '获取统计数据失败', error)
-    } finally {
-      loadingStates.stats = false
-    }
-  }
-  
-  /**
-   * 刷新所有数据（统计 + 端口列表）
-   */
-  const refreshAll = async (force = true): Promise<void> => {
-    loadingStates.refresh = true
-    
-    try {
-      // 强制刷新时清除缓存
-      if (force) {
-        cache.invalidate()
-      }
-      
-      // 并行获取统计数据和端口列表
-      await Promise.all([
-        fetchStatistics(force),
-        fetchOccupiedPorts(force)
-      ])
-      
-      lastScanTime.value = new Date()
-    } catch (error) {
-      console.error('刷新数据失败:', error)
-      addError('api', '刷新数据失败', error)
-    } finally {
-      loadingStates.refresh = false
-    }
-  }
-  
-  /**
-   * 获取占用端口列表
-   */
-  const fetchOccupiedPorts = async (force = false): Promise<void> => {
-    if (!force && cache.isValid('ports')) {
-      debugLog('📦 使用缓存的端口列表')
-      return
-    }
-    
-    try {
-      // 尝试从后台扫描服务获取数据
-      const bgResult = await portManagementApiService.getBackgroundScanStatus(force)
-      
-      if (bgResult.success && bgResult.data?.activePorts) {
-        const activePorts = bgResult.data.activePorts
-        
-        occupiedPortsList.value = activePorts.map((port: any) => ({
-          port: port.port,
-          process: port.process?.name || '未知进程',
-          pid: port.process?.pid || 0,
-          status: port.status || 'listening',
-          appId: port.appId,
-          appName: port.appName,
-          portType: port.portType
-        }))
-        
-        cache.portsTimestamp = Date.now()
-        debugLog('📋 端口列表已更新:', occupiedPortsList.value.length, '个端口')
-      }
-    } catch (error) {
-      console.error('获取端口列表失败:', error)
-    }
-  }
+  const isInitialLoading = computed(() => dataState.value === 'initial-loading')
+  const isRefreshing = computed(() => dataState.value === 'refreshing')
+  const hasUsableData = computed(() => Boolean(snapshot.value))
 
-  // 智能刷新方法（简化版）
-  const smartRefresh = async (options: {
-    force?: boolean
-    strategy?: 'full' | 'incremental' | 'targeted'
-  } = {}) => {
-    const { force = false } = options
-    
-    if (isScanning.value && !force) {
-      debugLog('⏸️ 扫描正在进行中，跳过')
-      return
-    }
-
-    // 直接调用统一的刷新方法
-    await refreshAll(force)
-  }
-
-  // 监控扫描进度
-  const monitorScanProgress = async (taskId: string) => {
-    const pollInterval = 1000 // 1秒轮询一次
-    
-    while (true) {
-      try {
-        const statusResult = await portManagementApiService.getScanTaskStatus(taskId)
-        
-        if (statusResult.success && statusResult.data) {
-          const task = statusResult.data
-          
-          // 更新进度
-          scanProgress.value = {
-            current: task.progress.current,
-            total: task.progress.total,
-            percentage: task.progress.percentage,
-            estimatedTimeRemaining: calculateETA(task),
-            currentRange: `${task.config.startPort}-${task.config.endPort}`
-          }
-
-          if (task.status === 'completed') {
-            // 获取扫描结果
-            const resultsResponse = await portManagementApiService.getScanResults(taskId)
-            if (resultsResponse.success && resultsResponse.data) {
-              updatePortsFromScanResults(resultsResponse.data)
-            }
-            break
-          } else if (task.status === 'failed') {
-            throw new Error(task.error || '扫描任务失败')
-          }
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, pollInterval))
-      } catch (error) {
-        addError('scan', '监控扫描进度失败', error)
-        break
-      }
-    }
-    
-    scanProgress.value = null
-  }
-
-  // 更新端口数据
-  const updatePortsFromScanResults = (results: any[]) => {
-    const newPorts = new Map<number, PortStatus>()
-    
-    results.forEach(result => {
-      const portStatus: PortStatus = {
-        port: result.port,
-        status: mapStatus(result.status),
-        process: result.process,
-        application: result.application,
-        performance: {
-          responseTime: result.performance?.responseTime || 0,
-          lastCheck: new Date()
-        },
-        security: result.security
-      }
-      
-      newPorts.set(result.port, portStatus)
-    })
-    
-    ports.value = newPorts
-    
-    // 记录扫描历史
-    scanHistory.value.push({
-      timestamp: new Date(),
-      duration: 0, // 将在实际实现中计算
-      portsFound: results.length,
-      strategy: 'smart'
-    })
-  }
-
-  // 更新统计信息（使用统一方法）
-  const updateStatistics = async () => {
-    await fetchStatistics(true)
-  }
-
-  // 强制释放端口（增强安全性）
-  const forceReleasePort = async (port: number, options: {
-    reason?: string
-    confirmationToken?: string
-    bypassSafetyCheck?: boolean
-  } = {}) => {
-    if (loadingStates.release.get(port)) {
-      throw new Error(`端口 ${port} 正在释放中`)
-    }
-
-    loadingStates.release.set(port, true)
-    
-    try {
-      // 安全检查
-      const portInfo = ports.value.get(port)
-      if (portInfo?.security?.riskLevel === 'high' && !options.bypassSafetyCheck) {
-        throw new Error('高风险端口需要额外确认')
-      }
-
-      const releaseResult = await portManagementApiService.releasePort(port, true)
-      
-      if (releaseResult.success) {
-        // 从本地状态中移除
-        ports.value.delete(port)
-        
-        // 更新统计
-        await updateStatistics()
-        
-        // 记录操作日志
-        debugLog(`端口 ${port} 已强制释放`, {
-          reason: options.reason,
-          timestamp: new Date(),
-          user: 'current-user' // 实际实现中获取当前用户
-        })
-      }
-      
-      return releaseResult
-    } finally {
-      loadingStates.release.set(port, false)
-    }
-  }
-
-  // 错误管理
-  const addError = (type: 'scan' | 'api' | 'network', message: string, details?: any) => {
+  const addError = (
+    type: 'scan' | 'api' | 'network',
+    message: string,
+    details?: unknown
+  ) => {
     errors.value.push({
       id: `${Date.now()}-${Math.random()}`,
       type,
@@ -408,75 +128,238 @@ export const usePortMonitoringStore = defineStore('portMonitoring', () => {
       timestamp: new Date(),
       details
     })
-    
-    // 保持错误列表不超过50条
-    if (errors.value.length > 50) {
-      errors.value = errors.value.slice(-50)
-    }
+    if (errors.value.length > 50) errors.value = errors.value.slice(-50)
   }
 
   const clearErrors = () => {
     errors.value = []
   }
 
-  // 工具方法
-  const mapStatus = (backendStatus: string): PortStatus['status'] => {
-    const statusMap: Record<string, PortStatus['status']> = {
-      'listening': 'listening',
-      'allocated': 'allocated',
-      'occupied': 'listening',
-      'available': 'closed',
-      'closed': 'closed',
-      'error': 'error'
+  const applySnapshot = (next: PortInventorySnapshot) => {
+    snapshot.value = next
+    quickStats.total = next.summary.total
+    quickStats.occupied = next.summary.occupied
+    quickStats.available = next.summary.available
+    quickStats.conflicts = next.summary.conflicts
+    statistics.value = {
+      total: next.summary.total,
+      occupied: next.summary.occupied,
+      available: next.summary.available,
+      conflicts: next.summary.conflicts,
+      byType: {},
+      byStatus: { listening: next.ports.length }
     }
-    return statusMap[backendStatus] || 'closed'
+
+    const nextPorts = new Map<number, PortStatus>()
+    occupiedPortsList.value = next.ports.map(row => {
+      const expectedApp = row.expectedApps[0]
+      nextPorts.set(row.port, {
+        port: row.port,
+        status: row.conflict ? 'error' : 'listening',
+        process: row.observed.pid
+          ? { name: row.observed.processName || '未知进程', pid: row.observed.pid }
+          : undefined,
+        application: expectedApp
+          ? { id: expectedApp.id, name: expectedApp.name, type: expectedApp.role }
+          : undefined,
+        performance: { responseTime: 0, lastCheck: new Date(row.checkedAt) },
+        security: row.conflict
+          ? { riskLevel: 'high', issues: row.conflictReason ? [row.conflictReason] : [] }
+          : undefined
+      })
+      return {
+        port: row.port,
+        process: row.observed.processName || '未知进程',
+        pid: row.observed.pid || 0,
+        status: row.state,
+        appId: expectedApp?.id,
+        appName: expectedApp?.name || row.reserved?.description,
+        portType: expectedApp?.role || row.reserved?.category || 'other',
+        ownership: row.ownership,
+        address: row.address,
+        protocol: row.protocol
+      }
+    })
+    ports.value = nextPorts
+
+    const capturedAt = new Date(next.capturedAt)
+    lastSuccessTime.value = capturedAt
+    lastScanTime.value = capturedAt
+    cache.statsTimestamp = Date.now()
+    cache.portsTimestamp = Date.now()
+    currentError.value = null
+    dataState.value = next.quality === 'stale'
+      ? 'stale'
+      : next.quality === 'partial' ? 'partial' : 'ready'
+    schedulePolling()
   }
 
-  const calculateETA = (task: any): number => {
-    if (!task.startTime || task.progress.percentage === 0) return 0
-    
-    const elapsed = Date.now() - new Date(task.startTime).getTime()
-    const remaining = (elapsed / task.progress.percentage) * (100 - task.progress.percentage)
-    return Math.round(remaining / 1000) // 返回秒数
+  const refreshAll = async (force = true): Promise<PortInventorySnapshot> => {
+    if (!force && currentRequest) return currentRequest
+
+    const version = ++requestVersion
+    const hadSnapshot = Boolean(snapshot.value)
+    lastAttemptTime.value = new Date()
+    loadingStates.refresh = true
+    loadingStates.stats = true
+    dataState.value = hadSnapshot ? 'refreshing' : 'initial-loading'
+
+    const request = portInventoryApi.getInventory(force)
+    currentRequest = request
+
+    try {
+      const result = await request
+      if (version === requestVersion) applySnapshot(result)
+      return result
+    } catch (error) {
+      if (version === requestVersion) {
+        const message = error instanceof Error ? error.message : '端口清单刷新失败'
+        currentError.value = message
+        dataState.value = snapshot.value ? 'stale' : 'error'
+        addError('api', message, error)
+      }
+      throw error
+    } finally {
+      if (version === requestVersion) {
+        loadingStates.refresh = false
+        loadingStates.stats = false
+        currentRequest = null
+        schedulePolling()
+      }
+    }
+  }
+
+  const fetchStatistics = async (force = false): Promise<void> => {
+    await refreshAll(force)
+  }
+
+  const fetchOccupiedPorts = async (force = false): Promise<void> => {
+    await refreshAll(force)
+  }
+
+  const smartRefresh = async (options: { force?: boolean } = {}): Promise<void> => {
+    await refreshAll(Boolean(options.force))
+  }
+
+  const forceReleasePort = async (
+    port: number,
+    _options: { reason?: string; confirmationToken?: string; bypassSafetyCheck?: boolean } = {}
+  ): Promise<{ success: boolean; data?: unknown; error?: string }> => {
+    const row = snapshot.value?.ports.find(item => item.port === port)
+    if (!row?.observed.pid || !row.capabilities.forceRelease || !snapshot.value) {
+      throw new Error('当前快照不允许强制释放该端口，请刷新后查看详情')
+    }
+
+    loadingStates.release.set(port, true)
+    try {
+      await portInventoryApi.forceRelease(port, row.observed.pid, snapshot.value.snapshotId)
+      await refreshAll(true)
+      return { success: true }
+    } finally {
+      loadingStates.release.set(port, false)
+    }
+  }
+
+  const clearPollingTimer = () => {
+    if (pollingTimer) clearTimeout(pollingTimer)
+    pollingTimer = null
+  }
+
+  function schedulePolling(): void {
+    clearPollingTimer()
+    if (monitoringConsumers === 0) return
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+
+    const interval = snapshot.value?.monitoring.pollIntervalMs || 60000
+    pollingTimer = setTimeout(() => {
+      refreshAll(false).catch(() => undefined)
+    }, Math.max(5000, interval))
+  }
+
+  const requestInvalidationRefresh = () => {
+    if (invalidationTimer) clearTimeout(invalidationTimer)
+    invalidationTimer = setTimeout(() => {
+      invalidationTimer = null
+      refreshAll(true).catch(() => undefined)
+    }, 300)
+  }
+
+  const handleConnectionState = (state: PortRealtimeConnectionState) => {
+    const wasConnected = connectionState.value === 'connected'
+    connectionState.value = state
+    if (state === 'connected' && !wasConnected) requestInvalidationRefresh()
+  }
+
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') {
+      clearPollingTimer()
+      return
+    }
+    refreshAll(false).catch(() => undefined)
+  }
+
+  const startMonitoring = async (): Promise<void> => {
+    monitoringConsumers++
+    if (monitoringConsumers > 1) return
+
+    portRealtimeWebSocket.on('connection_state', handleConnectionState)
+    portRealtimeWebSocket.on('port_inventory_invalidated', requestInvalidationRefresh)
+    portRealtimeWebSocket.on('port_allocation', requestInvalidationRefresh)
+    portRealtimeWebSocket.on('port_conflict', requestInvalidationRefresh)
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+    }
+
+    if (!snapshot.value) await refreshAll(false)
+    else schedulePolling()
+  }
+
+  const stopMonitoring = () => {
+    monitoringConsumers = Math.max(0, monitoringConsumers - 1)
+    if (monitoringConsumers > 0) return
+
+    clearPollingTimer()
+    if (invalidationTimer) clearTimeout(invalidationTimer)
+    invalidationTimer = null
+    portRealtimeWebSocket.off('connection_state', handleConnectionState)
+    portRealtimeWebSocket.off('port_inventory_invalidated', requestInvalidationRefresh)
+    portRealtimeWebSocket.off('port_allocation', requestInvalidationRefresh)
+    portRealtimeWebSocket.off('port_conflict', requestInvalidationRefresh)
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+    connectionState.value = 'polling'
   }
 
   return {
-    // 核心统计数据（页面顶部显示）
-    quickStats,
-    
-    // 占用端口列表
-    occupiedPortsList,
-    
-    // 缓存管理
-    cache,
-    
-    // 状态
-    ports,
-    statistics,
-    scanProgress,
-    isScanning,
+    snapshot,
+    dataState,
+    connectionState,
+    lastAttemptTime,
+    lastSuccessTime,
     lastScanTime,
-    scanHistory,
+    currentError,
+    quickStats,
+    statistics,
+    ports,
+    occupiedPortsList,
     loadingStates,
     errors,
-    
-    // 计算属性
+    cache,
     activePorts,
     conflictPorts,
     portsByType,
-    
-    // 统一的数据获取方法
+    isInitialLoading,
+    isRefreshing,
+    hasUsableData,
+    refreshAll,
     fetchStatistics,
     fetchOccupiedPorts,
-    refreshAll,
-    
-    // 其他方法
     smartRefresh,
     forceReleasePort,
-    updateStatistics,
     addError,
-    clearErrors
+    clearErrors,
+    startMonitoring,
+    stopMonitoring
   }
 })
-
-

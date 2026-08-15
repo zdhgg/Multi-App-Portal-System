@@ -17,6 +17,7 @@ import { DatabaseManager } from './DatabaseManager.js'
 import { ConfigManager } from '../services/configManager.js'
 import { ConfigValidationService } from '../services/ConfigValidationService.js'
 import { PortManagementService } from '../services/PortManagementService.js'
+import { PortInventoryService } from '../services/PortInventoryService.js'
 import { NetworkService } from './NetworkService.js'
 import { SimpleProcessManager } from './SimpleServices.js'
 import { SimpleFileScanner } from './SimpleServices.js'
@@ -197,6 +198,16 @@ export class ServiceContainer {
     this.services.set('appPortBindingService',
       new AppPortBindingService(this.db, this.get('configManager'), this.wsManager))
 
+    this.services.set('portInventoryService',
+      new PortInventoryService(
+        this.get('configManager'),
+        this.get('applicationService'),
+        this.get('processManager'),
+        this.get('pm2Service'),
+        this.get('portManagementService'),
+        this.wsManager
+      ))
+
     // Controllers
     this.services.set('applicationsController',
       new ApplicationsController(this.get('applicationService'), this))
@@ -215,7 +226,8 @@ export class ServiceContainer {
         this.get('configManager'),
         this.get('appPortBindingService'),
         this.get('portManagementService'),
-        this.get('applicationService')  // 🔧 传入 applicationService
+        this.get('applicationService'),
+        this.get('portInventoryService')
       ))
     this.services.set('userSettingsController',
       new UserSettingsController())

@@ -1,364 +1,265 @@
 <template>
-  <div class="port-management">
-    <OperationPageHeader
-      status-label="端口状态"
-      :chips="headerChips"
-      :snapshots="headerSnapshots"
-    >
-      <template #actions>
-        <el-button class="port-action-secondary" :loading="loading.refreshAll" @click="refreshAll">
-          <el-icon><Refresh /></el-icon> 刷新
-        </el-button>
-        <el-button type="warning" :loading="loading.quickCleanup" @click="quickCleanup">
-          <el-icon><Delete /></el-icon> 清理
-        </el-button>
-        <el-button type="primary" @click="showConfigDrawer = true">
-          <el-icon><Setting /></el-icon> 配置
-        </el-button>
-      </template>
-    </OperationPageHeader>
-
-    <section class="port-content-shell">
-      <div class="content-heading">
-        <div>
-          <span class="content-eyebrow">Port Inventory</span>
-          <h2 class="content-title">端口占用与状态</h2>
+  <main class="port-management">
+    <header class="page-header">
+      <div class="page-title-block">
+        <div class="title-row">
+          <h1>端口监控</h1>
+          <span :class="['data-state', `state-${portStore.dataState}`]">{{ dataStateLabel }}</span>
         </div>
-        <p class="content-note">统一浏览当前占用端口、状态变化和释放操作，适合排查冲突与做资源清理。</p>
+        <div class="status-line">
+          <span><el-icon><Connection /></el-icon>{{ connectionLabel }}</span>
+          <span><el-icon><Clock /></el-icon>{{ lastSuccessLabel }}</span>
+          <span v-if="portStore.snapshot?.cached">服务端缓存 {{ Math.round(portStore.snapshot.cacheAgeMs / 1000) }} 秒</span>
+        </div>
       </div>
 
-      <div class="stats-inline">
-        <span class="stat-item">
-          占用 <el-tag type="primary" size="small">{{ portStore.quickStats.occupied }}</el-tag>
-        </span>
-        <span class="stat-item" v-if="portStore.quickStats.conflicts > 0">
-          冲突 <el-tag type="danger" size="small">{{ portStore.quickStats.conflicts }}</el-tag>
-        </span>
-        <span class="stat-item" v-if="focusedPort">
-          聚焦 <el-tag type="warning" size="small">{{ focusedPort }}</el-tag>
-        </span>
-        <span class="stat-item">
-          可用 <el-tag type="info" size="small">{{ portStore.quickStats.available }}</el-tag>
-        </span>
+      <div class="page-actions">
+        <el-button
+          v-if="isAdmin"
+          :icon="Delete"
+          :loading="cleanupLoading"
+          @click="cleanupInvalidAllocations"
+        >清理失效分配</el-button>
+        <el-button v-if="isAdmin" :icon="Setting" @click="showConfigDrawer = true">配置</el-button>
+        <el-button
+          type="primary"
+          :icon="Refresh"
+          :loading="portStore.loadingStates.refresh"
+          @click="refreshAll"
+        >刷新</el-button>
       </div>
+    </header>
 
-      <div class="main-content">
-        <PortManager ref="portManagerRef" :focus-port="focusedPort" />
+    <section class="summary-strip" aria-label="端口监控概览">
+      <div>
+        <span>监控范围</span>
+        <strong>{{ portStore.quickStats.total }}</strong>
+      </div>
+      <div>
+        <span>范围内监听</span>
+        <strong>{{ portStore.quickStats.occupied }}</strong>
+      </div>
+      <div>
+        <span>可用端口</span>
+        <strong>{{ portStore.quickStats.available }}</strong>
+      </div>
+      <div :class="{ attention: portStore.quickStats.conflicts > 0 }">
+        <span>归属冲突</span>
+        <strong>{{ portStore.quickStats.conflicts }}</strong>
       </div>
     </section>
 
+    <el-alert
+      v-if="portStore.dataState === 'stale' && portStore.hasUsableData"
+      type="warning"
+      show-icon
+      :closable="false"
+      :title="`本次刷新失败，当前显示 ${lastSuccessLabel} 的快照`"
+      :description="portStore.currentError || undefined"
+    />
+    <el-alert
+      v-else-if="portStore.dataState === 'partial'"
+      type="warning"
+      show-icon
+      :closable="false"
+      title="部分归属信息暂时无法核验"
+      :description="portStore.snapshot?.warnings.join('；')"
+    />
+
+    <PortManager :focus-port="focusedPort" />
+
     <PortConfigDrawer
+      v-if="isAdmin"
       v-model="showConfigDrawer"
       @saved="onConfigSaved"
     />
-  </div>
+  </main>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Clock, Connection, Delete, Refresh, Setting } from '@element-plus/icons-vue'
 import { useRoute } from 'vue-router'
-import {
-  Refresh,
-  Delete,
-  Setting,
-  WarningFilled,
-  Histogram,
-  CircleCheck,
-  Connection
-} from '@element-plus/icons-vue'
-import OperationPageHeader from '@/components/layout/OperationPageHeader.vue'
 import PortManager from '@/components/PortManager.vue'
 import PortConfigDrawer from '@/components/port-management/PortConfigDrawer.vue'
+import { portInventoryApi } from '@/services/portInventoryApi'
+import { useAuthStore } from '@/stores/auth'
 import { usePortMonitoringStore } from '@/stores/portMonitoring'
-import { getStoredAccessToken } from '@/utils/authStorage'
 
 const portStore = usePortMonitoringStore()
+const authStore = useAuthStore()
 const route = useRoute()
 const showConfigDrawer = ref(false)
-const portManagerRef = ref<InstanceType<typeof PortManager> | null>(null)
+const cleanupLoading = ref(false)
 const lastRouteHintKey = ref('')
-let statisticsRefreshTimer: ReturnType<typeof setInterval> | null = null
 
-const loading = reactive({
-  refreshAll: false,
-  quickCleanup: false
-})
-
-const conflictSummaryText = computed(() => {
-  if (portStore.quickStats.conflicts > 0) {
-    return `检测到 ${portStore.quickStats.conflicts} 个冲突端口`
-  }
-  return '当前未发现端口冲突'
-})
-
+const isAdmin = computed(() => authStore.isAdmin)
 const focusedPort = computed<number | null>(() => {
-  const rawPort = Array.isArray(route.query.focusPort) ? route.query.focusPort[0] : route.query.focusPort
-  const port = Number(rawPort)
-  return Number.isInteger(port) && port > 0 ? port : null
+  const raw = Array.isArray(route.query.focusPort) ? route.query.focusPort[0] : route.query.focusPort
+  const value = Number(raw)
+  return Number.isInteger(value) && value > 0 ? value : null
 })
 
-const capacitySummaryText = computed(() => {
-  const total = portStore.quickStats.total || 0
-  const occupied = portStore.quickStats.occupied || 0
+const dataStateLabel = computed(() => ({
+  idle: '等待同步',
+  'initial-loading': '首次同步中',
+  refreshing: '刷新中',
+  ready: '数据已同步',
+  partial: '部分可用',
+  stale: '数据已过期',
+  error: '连接失败'
+}[portStore.dataState]))
 
-  if (total === 0) {
-    return '等待统计数据同步'
-  }
+const connectionLabel = computed(() => ({
+  connecting: '正在连接实时通道',
+  connected: '实时通知已连接',
+  reconnecting: '实时通知重连中，轮询继续',
+  polling: '轮询监控'
+}[portStore.connectionState]))
 
-  return `容量占用 ${occupied} / ${total}`
-})
-
-const lastUpdatedText = computed(() => {
-  if (!portStore.lastScanTime) {
-    return '尚未同步'
-  }
-
-  return new Date(portStore.lastScanTime).toLocaleString('zh-CN', {
+const lastSuccessLabel = computed(() => {
+  if (!portStore.lastSuccessTime) return '尚无成功快照'
+  return `最近成功 ${portStore.lastSuccessTime.toLocaleString('zh-CN', {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    minute: '2-digit'
-  })
+    minute: '2-digit',
+    second: '2-digit'
+  })}`
 })
 
-const headerChips = computed<Array<{ text: string; tone?: 'default' | 'muted' | 'warning' | 'success' }>>(() => [
-  {
-    text: conflictSummaryText.value,
-    tone: portStore.quickStats.conflicts > 0 ? 'warning' : 'success'
-  },
-  {
-    text: capacitySummaryText.value,
-    tone: portStore.quickStats.conflicts > 0 ? 'warning' : 'default'
-  },
-  {
-    text: `最近同步 ${lastUpdatedText.value}`,
-    tone: 'muted'
-  }
-])
-
-const headerSnapshots = computed<Array<{
-  label: string
-  value: string | number
-  icon: any
-  tone?: 'default' | 'highlight' | 'success' | 'warning' | 'danger'
-}>>(() => [
-  {
-    label: '端口总量',
-    value: portStore.quickStats.total || 0,
-    icon: Histogram
-  },
-  {
-    label: '已占用',
-    value: portStore.quickStats.occupied || 0,
-    icon: Connection,
-    tone: 'highlight'
-  },
-  {
-    label: '可用',
-    value: portStore.quickStats.available || 0,
-    icon: CircleCheck,
-    tone: 'success'
-  },
-  {
-    label: '冲突',
-    value: portStore.quickStats.conflicts || 0,
-    icon: WarningFilled,
-    tone: portStore.quickStats.conflicts > 0 ? 'danger' : 'warning'
-  }
-])
-
 const refreshAll = async () => {
-  loading.refreshAll = true
   try {
     await portStore.refreshAll(true)
   } catch (error) {
-    console.error('刷新失败:', error)
-    ElMessage.error('刷新失败')
-  } finally {
-    loading.refreshAll = false
+    ElMessage.error(error instanceof Error ? error.message : '端口清单刷新失败')
   }
 }
 
-const quickCleanup = async () => {
-  loading.quickCleanup = true
+const cleanupInvalidAllocations = async () => {
+  cleanupLoading.value = true
   try {
-    const token = getStoredAccessToken()
-    const response = await fetch('/api/v2/config/ports/cleanup/zombies', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      }
-    })
-    const result = await response.json()
-
-    if (result.success) {
-      const cleanedCount = result.data?.cleanedCount || 0
-      ElMessage.success(`已清理 ${cleanedCount} 个僵尸端口`)
-      await portStore.fetchStatistics()
-    } else {
-      ElMessage.warning('清理完成，但可能存在问题')
+    const preview = await portInventoryApi.previewZombieAllocations()
+    if (preview.count === 0) {
+      ElMessage.info('没有发现失效分配')
+      return
     }
+
+    const portText = preview.ports.slice(0, 12).join('、')
+    const remainder = preview.ports.length > 12 ? ` 等 ${preview.ports.length} 个端口` : ''
+    await ElMessageBox.confirm(
+      `将删除 ${preview.count} 条无监听进程的分配记录：${portText}${remainder}`,
+      '清理失效分配',
+      { type: 'warning', confirmButtonText: '确认清理', cancelButtonText: '取消' }
+    )
+
+    const result = await portInventoryApi.cleanupZombieAllocations()
+    ElMessage.success(`已清理 ${result.cleanedCount} 条失效分配`)
+    await portStore.refreshAll(true)
   } catch (error) {
-    console.error('快速清理失败:', error)
-    ElMessage.error('清理失败')
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error instanceof Error ? error.message : '清理失效分配失败')
+    }
   } finally {
-    loading.quickCleanup = false
+    cleanupLoading.value = false
   }
 }
 
 const onConfigSaved = async () => {
   await portStore.refreshAll(true)
-  ElMessage.success('配置已更新')
+  ElMessage.success('端口配置已更新')
 }
 
 const notifyFocusedPortFromRoute = () => {
-  const rawSource = Array.isArray(route.query.from) ? route.query.from[0] : route.query.from
-  const rawAppId = Array.isArray(route.query.appId) ? route.query.appId[0] : route.query.appId
-  const focusPort = focusedPort.value
+  const source = Array.isArray(route.query.from) ? route.query.from[0] : route.query.from
+  const appId = Array.isArray(route.query.appId) ? route.query.appId[0] : route.query.appId
+  if (source !== 'management' || !focusedPort.value) return
 
-  if (rawSource !== 'management' || !focusPort) {
-    return
-  }
-
-  const hintKey = `${rawSource}:${focusPort}:${String(rawAppId || '')}`
-  if (lastRouteHintKey.value === hintKey) {
-    return
-  }
-
-  lastRouteHintKey.value = hintKey
-  ElMessage.info(`已从应用管理跳转，建议优先检查端口 ${focusPort} 的占用情况`)
+  const key = `${source}:${focusedPort.value}:${String(appId || '')}`
+  if (lastRouteHintKey.value === key) return
+  lastRouteHintKey.value = key
+  ElMessage.info(`已定位端口 ${focusedPort.value}`)
 }
 
 onMounted(async () => {
-  await portStore.fetchStatistics()
   notifyFocusedPortFromRoute()
-
-  statisticsRefreshTimer = setInterval(() => {
-    portStore.fetchStatistics()
-  }, 30000)
+  try {
+    await portStore.startMonitoring()
+  } catch {
+    // 页面状态区会保留具体错误与重新连接入口。
+  }
 })
 
 watch(
   () => [route.query.from, route.query.focusPort, route.query.appId].join('|'),
-  () => {
-    notifyFocusedPortFromRoute()
-  }
+  notifyFocusedPortFromRoute
 )
 
-onUnmounted(() => {
-  if (statisticsRefreshTimer) {
-    clearInterval(statisticsRefreshTimer)
-    statisticsRefreshTimer = null
-  }
-})
+onUnmounted(() => portStore.stopMonitoring())
 </script>
 
 <style scoped>
 .port-management {
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-  padding: 22px;
-  background:
-    radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 24%),
-    linear-gradient(180deg, #eef4ff 0%, #f7f9fc 48%, #eef2f8 100%);
+  padding: 20px;
+  background: #f3f5f8;
+  color: #273244;
 }
 
-.content-eyebrow {
-  display: inline-flex;
+.page-header {
+  display: flex;
   align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.1);
-  color: var(--primary-600);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.port-action-secondary {
-  border-color: rgba(148, 163, 184, 0.22);
-  background: rgba(255, 255, 255, 0.8);
-}
-
-.port-content-shell {
-  padding: 24px 26px;
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  box-shadow: 0 24px 54px rgba(15, 23, 42, 0.08);
-}
-
-.content-heading {
-  display: flex;
-  align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 20px;
+  min-height: 72px;
   margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #d9dfe8;
 }
 
-.content-title {
-  margin-top: 10px;
-  color: var(--text-strong);
-  font-size: 26px;
-  line-height: 1.1;
+.page-title-block { min-width: 0; }
+.title-row, .status-line, .page-actions { display: flex; align-items: center; }
+.title-row { gap: 12px; }
+.title-row h1 { margin: 0; color: #1d2735; font-size: 25px; line-height: 1.2; letter-spacing: 0; }
+.data-state { padding: 4px 7px; border: 1px solid #cbd3de; border-radius: 4px; background: #ffffff; color: #647084; font-size: 12px; }
+.state-ready { border-color: #a7d7bf; background: #f1faf5; color: #28764d; }
+.state-refreshing, .state-initial-loading { border-color: #a9c9e8; background: #f2f7fc; color: #27669c; }
+.state-partial, .state-stale { border-color: #e5c98b; background: #fff9eb; color: #865f11; }
+.state-error { border-color: #e6b0b0; background: #fff4f4; color: #a33b3b; }
+.status-line { gap: 16px; margin-top: 9px; color: #6f7b8d; font-size: 12px; flex-wrap: wrap; }
+.status-line span { display: inline-flex; align-items: center; gap: 5px; }
+.page-actions { justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 16px;
+  border: 1px solid #dfe4ec;
+  border-radius: 8px;
+  background: #ffffff;
 }
 
-.content-note {
-  max-width: 520px;
-  color: var(--text-secondary);
-  font-size: 14px;
+.summary-strip > div { min-width: 0; padding: 15px 18px; border-right: 1px solid #e7ebf1; }
+.summary-strip > div:last-child { border-right: 0; }
+.summary-strip span { display: block; color: #748094; font-size: 12px; }
+.summary-strip strong { display: block; margin-top: 4px; color: #1d2735; font-size: 23px; line-height: 1.15; letter-spacing: 0; }
+.summary-strip .attention strong { color: #b13c3c; }
+.port-management > :deep(.el-alert) { margin-bottom: 16px; border-radius: 6px; }
+.port-management :deep(.el-button) { border-radius: 6px; }
+
+@media (max-width: 800px) {
+  .port-management { padding: 14px; }
+  .page-header { align-items: flex-start; flex-direction: column; }
+  .page-actions { justify-content: flex-start; width: 100%; }
+  .summary-strip { grid-template-columns: 1fr 1fr; }
+  .summary-strip > div:nth-child(2) { border-right: 0; }
+  .summary-strip > div:nth-child(-n + 2) { border-bottom: 1px solid #e7ebf1; }
 }
 
-.stats-inline {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 16px 18px;
-  border-radius: 20px;
-  background: rgba(248, 250, 252, 0.86);
-  border: 1px solid rgba(148, 163, 184, 0.12);
-}
-
-.stat-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  color: var(--text-secondary);
-}
-
-.main-content {
-  margin-top: 16px;
-  padding: 16px;
-  border-radius: 22px;
-  background: rgba(248, 250, 252, 0.86);
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  min-height: 500px;
-}
-
-@media (max-width: 980px) {
-  .content-heading {
-    flex-direction: column;
-  }
-}
-
-@media (max-width: 768px) {
-  .port-management {
-    padding: 16px 14px;
-    gap: 18px;
-  }
-
-  .port-content-shell {
-    padding: 18px;
-    border-radius: 24px;
-  }
+@media (max-width: 480px) {
+  .page-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .page-actions :deep(.el-button) { margin: 0; }
+  .page-actions :deep(.el-button:last-child) { grid-column: 1 / -1; }
 }
 </style>

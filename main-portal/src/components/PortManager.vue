@@ -1,641 +1,477 @@
 <template>
-  <div class="port-manager-compact">
-    <el-alert
-      v-if="scanFeature.disabled"
-      type="warning"
-      :closable="false"
-      show-icon
-      class="scan-alert"
-    >
-      端口扫描功能已禁用，当前展示缓存数据
-    </el-alert>
-
-    <div class="port-list-section">
-      <div class="list-header">
-        <div class="list-header-copy">
-          <span class="list-eyebrow">Occupied Ports</span>
-          <span class="list-title">当前占用的端口</span>
-          <span class="list-note">按应用分组排序，便于快速识别冲突来源和释放目标。</span>
-        </div>
-
-        <div class="list-header-actions">
-          <span v-if="focusedPortText" class="header-pill header-pill-focus">聚焦端口 {{ focusedPortText }}</span>
-          <span class="header-pill">{{ occupiedPorts.length }} 个端口</span>
-          <el-button
-            size="small"
-            class="header-refresh"
-            :loading="loading.refresh"
-            @click="refreshPortStatus"
-          >
-            <el-icon><Refresh /></el-icon> 刷新列表
-          </el-button>
-        </div>
+  <section class="inventory-panel" aria-labelledby="inventory-title">
+    <div class="inventory-toolbar">
+      <div class="toolbar-title">
+        <h2 id="inventory-title">监听端口</h2>
+        <span>{{ filteredRows.length }} / {{ allRows.length }}</span>
       </div>
 
+      <div class="toolbar-controls">
+        <el-input
+          v-model="search"
+          clearable
+          :prefix-icon="Search"
+          placeholder="搜索端口、进程或应用"
+          aria-label="搜索端口、进程或应用"
+          class="search-input"
+        />
+        <el-select v-model="ownershipFilter" aria-label="按归属状态筛选" class="ownership-select">
+          <el-option label="全部归属" value="all" />
+          <el-option
+            v-for="option in ownershipOptions"
+            :key="option.value"
+            :label="option.label"
+            :value="option.value"
+          />
+        </el-select>
+        <el-checkbox v-model="issuesOnly">仅看异常</el-checkbox>
+        <el-button
+          :icon="Refresh"
+          :loading="portStore.loadingStates.refresh"
+          title="刷新端口清单"
+          @click="refreshPortStatus"
+        >
+          刷新
+        </el-button>
+      </div>
+    </div>
+
+    <div v-if="portStore.isInitialLoading" class="inventory-loading" aria-live="polite">
+      <el-skeleton :rows="6" animated />
+    </div>
+
+    <el-empty
+      v-else-if="portStore.dataState === 'error' && !portStore.hasUsableData"
+      description="端口清单暂时不可用"
+      class="inventory-empty"
+    >
+      <el-button type="primary" :icon="Refresh" @click="refreshPortStatus">重新连接</el-button>
+    </el-empty>
+
+    <el-empty
+      v-else-if="filteredRows.length === 0"
+      :description="allRows.length === 0 ? '当前监控范围内没有 TCP 监听端口' : '没有符合筛选条件的端口'"
+      class="inventory-empty"
+    />
+
+    <template v-else>
       <el-table
         ref="tableRef"
-        :data="occupiedPorts"
-        size="small"
-        v-loading="loading.refresh"
-        empty-text="暂无占用端口数据"
-        class="port-table"
+        :data="filteredRows"
+        row-key="port"
+        class="port-table desktop-table"
         :row-class-name="getRowClassName"
       >
-        <el-table-column prop="port" label="端口" width="100">
+        <el-table-column label="端口" width="96">
           <template #default="{ row }">
             <div class="port-cell">
-              <span class="port-number-pill" :class="{ 'port-number-pill-focused': isFocusedPort(row) }">{{ row.port }}</span>
-              <span v-if="isFocusedPort(row)" class="focus-port-badge">焦点</span>
+              <strong>{{ row.port }}</strong>
+              <span v-if="isFocusedPort(row)" class="focus-mark">焦点</span>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column prop="appName" label="应用" min-width="220">
+        <el-table-column label="监听地址" min-width="160">
           <template #default="{ row }">
-            <div class="app-info">
-              <div class="app-copy">
-                <span class="app-name">{{ row.appName || getProcessDisplayName(row.process) }}</span>
-                <span class="app-subtitle">{{ row.process || '未知进程' }}</span>
-              </div>
-              <span
-                v-if="row.portType"
-                class="port-type-badge"
-                :class="`port-type-${row.portType}`"
-              >
-                {{ getPortTypeText(row.portType) }}
+            <div class="primary-secondary">
+              <span>{{ formatAddress(row) }}</span>
+              <small>{{ row.protocol.toUpperCase() }} · {{ row.state === 'listening' ? '监听中' : row.state }}</small>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="实际进程" min-width="170">
+          <template #default="{ row }">
+            <div class="primary-secondary">
+              <span>{{ row.observed.processName || '未知进程' }}</span>
+              <small>{{ row.observed.pid ? `PID ${row.observed.pid}` : 'PID 不可见' }}</small>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="配置应用" min-width="210">
+          <template #default="{ row }">
+            <div v-if="row.expectedApps.length" class="expected-apps">
+              <span v-for="app in row.expectedApps" :key="app.id">
+                {{ app.name }}
+                <small>{{ roleLabel(app.role) }}</small>
               </span>
             </div>
-          </template>
-        </el-table-column>
-
-        <el-table-column prop="pid" label="PID" width="100">
-          <template #default="{ row }">
-            <span v-if="row.pid && row.pid !== 0" class="pid-value">{{ row.pid }}</span>
-            <span v-else class="text-muted">-</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column prop="status" label="状态" width="140">
-          <template #default="{ row }">
-            <div class="status-wrapper">
-              <span
-                v-if="row.status === 'listening' || row.status === 'occupied'"
-                class="pulse-dot"
-              ></span>
-              <span class="status-badge" :class="`status-${normalizeStatus(row.status)}`">
-                {{ getStatusText(row.status) }}
-              </span>
+            <div v-else-if="row.reserved" class="primary-secondary">
+              <span>{{ row.reserved.description }}</span>
+              <small>保留端口</small>
             </div>
+            <span v-else class="muted">未配置</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="110" align="center">
+        <el-table-column label="归属" width="132">
           <template #default="{ row }">
-            <template v-if="row.portType === 'system' || row.portType === 'portal'">
-              <el-button
-                type="info"
-                size="small"
-                text
-                disabled
-                title="核心驻留进程，禁止手动释放"
-              >
-                锁定
-              </el-button>
-            </template>
-            <template v-else>
+            <el-tag :type="ownershipTone(row.ownership)" effect="plain" size="small">
+              {{ ownershipLabel(row.ownership) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="核验时间" width="136">
+          <template #default="{ row }">
+            <span class="checked-time">{{ formatCheckedTime(row.checkedAt) }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="操作" width="184" fixed="right" align="right">
+          <template #default="{ row }">
+            <div class="row-actions">
+              <el-button text :icon="View" @click="showDetails(row)">查看</el-button>
               <el-popconfirm
-                :title="getActionConfirmText(row)"
-                confirm-button-text="确定"
+                v-if="row.capabilities.stopManagedApp"
+                :title="`确定停止应用 ${row.expectedApps[0]?.name || ''}？`"
+                confirm-button-text="停止"
                 cancel-button-text="取消"
-                @confirm="forceReleasePort(row)"
+                @confirm="stopManagedApp(row)"
               >
                 <template #reference>
                   <el-button
-                    type="danger"
-                    size="small"
                     text
-                    class="release-button"
-                    :loading="loading.ports[row.port]"
-                  >
-                    {{ getActionLabel(row) }}
-                  </el-button>
+                    type="warning"
+                    :loading="Boolean(actionLoading[row.port])"
+                  >停止</el-button>
                 </template>
               </el-popconfirm>
-            </template>
+              <el-tooltip v-else-if="row.protected" content="系统或门户保留端口禁止释放">
+                <el-icon class="locked-action"><Lock /></el-icon>
+              </el-tooltip>
+            </div>
           </template>
         </el-table-column>
       </el-table>
-    </div>
-  </div>
+
+      <div class="mobile-list">
+        <article
+          v-for="row in filteredRows"
+          :key="row.port"
+          :class="['mobile-port', { focused: isFocusedPort(row) }]"
+        >
+          <div class="mobile-port-head">
+            <div>
+              <strong>{{ row.port }}</strong>
+              <span>{{ formatAddress(row) }}</span>
+            </div>
+            <el-tag :type="ownershipTone(row.ownership)" effect="plain" size="small">
+              {{ ownershipLabel(row.ownership) }}
+            </el-tag>
+          </div>
+          <dl>
+            <div><dt>实际进程</dt><dd>{{ row.observed.processName || '未知进程' }} · {{ row.observed.pid || 'PID 不可见' }}</dd></div>
+            <div><dt>配置应用</dt><dd>{{ expectedAppText(row) }}</dd></div>
+            <div><dt>核验时间</dt><dd>{{ formatCheckedTime(row.checkedAt) }}</dd></div>
+          </dl>
+          <div class="mobile-actions">
+            <el-button :icon="View" @click="showDetails(row)">查看</el-button>
+            <el-button
+              v-if="row.capabilities.stopManagedApp"
+              type="warning"
+              :loading="Boolean(actionLoading[row.port])"
+              @click="confirmMobileStop(row)"
+            >停止应用</el-button>
+          </div>
+        </article>
+      </div>
+    </template>
+
+    <el-drawer
+      v-model="detailVisible"
+      title="端口详情"
+      size="min(460px, 94vw)"
+      append-to-body
+    >
+      <template v-if="selectedRow">
+        <div class="detail-port">{{ selectedRow.port }}</div>
+        <el-alert
+          v-if="selectedRow.conflictReason"
+          type="error"
+          :closable="false"
+          show-icon
+          :title="selectedRow.conflictReason"
+        />
+        <el-descriptions :column="1" border class="detail-descriptions">
+          <el-descriptions-item label="监听地址">{{ formatAddress(selectedRow) }}</el-descriptions-item>
+          <el-descriptions-item label="协议">{{ selectedRow.protocol.toUpperCase() }}</el-descriptions-item>
+          <el-descriptions-item label="实际进程">
+            {{ selectedRow.observed.processName || '未知进程' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="进程 PID">{{ selectedRow.observed.pid || '不可见' }}</el-descriptions-item>
+          <el-descriptions-item label="配置应用">{{ expectedAppText(selectedRow) }}</el-descriptions-item>
+          <el-descriptions-item label="归属判断">{{ ownershipLabel(selectedRow.ownership) }}</el-descriptions-item>
+          <el-descriptions-item label="保护状态">{{ selectedRow.protected ? '受保护' : '普通端口' }}</el-descriptions-item>
+          <el-descriptions-item label="快照编号">{{ portStore.snapshot?.snapshotId || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="核验时间">{{ new Date(selectedRow.checkedAt).toLocaleString('zh-CN') }}</el-descriptions-item>
+        </el-descriptions>
+        <div v-if="isAdmin && selectedRow.capabilities.forceRelease" class="detail-actions">
+          <el-button
+            type="danger"
+            plain
+            :loading="Boolean(actionLoading[selectedRow.port])"
+            @click="confirmDetailForceRelease"
+          >强制释放当前 PID</el-button>
+        </div>
+      </template>
+    </el-drawer>
+  </section>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, onMounted, onUnmounted, nextTick, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
-import { portRealtimeWebSocket, type PortStatistics } from '@/services/portManagementApi'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Lock, Refresh, Search, View } from '@element-plus/icons-vue'
 import { appsApiService } from '@/services/appsApi'
+import { portInventoryApi, type PortInventoryRow, type PortOwnership } from '@/services/portInventoryApi'
+import { useAuthStore } from '@/stores/auth'
 import { usePortMonitoringStore } from '@/stores/portMonitoring'
-import { getStoredAccessToken } from '@/utils/authStorage'
 
-const props = defineProps<{
-  focusPort?: number | null
-}>()
-
+const props = defineProps<{ focusPort?: number | null }>()
 const portStore = usePortMonitoringStore()
+const authStore = useAuthStore()
 const tableRef = ref<{ $el?: HTMLElement } | null>(null)
+const search = ref('')
+const ownershipFilter = ref<PortOwnership | 'all'>('all')
+const issuesOnly = ref(false)
+const selectedRow = ref<PortInventoryRow | null>(null)
+const detailVisible = ref(false)
+const actionLoading = reactive<Record<number, boolean>>({})
 
-const loading = reactive({
-  refresh: false,
-  ports: {} as Record<number, boolean>
-})
-
-const occupiedPorts = computed(() => {
-  const list = [...portStore.occupiedPortsList]
-  return list.sort((a, b) => {
-    const aName = a.appName || getProcessDisplayName(a.process)
-    const bName = b.appName || getProcessDisplayName(b.process)
-    if (aName !== bName) return aName.localeCompare(bName)
-    return a.port - b.port
+const isAdmin = computed(() => authStore.isAdmin)
+const allRows = computed(() => portStore.snapshot?.ports || [])
+const filteredRows = computed(() => {
+  const needle = search.value.trim().toLowerCase()
+  return allRows.value.filter(row => {
+    if (ownershipFilter.value !== 'all' && row.ownership !== ownershipFilter.value) return false
+    if (issuesOnly.value && !row.conflict && !['mismatch', 'duplicate-config', 'unmanaged', 'unverified'].includes(row.ownership)) return false
+    if (!needle) return true
+    return [
+      row.port,
+      row.address,
+      row.observed.pid,
+      row.observed.processName,
+      row.reserved?.description,
+      ...row.expectedApps.flatMap(app => [app.name, app.id])
+    ].some(value => String(value || '').toLowerCase().includes(needle))
   })
 })
 
-const focusedPortText = computed(() => (
-  typeof props.focusPort === 'number' && props.focusPort > 0
-    ? String(props.focusPort)
-    : ''
-))
+const ownershipOptions: Array<{ value: PortOwnership; label: string }> = [
+  { value: 'verified', label: '已核验' },
+  { value: 'mismatch', label: '归属不符' },
+  { value: 'duplicate-config', label: '重复配置' },
+  { value: 'unmanaged', label: '未纳管' },
+  { value: 'unverified', label: '待核验' },
+  { value: 'reserved', label: '保留端口' }
+]
 
-const isFocusedPort = (row: { port: number }) => (
-  typeof props.focusPort === 'number' &&
-  props.focusPort > 0 &&
-  row.port === props.focusPort
-)
-
-const getRowClassName = ({ row }: { row: { port: number } }) => (
-  isFocusedPort(row) ? 'port-row-focused' : ''
-)
-
-const scrollToFocusedPort = async () => {
-  if (!focusedPortText.value) {
-    return
-  }
-
-  await nextTick()
-
-  const root = tableRef.value?.$el
-  const rowElement = root?.querySelector('.el-table__body tr.port-row-focused') as HTMLElement | null
-  rowElement?.scrollIntoView({
-    behavior: 'smooth',
-    block: 'center'
-  })
+const ownershipLabel = (ownership: PortOwnership) => ownershipOptions.find(item => item.value === ownership)?.label || ownership
+const ownershipTone = (ownership: PortOwnership): 'success' | 'warning' | 'danger' | 'info' => {
+  if (ownership === 'verified') return 'success'
+  if (ownership === 'mismatch' || ownership === 'duplicate-config') return 'danger'
+  if (ownership === 'unmanaged' || ownership === 'unverified') return 'warning'
+  return 'info'
 }
-
-const isManagedAppPort = (row: { appId?: string }) => Boolean(row.appId && row.appId !== 'system')
-
-const getActionLabel = (row: { appId?: string }) => {
-  return isManagedAppPort(row) ? '停止' : '释放'
+const roleLabel = (role: string) => ({ frontend: '前端', backend: '后端', other: '其他' }[role] || role)
+const formatAddress = (row: PortInventoryRow) => row.address.includes(`:${row.port}`) ? row.address : `${row.address}:${row.port}`
+const formatCheckedTime = (value: string) => new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const expectedAppText = (row: PortInventoryRow) => {
+  if (row.expectedApps.length) return row.expectedApps.map(app => app.name).join('、')
+  return row.reserved?.description || '未配置'
 }
-
-const getActionConfirmText = (row: { appId?: string; appName?: string; port: number }) => {
-  if (isManagedAppPort(row)) {
-    return row.appName ? `确定要停止应用 ${row.appName} 吗？` : `确定要停止占用端口 ${row.port} 的应用吗？`
-  }
-  return `确定要释放端口 ${row.port} 吗？`
-}
-
-const scanFeature = reactive({
-  disabled: false,
-  reason: ''
-})
+const isFocusedPort = (row: PortInventoryRow) => Boolean(props.focusPort && row.port === props.focusPort)
+const getRowClassName = ({ row }: { row: PortInventoryRow }) => isFocusedPort(row) ? 'port-row-focused' : ''
 
 const refreshPortStatus = async () => {
-  loading.refresh = true
   try {
     await portStore.refreshAll(true)
   } catch (error) {
-    console.error('刷新端口状态失败:', error)
-    ElMessage.error('刷新失败')
-  } finally {
-    loading.refresh = false
+    ElMessage.error(error instanceof Error ? error.message : '端口清单刷新失败')
   }
 }
 
-const forceReleasePort = async (row: { port: number; appId?: string; appName?: string }) => {
-  const { port, appId } = row
-  loading.ports[port] = true
+const verifyReleased = (row: PortInventoryRow) => {
+  const current = portStore.snapshot?.ports.find(item => item.port === row.port)
+  if (current) {
+    ElMessage.warning(`操作已执行，但端口 ${row.port} 仍在监听，请查看新的进程信息`)
+    return false
+  }
+  return true
+}
+
+const stopManagedApp = async (row: PortInventoryRow) => {
+  const app = row.expectedApps[0]
+  if (!app || !row.capabilities.stopManagedApp) return
+
+  actionLoading[row.port] = true
   try {
-    if (appId && appId !== 'system') {
-      const result = await appsApiService.stopApp(appId, { showErrorMessage: false })
-
-      if (result.success) {
-        await refreshPortStatus()
-      } else {
-        ElMessage.error(result.message || (typeof result.error === 'string' ? result.error : (result as any).error?.message) || `停止应用失败，端口 ${port} 未释放`)
-      }
-    } else {
-      const token = getStoredAccessToken()
-      const response = await fetch(`/api/v2/config/ports/${port}/force-release`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        }
-      })
-      const result = await response.json()
-
-      if (result.success) {
-        await refreshPortStatus()
-      } else {
-        ElMessage.error(result.message || result.error?.message || `释放端口 ${port} 失败`)
-      }
-    }
+    const result = await appsApiService.stopApp(app.id, { showErrorMessage: false })
+    if (!result.success) throw new Error(result.message || String(result.error || '停止应用失败'))
+    await portStore.refreshAll(true)
+    if (verifyReleased(row)) ElMessage.success(`应用 ${app.name} 已停止，端口 ${row.port} 已释放`)
   } catch (error) {
-    const detail = error instanceof Error ? error.message : ''
-    if (appId && appId !== 'system') {
-      ElMessage.error(detail ? `停止应用失败: ${detail}` : `停止应用失败，端口 ${port} 未释放`)
-    } else {
-      ElMessage.error(detail ? `释放端口 ${port} 失败: ${detail}` : `释放端口 ${port} 失败`)
-    }
+    ElMessage.error(error instanceof Error ? error.message : '停止应用失败')
   } finally {
-    loading.ports[port] = false
+    actionLoading[row.port] = false
   }
 }
 
-const normalizeStatus = (status: string) => {
-  const value = String(status || '').toLowerCase()
-  if (value === 'listening' || value === 'occupied') return 'active'
-  if (value === 'allocated') return 'allocated'
-  if (value === 'conflict' || value === 'error') return 'conflict'
-  return 'available'
-}
+const forceRelease = async (row: PortInventoryRow) => {
+  const snapshotId = portStore.snapshot?.snapshotId
+  if (!isAdmin.value || !row.capabilities.forceRelease || !row.observed.pid || !snapshotId) return
 
-const getStatusText = (status: string) => {
-  const map: Record<string, string> = {
-    listening: '监听中',
-    allocated: '已分配',
-    open: '开放',
-    occupied: '占用中',
-    conflict: '冲突',
-    free: '空闲',
-    available: '可用'
+  actionLoading[row.port] = true
+  try {
+    await portInventoryApi.forceRelease(row.port, row.observed.pid, snapshotId)
+    await portStore.refreshAll(true)
+    if (verifyReleased(row)) ElMessage.success(`端口 ${row.port} 已释放`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '强制释放失败')
+  } finally {
+    actionLoading[row.port] = false
   }
-  return map[status] || status || '未知'
 }
 
-const getProcessDisplayName = (name: string) => {
-  if (!name || name === 'Unknown') return '未知进程'
-  const map: Record<string, string> = {
-    node: 'Node.js',
-    'node.exe': 'Node.js',
-    'Node.js': 'Node.js',
-    vite: 'Vite',
-    tsx: 'TSX',
-    npm: 'NPM',
-    'detection-api': '检测 API'
+const confirmDetailForceRelease = async () => {
+  const row = selectedRow.value
+  if (!row) return
+  try {
+    await ElMessageBox.confirm(
+      `仅终止当前观察到的 PID ${row.observed.pid}。若进程发生变化，服务端会拒绝操作。`,
+      `强制释放端口 ${row.port}`,
+      { type: 'warning', confirmButtonText: '强制释放', cancelButtonText: '取消' }
+    )
+    await forceRelease(row)
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error instanceof Error ? error.message : '操作未完成')
+    }
   }
-  return map[name] || name
 }
 
-const getPortTypeText = (type: string) => {
-  const map: Record<string, string> = {
-    frontend: '前端',
-    backend: '后端',
-    system: '系统',
-    portal: '门户',
-    other: '其他'
+const confirmMobileStop = async (row: PortInventoryRow) => {
+  const app = row.expectedApps[0]
+  if (!app) return
+  try {
+    await ElMessageBox.confirm(
+      `停止应用后将重新核验端口 ${row.port}。`,
+      `停止应用 ${app.name}`,
+      { type: 'warning', confirmButtonText: '停止', cancelButtonText: '取消' }
+    )
+    await stopManagedApp(row)
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error instanceof Error ? error.message : '操作未完成')
+    }
   }
-  return map[type] || type
 }
 
-const handleRealtimeStatistics = (stats: PortStatistics) => {
-  portStore.quickStats.total = Number(stats.total) || 0
-  portStore.quickStats.occupied = Number(stats.totalAllocated ?? stats.allocated ?? 0)
-  portStore.quickStats.available = Number(stats.available) || 0
-  portStore.quickStats.conflicts = Number(stats.conflicts || 0)
+const showDetails = (row: PortInventoryRow) => {
+  selectedRow.value = row
+  detailVisible.value = true
 }
 
-const handlePortAllocation = () => {
-  portStore.fetchOccupiedPorts(true)
+const scrollToFocusedPort = async () => {
+  if (!props.focusPort) return
+  await nextTick()
+  const row = tableRef.value?.$el?.querySelector('.port-row-focused') as HTMLElement | null
+  row?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
-
-defineExpose({
-  refreshPortStatus
-})
-
-onMounted(() => {
-  refreshPortStatus()
-  void scrollToFocusedPort()
-
-  portRealtimeWebSocket.on('port_statistics', handleRealtimeStatistics)
-  portRealtimeWebSocket.on('port_allocation', handlePortAllocation)
-})
 
 watch(
-  () => `${focusedPortText.value}|${occupiedPorts.value.map((row) => row.port).join(',')}`,
-  () => {
-    void scrollToFocusedPort()
-  },
-  {
-    flush: 'post'
-  }
+  () => `${props.focusPort || ''}|${filteredRows.value.map(row => row.port).join(',')}`,
+  () => void scrollToFocusedPort(),
+  { flush: 'post', immediate: true }
 )
 
-onUnmounted(() => {
-  portRealtimeWebSocket.off('port_statistics', handleRealtimeStatistics)
-  portRealtimeWebSocket.off('port_allocation', handlePortAllocation)
-})
+defineExpose({ refreshPortStatus })
 </script>
 
 <style scoped>
-.scan-alert {
-  margin-bottom: 16px;
-  border-radius: 18px;
+.inventory-panel {
+  overflow: hidden;
+  border: 1px solid #dfe4ec;
+  border-radius: 8px;
+  background: #ffffff;
 }
 
-.port-list-section {
+.inventory-toolbar {
   display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.list-header {
-  display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-  flex-wrap: wrap;
+  min-height: 64px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e9f0;
 }
 
-.list-header-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.list-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.1);
-  color: var(--primary-600);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.list-title {
-  color: var(--text-strong);
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.list-note {
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-
-.list-header-actions {
+.toolbar-title,
+.toolbar-controls,
+.row-actions,
+.port-cell,
+.mobile-port-head,
+.mobile-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
 }
 
-.header-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(255, 255, 255, 0.76);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 700;
+.toolbar-title { gap: 10px; }
+.toolbar-title h2 { margin: 0; color: #1f2937; font-size: 17px; letter-spacing: 0; }
+.toolbar-title span { color: #7a8495; font-size: 12px; }
+.toolbar-controls { justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.search-input { width: 250px; }
+.ownership-select { width: 142px; }
+
+.inventory-loading { padding: 24px; }
+.inventory-empty { min-height: 360px; }
+.port-table { width: 100%; }
+.port-table :deep(th.el-table__cell) { height: 42px; background: #f7f8fa; color: #596579; font-size: 12px; font-weight: 600; }
+.port-table :deep(td.el-table__cell) { padding: 12px 0; }
+.port-table :deep(.el-table__body tr.port-row-focused > td.el-table__cell) { background: #fff8e8; }
+.port-table :deep(.el-tag) { border-radius: 4px; }
+
+.port-cell { gap: 7px; }
+.port-cell strong, .detail-port { color: #1769aa; font-family: var(--font-number); }
+.focus-mark { padding: 2px 5px; border-radius: 4px; background: #fff0c2; color: #8a5b00; font-size: 10px; }
+.primary-secondary, .expected-apps, .expected-apps > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.primary-secondary > span, .expected-apps > span { overflow: hidden; color: #273244; text-overflow: ellipsis; white-space: nowrap; }
+.primary-secondary small, .expected-apps small, .checked-time { color: #7a8495; font-size: 12px; }
+.expected-apps { gap: 7px; }
+.muted { color: #98a1af; }
+.row-actions { justify-content: flex-end; gap: 2px; min-height: 32px; }
+.locked-action { margin: 0 12px; color: #8b95a5; }
+
+.mobile-list { display: none; }
+.detail-port { margin: 0 0 16px; font-size: 30px; font-weight: 700; letter-spacing: 0; }
+.detail-descriptions { margin-top: 16px; }
+.detail-actions { display: flex; justify-content: flex-end; margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e9f0; }
+
+@media (max-width: 900px) {
+  .inventory-toolbar { align-items: flex-start; flex-direction: column; }
+  .toolbar-controls { justify-content: flex-start; width: 100%; }
+  .search-input { flex: 1 1 220px; width: auto; }
 }
 
-.header-pill-focus {
-  border-color: rgba(245, 158, 11, 0.24);
-  background: rgba(255, 247, 237, 0.9);
-  color: var(--warning-500);
-}
-
-.header-refresh {
-  min-height: 38px;
-  border-radius: 999px;
-  border-color: rgba(148, 163, 184, 0.18);
-}
-
-.port-table :deep(.el-table) {
-  --el-table-header-bg-color: rgba(248, 250, 252, 0.82);
-  --el-table-row-hover-bg-color: rgba(37, 99, 235, 0.04);
-}
-
-.port-table :deep(th.el-table__cell) {
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.port-table :deep(td.el-table__cell) {
-  padding-top: 14px;
-  padding-bottom: 14px;
-}
-
-.port-table :deep(.el-table__body tr.port-row-focused > td.el-table__cell) {
-  background: rgba(255, 247, 237, 0.82);
-}
-
-.port-table :deep(.el-table__body tr.port-row-focused > td.el-table__cell:first-child) {
-  box-shadow: inset 4px 0 0 rgba(245, 158, 11, 0.9);
-}
-
-.port-table :deep(.el-table__body tr.port-row-focused:hover > td.el-table__cell) {
-  background: rgba(255, 247, 237, 0.92);
-}
-
-.port-number-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.08);
-  color: var(--primary-600);
-  font-family: var(--font-number);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.port-number-pill-focused {
-  background: rgba(245, 158, 11, 0.16);
-  color: #b45309;
-  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.24);
-}
-
-.port-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.focus-port-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: rgba(245, 158, 11, 0.12);
-  color: var(--warning-500);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.text-muted {
-  color: var(--text-tertiary);
-}
-
-.app-info {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.app-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.app-name {
-  color: var(--text-strong);
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.app-subtitle {
-  color: var(--text-secondary);
-  font-size: 12px;
-  word-break: break-all;
-}
-
-.port-type-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.port-type-frontend {
-  background: rgba(37, 99, 235, 0.1);
-  color: var(--primary-600);
-}
-
-.port-type-backend {
-  background: rgba(5, 150, 105, 0.1);
-  color: var(--success-500);
-}
-
-.port-type-system,
-.port-type-portal {
-  background: rgba(217, 119, 6, 0.1);
-  color: var(--warning-500);
-}
-
-.port-type-other {
-  background: rgba(148, 163, 184, 0.12);
-  color: var(--text-secondary);
-}
-
-.pid-value {
-  font-family: var(--font-number);
-  color: var(--text-strong);
-  font-weight: 700;
-}
-
-.status-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.status-active {
-  background: rgba(236, 253, 245, 0.92);
-  color: var(--success-500);
-}
-
-.status-allocated {
-  background: rgba(255, 247, 237, 0.92);
-  color: var(--warning-500);
-}
-
-.status-conflict {
-  background: rgba(254, 242, 242, 0.92);
-  color: var(--danger-500);
-}
-
-.status-available {
-  background: rgba(248, 250, 252, 0.92);
-  color: var(--text-secondary);
-}
-
-.pulse-dot {
-  width: 8px;
-  height: 8px;
-  background-color: var(--success-500);
-  border-radius: 50%;
-  display: inline-block;
-  animation: pulse-animation 2s infinite;
-}
-
-.release-button {
-  font-weight: 700;
-}
-
-@keyframes pulse-animation {
-  0% {
-    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.4);
-  }
-  70% {
-    box-shadow: 0 0 0 5px rgba(5, 150, 105, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0);
-  }
-}
-
-@media (max-width: 768px) {
-  .list-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .list-header-actions,
-  .header-refresh {
-    width: 100%;
-  }
+@media (max-width: 720px) {
+  .desktop-table { display: none; }
+  .mobile-list { display: block; }
+  .toolbar-controls { display: grid; grid-template-columns: 1fr 1fr; }
+  .search-input { grid-column: 1 / -1; width: 100%; }
+  .ownership-select { width: 100%; }
+  .mobile-port { padding: 16px; border-bottom: 1px solid #e5e9f0; }
+  .mobile-port:last-child { border-bottom: 0; }
+  .mobile-port.focused { box-shadow: inset 3px 0 #d89b18; background: #fffaf0; }
+  .mobile-port-head { justify-content: space-between; gap: 12px; }
+  .mobile-port-head > div { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .mobile-port-head strong { color: #1769aa; font-size: 20px; }
+  .mobile-port-head span { overflow: hidden; color: #7a8495; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-port dl { display: grid; gap: 8px; margin: 14px 0; }
+  .mobile-port dl div { display: grid; grid-template-columns: 76px 1fr; gap: 8px; }
+  .mobile-port dt { color: #7a8495; font-size: 12px; }
+  .mobile-port dd { margin: 0; color: #273244; font-size: 13px; word-break: break-word; }
+  .mobile-actions { justify-content: flex-end; gap: 8px; }
 }
 </style>

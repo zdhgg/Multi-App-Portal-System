@@ -1666,7 +1666,9 @@ export class ApplicationService implements IApplicationService {
         try {
           const packageJson = JSON.parse(readFileSync(backendPackageJson, 'utf-8'))
           const scripts = packageJson.scripts || {}
-          if (scripts.dev) {
+          if (scripts['dev:watch']) {
+            backendStartCommand = 'npm run dev:watch'
+          } else if (scripts.dev) {
             backendStartCommand = 'npm run dev'
           } else if (scripts['dev:simple']) {
             backendStartCommand = 'npm run dev:simple'
