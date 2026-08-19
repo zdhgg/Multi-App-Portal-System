@@ -53,6 +53,7 @@ export type {
   AppStatusUpdateRequest,
   AppQueryParams,
   AppStats,
+  LifecycleOperation,
   PortDetectionResult,
   PortConflictCheck
 } from './appsApi'

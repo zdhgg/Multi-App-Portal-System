@@ -7,7 +7,7 @@
 
 import { readdir, stat, writeFile, copyFile, unlink } from 'fs/promises'
 import { join, basename } from 'path'
-import { existsSync, readFileSync, readdirSync } from 'fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { spawn, ChildProcess } from 'child_process'
 import ConfigService from '../services/configService'
 import type {
@@ -910,6 +910,7 @@ export class SimpleProcessManager implements ProcessManager {
   private readonly healthStartupGraceMs = 120000 // 覆盖全栈端口就绪等待，避免健康检查误杀冷启动进程
   private readonly healthFailureThreshold = 2 // 连续失败阈值，避免瞬时端口抖动或检测误差误杀进程
   private readonly healthFailureCounts = new Map<string, number>()
+  private readonly apiBasePathScanCache = new Map<string, { value: string | null; expiresAt: number }>()
   private applicationRepository?: ApplicationRepository // 用于状态同步
   private healthCheckInterval?: NodeJS.Timeout // 健康检查定时器
   private wsService?: any // WebSocket服务，用于实时推送日志
@@ -1960,6 +1961,15 @@ export class SimpleProcessManager implements ProcessManager {
       const baseConfigFileName = baseConfigPath ? basename(baseConfigPath) : null
       const proxyConfig = this.buildViteProxyConfigContent(backendTarget, baseConfigFileName)
 
+      if (existsSync(configPath) && readFileSync(configPath, 'utf8') === proxyConfig) {
+        logger.debug('Vite proxy configuration is already up to date', {
+          workingDir,
+          backendPort,
+          configPath
+        })
+        return
+      }
+
       await writeFile(configPath, proxyConfig, 'utf-8')
 
       logger.info('Created Vite proxy configuration for LAN access', {
@@ -2028,6 +2038,12 @@ export class SimpleProcessManager implements ProcessManager {
   }
 
   private detectRelativeApiBasePathFromFiles(workingDir: string): string | null {
+    const cacheKey = workingDir.replace(/\\/g, '/').toLowerCase()
+    const cached = this.apiBasePathScanCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value
+    }
+
     const candidateScores = new Map<string, number>()
     const supportedExtensions = new Set([
       '.js',
@@ -2043,9 +2059,11 @@ export class SimpleProcessManager implements ProcessManager {
     const skipDirs = new Set(['node_modules', 'dist', 'build', '.git', '.next', '.nuxt', 'coverage'])
     const maxDepth = 3
     const maxFileSizeBytes = 256 * 1024
+    const maxFilesToRead = 400
+    let filesRead = 0
 
     const visit = (dirPath: string, depth: number) => {
-      if (depth > maxDepth || !existsSync(dirPath)) {
+      if (depth > maxDepth || filesRead >= maxFilesToRead || !existsSync(dirPath)) {
         return
       }
 
@@ -2062,7 +2080,31 @@ export class SimpleProcessManager implements ProcessManager {
         return
       }
 
+      entries.sort((left, right) => {
+        const priority = (entry: { name: string; isDirectory(): boolean }) => {
+          const normalizedName = entry.name.toLowerCase()
+          if (!entry.isDirectory() && (
+            normalizedName.startsWith('.env') ||
+            normalizedName.includes('config') ||
+            normalizedName.includes('api') ||
+            normalizedName.includes('client')
+          )) {
+            return 0
+          }
+          if (entry.isDirectory() && ['src', 'app', 'apps'].includes(normalizedName)) {
+            return 1
+          }
+          return entry.isDirectory() ? 3 : 2
+        }
+
+        return priority(left) - priority(right) || left.name.localeCompare(right.name)
+      })
+
       for (const entry of entries) {
+        if (filesRead >= maxFilesToRead) {
+          break
+        }
+
         if (entry.isDirectory()) {
           if (!skipDirs.has(entry.name)) {
             visit(join(dirPath, entry.name), depth + 1)
@@ -2081,11 +2123,11 @@ export class SimpleProcessManager implements ProcessManager {
         const filePath = join(dirPath, entry.name)
         let content = ''
         try {
-          const fileContent = readFileSync(filePath, 'utf8')
-          if (Buffer.byteLength(fileContent, 'utf8') > maxFileSizeBytes) {
+          if (statSync(filePath).size > maxFileSizeBytes) {
             continue
           }
-          content = fileContent
+          filesRead += 1
+          content = readFileSync(filePath, 'utf8')
         } catch {
           continue
         }
@@ -2117,7 +2159,20 @@ export class SimpleProcessManager implements ProcessManager {
       return rightValue.length - leftValue.length
     })
 
-    return rankedCandidates[0]?.[0] ?? null
+    const result = rankedCandidates[0]?.[0] ?? null
+    this.apiBasePathScanCache.set(cacheKey, {
+      value: result,
+      expiresAt: Date.now() + 5 * 60 * 1000
+    })
+
+    logger.debug('Resolved relative API base path from project files', {
+      workingDir,
+      result: result ?? '/api',
+      filesRead,
+      truncated: filesRead >= maxFilesToRead
+    })
+
+    return result
   }
 
   private buildViteProxyConfigContent(backendTarget: string, baseConfigFileName: string | null): string {

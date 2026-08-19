@@ -14,17 +14,20 @@ import { logger } from '../../utils/logger';
 import { AppConfigValidator } from '../../services/AppConfigValidator';
 import { ConfigFixer } from '../../services/ConfigFixer';
 import { auditLogService } from '../../services/auditLogService';
+import { LifecycleOperationService } from '../../services/LifecycleOperationService';
 export class ApplicationsController {
     applicationService;
     serviceContainer;
     router = Router();
     configValidator;
     configFixer;
-    constructor(applicationService, serviceContainer) {
+    lifecycleOperationService;
+    constructor(applicationService, serviceContainer, lifecycleOperationService = new LifecycleOperationService()) {
         this.applicationService = applicationService;
         this.serviceContainer = serviceContainer;
         this.configValidator = new AppConfigValidator();
         this.configFixer = new ConfigFixer();
+        this.lifecycleOperationService = lifecycleOperationService;
         this.setupRoutes();
     }
 
@@ -34,6 +37,7 @@ export class ApplicationsController {
         this.router.post('/', this.handleCreateApplication.bind(this));
         this.router.get('/stats/processes', this.handleGetProcessStats.bind(this));
         this.router.get('/processes/running', this.handleGetRunningProcesses.bind(this));
+        this.router.get('/lifecycle-operations/:operationId', this.handleGetLifecycleOperation.bind(this));
         this.router.get('/pinned', this.handleGetPinnedApplications.bind(this));
         this.router.post('/import/precheck', this.handleImportPrecheck.bind(this));
         this.router.post('/import/batch', this.handleBatchImport.bind(this));
@@ -51,6 +55,7 @@ export class ApplicationsController {
 
         // Application specific routes
         this.router.get('/:id/logs', this.handleGetApplicationLogs.bind(this));
+        this.router.get('/:id/lifecycle-operation', this.handleGetLatestLifecycleOperation.bind(this));
         this.router.put('/:id/start', this.handleStartApplication.bind(this));
         this.router.put('/:id/stop', this.handleStopApplication.bind(this));
         this.router.put('/:id', this.handleUpdateApplication.bind(this));
@@ -65,7 +70,10 @@ export class ApplicationsController {
             const limit = parseInt(req.query.limit, 10) || 1000;
             const startIndex = (page - 1) * limit;
             const endIndex = startIndex + limit;
-            const paginatedData = applications.slice(startIndex, endIndex);
+            const paginatedData = applications.slice(startIndex, endIndex).map(app => ({
+                ...app,
+                lifecycleOperation: this.lifecycleOperationService.getActiveForApp(app.id)
+            }));
             res.json({
                 success: true,
                 data: paginatedData,
@@ -86,7 +94,10 @@ export class ApplicationsController {
             const application = await this.applicationService.findById(req.params.id);
             res.json({
                 success: true,
-                data: application
+                data: {
+                    ...application,
+                    lifecycleOperation: this.lifecycleOperationService.getActiveForApp(application.id)
+                }
             });
         }
         catch (error) {
@@ -359,33 +370,57 @@ export class ApplicationsController {
         try {
             const { id } = req.params;
             const appBefore = await this.applicationService.findById(id);
-            await this.applicationService.start(id);
-            const app = await this.applicationService.findById(id);
-            const url = this.generateAppUrl(req, app, app.network?.primaryPort || 3000);
-            this.logLifecycleEvent(req, {
-                action: 'application.lifecycle.start',
-                success: true,
-                details: {
-                    appId: id,
-                    appName: app.name,
-                    fromState: appBefore.state,
-                    toState: app.state,
-                    primaryPort: app.network?.primaryPort
+            const url = this.generateAppUrl(req, appBefore, appBefore.network?.primaryPort || 3000);
+            const { operation, reused } = this.lifecycleOperationService.enqueue(id, 'start', async () => {
+                try {
+                    await this.applicationService.start(id);
+                    const app = await this.applicationService.findById(id);
+                    this.logLifecycleEvent(req, {
+                        action: 'application.lifecycle.start',
+                        success: true,
+                        details: {
+                            appId: id,
+                            appName: app.name,
+                            fromState: appBefore.state,
+                            toState: app.state,
+                            primaryPort: app.network?.primaryPort
+                        }
+                    });
+
+                    return {
+                        id: app.id,
+                        name: app.name,
+                        status: app.state,
+                        url,
+                        ports: {
+                            primary: app.network?.primaryPort,
+                            secondary: app.network?.secondaryPorts
+                        }
+                    };
+                }
+                catch (error) {
+                    this.logLifecycleEvent(req, {
+                        action: 'application.lifecycle.start',
+                        success: false,
+                        details: {
+                            appId: id,
+                            appName: appBefore?.name,
+                            error: error?.message || String(error)
+                        }
+                    });
+                    throw error;
                 }
             });
-            res.json({
+
+            res.status(202).json({
                 success: true,
                 data: {
-                    id: app.id,
-                    name: app.name,
-                    status: app.state,
-                    url,
-                    ports: {
-                        primary: app.network?.primaryPort,
-                        secondary: app.network?.secondaryPorts
-                    }
+                    ...operation,
+                    reused
                 },
-                message: 'Application started successfully'
+                message: reused
+                    ? 'Application startup is already in progress'
+                    : 'Application startup accepted'
             });
         }
         catch (error) {
@@ -399,6 +434,25 @@ export class ApplicationsController {
             });
             this.handleError(res, error, 'Failed to start application');
         }
+    }
+    async handleGetLifecycleOperation(req, res) {
+        const operation = this.lifecycleOperationService.get(req.params.operationId);
+        if (!operation) {
+            res.status(404).json({
+                success: false,
+                error: {
+                    code: 'LIFECYCLE_OPERATION_NOT_FOUND',
+                    message: 'Lifecycle operation not found'
+                }
+            });
+            return;
+        }
+
+        res.json({ success: true, data: operation });
+    }
+    async handleGetLatestLifecycleOperation(req, res) {
+        const operation = this.lifecycleOperationService.getLatestForApp(req.params.id);
+        res.json({ success: true, data: operation });
     }
     async handleStopApplication(req, res) {
         try {
@@ -1863,4 +1917,3 @@ export class ApplicationsController {
         return this.router;
     }
 }
-//# sourceMappingURL=ApplicationsController.js.map

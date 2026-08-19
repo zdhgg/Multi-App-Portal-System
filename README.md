@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.5.0-success.svg)
+![Version](https://img.shields.io/badge/version-1.5.1-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.5.1-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.5.0`
-- **GitHub Release**: [v1.5.0: 统一端口清单与运行态可靠性升级](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.0)
+- **当前版本**: `1.5.1`
+- **GitHub Release**: [v1.5.1: 应用启动生命周期与状态确认补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.1)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -248,6 +248,17 @@ VITE_WS_BASE=
 ## 📝 更新日志
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
+
+### v1.5.1 (2026-08-19) — 应用启动生命周期与状态确认补丁
+- 🔄 **异步启动任务**
+  - 启动请求立即返回任务 ID，前端轮询确认慢启动、成功和失败状态
+  - 页面刷新后会读取当前应用的待处理任务并继续确认，不再丢失启动状态
+- 🧭 **重复操作保护**
+  - 同一应用的重复启动请求复用正在执行的任务，避免并发拉起多个进程
+  - PM2 启动在真实进程状态确认完成前保持“启动中”，修复短暂确认窗口内的重复点击
+- 🧾 **接口与发布资料**
+  - 新增生命周期任务状态查询和按应用查询接口，失败结果保留结构化错误信息
+  - 根项目、前后端包、系统配置、锁文件和前端内置更新记录统一到 `1.5.1`
 
 ### v1.5.0 (2026-08-15) — 统一端口清单与运行态可靠性升级
 - 🔌 **统一端口清单**
@@ -496,4 +507,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.5.0 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.5.1 - 让应用管理更简单、更智能！*

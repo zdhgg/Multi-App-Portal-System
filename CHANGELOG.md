@@ -2,6 +2,32 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.5.1] - 2026-08-19
+
+### Added
+
+- 新增应用启动生命周期任务模型，启动请求返回任务 ID，并提供任务状态查询与按应用恢复查询接口。
+- 前端启动页支持对慢启动、失败状态、临时状态查询错误和页面刷新后的任务恢复进行轮询确认。
+
+### Changed
+
+- 原生启动接口改为异步受理，使用 `202 Accepted` 返回 `queued`/`running`/`succeeded`/`failed` 生命周期状态。
+- 重复提交同一应用的启动请求会复用正在执行的任务，避免并发拉起多个进程。
+- PM2 启动在真实进程状态确认完成前保持“启动中”并禁用重复操作，状态查询失败时保留待确认状态。
+- 在兼容版本范围内升级存在安全公告的生产与构建依赖，根项目和后端审计结果清零，前端消除 high 风险。
+- 将根项目、前端、后端、系统配置、锁文件、前端内置更新记录和发布文档版本统一提升到 `1.5.1`。
+
+### Fixed
+
+- 修复慢启动时同步接口超时导致前端误报失败、重复启动或刷新页面后丢失状态的问题。
+- 修复 PM2 启动请求完成后短暂状态确认窗口内可以重复点击启动的问题。
+
+### Compatibility
+
+- `PUT /api/v2/applications/:id/start` 现在返回生命周期任务对象；客户端应通过 `GET /api/v2/applications/lifecycle-operations/:operationId` 查询最终结果。
+- 新增 `GET /api/v2/applications/:id/lifecycle-operation` 用于页面刷新或轮询超时后的最终状态核对。
+- 现有停止、PM2 管理和遗留 `/api/apps` 路由保持不变。
+
 ## [1.5.0] - 2026-08-15
 
 ### Added
@@ -345,6 +371,7 @@
 
 - 初始版本已合并若干端口治理、命令注入和安全控制相关修复。
 
+[1.5.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.1
 [1.5.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.0
 [1.4.1]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.4.1
 [1.4.0]: https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.4.0

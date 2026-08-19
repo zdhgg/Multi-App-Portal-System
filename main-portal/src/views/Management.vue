@@ -65,6 +65,7 @@
               >
                 <el-option label="全部状态" value="" />
                 <el-option label="在线" value="online" />
+                <el-option label="启动中" value="starting" />
                 <el-option label="离线" value="offline" />
                 <el-option label="错误" value="error" />
                 <el-option label="维护中" value="maintenance" />
@@ -278,6 +279,7 @@
                       <el-dropdown
                         @command="(command: StartCommand) => handleStartApp(row, command as any)"
                         trigger="click"
+                        :disabled="row._loading"
                       >
                         <el-button
                           size="small"
@@ -290,8 +292,8 @@
                             getActionButtonClass(getSmartDisplayInfo(row).priority.runtime.start)
                           ]"
                         >
-                          启动
-                          <el-icon class="el-icon--right">
+                          {{ row.status === 'starting' ? '启动中' : '启动' }}
+                          <el-icon v-if="row.status !== 'starting'" class="el-icon--right">
                             <ArrowDown />
                           </el-icon>
                         </el-button>
@@ -623,12 +625,12 @@ import * as Icons from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { Connection, VideoPlay, VideoPause, Setting, Delete, Monitor, Document, ArrowDown, Cpu, Search, Upload, FolderOpened, Edit } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
-import { appsApiService } from '@/services'
+import { appsApiService, ApiError } from '@/services'
 import { pm2ApiService } from '@/services/pm2Api'
 import { buildApiService, buildExecutionApiService } from '@/services/buildApi'
 import { filesystemApiService } from '@/services/filesystemApi'
 import { appConfigurationApiService } from '@/services/appConfigurationApi'
-import type { App } from '@/services'
+import type { App, LifecycleOperation } from '@/services'
 import type { BuildAnalysis, BuildOptimization, DeploymentStrategy, BuildProgress, BuildExecutionOptions } from '@/services/buildApi'
 import AppConfiguration from '@/components/AppConfiguration.vue'
 import ManualAddApp from '@/components/ManualAddApp.vue'
@@ -655,6 +657,11 @@ import {
   isLikelyPM2ManagedApp
 } from '@/utils/pm2ProcessMatching'
 import { syncRunningApplicationState } from '@/utils/runtimeStateRecovery'
+import {
+  LifecycleOperationTimeoutError,
+  isLifecycleOperationPending,
+  pollLifecycleOperation
+} from '@/types/lifecycleOperation'
 
 // 命令类型定义
 type StartCommand = 'native' | 'pm2-prod' | string
@@ -667,6 +674,8 @@ type RuntimeLogTarget = 'all' | 'frontend' | 'backend'
 // 扩展App类型以支持UI状态和字段兼容性
 interface AppWithUIState extends Omit<App, 'status' | 'network'> {
   _loading?: boolean
+  _lifecycleOperation?: LifecycleOperation | null
+  _statusBeforeLifecycle?: App['status']
   _deleting?: boolean
   _buildLoading?: boolean
   pm2ProcessName?: string | null
@@ -732,6 +741,8 @@ const portMonitoringStore = usePortMonitoringStore()
 const route = useRoute()
 const router = useRouter()
 const pendingPortRefreshTimers = new Set<ReturnType<typeof setTimeout>>()
+const lifecyclePollingController = new AbortController()
+const lifecycleOperationMonitors = new Map<string, Promise<LifecycleOperation>>()
 let activePortConflictNotification: { close: () => void } | null = null
 
 const resolveElementIcon = (icon?: string) => {
@@ -1003,6 +1014,179 @@ const reconcileRunningAppAfterPortConflict = async (app: AppWithUIState): Promis
   return true
 }
 
+const createLifecycleOperationError = (operation: LifecycleOperation): ApiError => {
+  const code = operation.error?.code || 'LIFECYCLE_OPERATION_FAILED'
+  const status = code === 'PORT_CONFLICTS' || code === 'PORT_CONFLICT' ? 409 : 500
+  return new ApiError(
+    operation.error?.message || '应用启动失败',
+    status,
+    code,
+    operation.error?.details
+  )
+}
+
+const applySuccessfulLifecycleStart = async (
+  app: AppWithUIState,
+  operation: LifecycleOperation,
+  announce: boolean
+) => {
+  app._lifecycleOperation = operation
+  Object.assign(app, {
+    status: 'online',
+    isRunning: true,
+    _loading: false
+  })
+  closePortConflictNotification()
+  applyFilters()
+  queuePortMonitoringRefresh([400, 1800], `native-start:${app.id}`)
+
+  if (announce) {
+    ElMessage.success(`应用 ${app.name} 已启动（开发模式）`)
+  }
+
+  try {
+    const runningApp = await syncRunningAppSnapshot(app)
+    if (runningApp) {
+      Object.assign(app, runningApp, {
+        status: 'online',
+        isRunning: true,
+        _loading: false,
+        _lifecycleOperation: operation
+      })
+      applyFilters()
+    }
+    await portalStore.loadApps()
+  } catch (error) {
+    console.warn('启动后后台同步应用状态失败:', error)
+  }
+}
+
+const monitorLifecycleStart = async (
+  app: AppWithUIState,
+  initialOperation: LifecycleOperation
+): Promise<LifecycleOperation> => {
+  const existingMonitor = lifecycleOperationMonitors.get(initialOperation.id)
+  if (existingMonitor) {
+    return existingMonitor
+  }
+
+  const monitor = pollLifecycleOperation(
+    initialOperation,
+    operationId => appsApiService.getLifecycleOperation(operationId),
+    {
+      timeoutMs: 5 * 60 * 1000,
+      pollIntervalMs: 1000,
+      signal: lifecyclePollingController.signal,
+      onUpdate: operation => {
+        app._lifecycleOperation = operation
+        if (isLifecycleOperationPending(operation)) {
+          app._loading = true
+          app.status = 'starting'
+          app.isRunning = false
+          applyFilters()
+        }
+      },
+      onTransientError: error => {
+        console.warn(`读取 ${app.name} 启动任务状态失败，将继续确认:`, error)
+      }
+    }
+  )
+
+  lifecycleOperationMonitors.set(initialOperation.id, monitor)
+
+  try {
+    return await monitor
+  } finally {
+    if (lifecycleOperationMonitors.get(initialOperation.id) === monitor) {
+      lifecycleOperationMonitors.delete(initialOperation.id)
+    }
+  }
+}
+
+const reconcileLifecycleStart = async (
+  app: AppWithUIState,
+  operation: LifecycleOperation,
+  announce: boolean
+): Promise<boolean> => {
+  let confirmedFailure: ApiError | null = null
+
+  try {
+    const latestOperation = await appsApiService.getLatestLifecycleOperation(app.id)
+    if (latestOperation?.status === 'succeeded') {
+      await applySuccessfulLifecycleStart(app, latestOperation, announce)
+      return true
+    }
+    if (latestOperation?.status === 'failed') {
+      confirmedFailure = createLifecycleOperationError(latestOperation)
+      throw confirmedFailure
+    }
+
+    const response = await appsApiService.getApp(app.id)
+    if (response.data?.status === 'online') {
+      await applySuccessfulLifecycleStart(app, latestOperation || operation, announce)
+      return true
+    }
+
+    if (latestOperation) {
+      app._lifecycleOperation = latestOperation
+    }
+  } catch (error) {
+    if (error === confirmedFailure) {
+      throw error
+    }
+    console.warn(`核对 ${app.name} 启动结果失败:`, error)
+  }
+
+  return false
+}
+
+const observeLifecycleStart = async (
+  app: AppWithUIState,
+  operation: LifecycleOperation,
+  announce: boolean
+) => {
+  try {
+    const finalOperation = await monitorLifecycleStart(app, operation)
+    app._lifecycleOperation = finalOperation
+
+    if (finalOperation.status === 'failed') {
+      throw createLifecycleOperationError(finalOperation)
+    }
+
+    await applySuccessfulLifecycleStart(app, finalOperation, announce)
+  } catch (error) {
+    if (error instanceof LifecycleOperationTimeoutError) {
+      const recovered = await reconcileLifecycleStart(app, operation, announce)
+      if (!recovered) {
+        app.status = 'starting'
+        app._loading = true
+        ElMessage.warning(`应用 ${app.name} 仍在启动，系统尚未获得最终结果`)
+      }
+      return
+    }
+    throw error
+  }
+}
+
+const resumeLifecycleStart = (app: AppWithUIState, operation: LifecycleOperation) => {
+  void observeLifecycleStart(app, operation, false).catch((error: any) => {
+    if (error?.name === 'AbortError') {
+      return
+    }
+
+    app._loading = false
+    app.isRunning = false
+    app.status = isPortConflictError(error) ? 'offline' : 'error'
+    applyFilters()
+
+    if (isPortConflictError(error)) {
+      showPortConflictNotification(app, error)
+    } else {
+      ElMessage.error(`应用 ${app.name} 启动失败: ${error?.message || '未知错误'}`)
+    }
+  })
+}
+
 // 技术栈动态加载
 const availableTechStacks = ref<Array<{ label: string; value: string }>>([])
 const loadingTechStacks = ref(false)
@@ -1112,6 +1296,7 @@ onMounted(() => {
 // 组件卸载时断开 WebSocket 连接
 onUnmounted(() => {
   closePortConflictNotification()
+  lifecyclePollingController.abort()
   disconnect()
   stopRuntimeLogAutoRefresh()
   pendingPortRefreshTimers.forEach(timer => clearTimeout(timer))
@@ -1148,12 +1333,24 @@ const loadApps = async () => {
     const response = await appsApiService.getApps({ limit: 100 })
     if (response.success) {
       // 确保每个 app 都有 isRunning 属性
-      apps.value = (response.data || []).map(app => ({
-        ...app,
-        isRunning: app.status === 'online'
-      })) as AppWithUIState[]
+      apps.value = (response.data || []).map(app => {
+        const lifecycleOperation = app.lifecycleOperation
+        const isStarting = isLifecycleOperationPending(lifecycleOperation)
+        return {
+          ...app,
+          status: isStarting ? 'starting' : app.status,
+          isRunning: !isStarting && app.status === 'online',
+          _loading: isStarting,
+          _lifecycleOperation: lifecycleOperation
+        }
+      }) as AppWithUIState[]
       debugLog('加载应用列表成功:', apps.value)
       applyFilters()
+      apps.value.forEach(app => {
+        if (isLifecycleOperationPending(app._lifecycleOperation)) {
+          resumeLifecycleStart(app, app._lifecycleOperation!)
+        }
+      })
     } else {
       throw new Error(response.message || '获取应用列表失败')
     }
@@ -1172,8 +1369,14 @@ const loadApps = async () => {
 const updateAppStatus = (appData: any) => {
   const index = apps.value.findIndex(app => app.id === appData.appId || app.id === appData.id)
   if (index !== -1) {
+    const currentApp = apps.value[index]
+    const lifecyclePending = isLifecycleOperationPending(currentApp._lifecycleOperation)
     // 合并更新应用数据
-    apps.value[index] = { ...apps.value[index], ...appData }
+    apps.value[index] = {
+      ...currentApp,
+      ...appData,
+      ...(lifecyclePending ? { status: 'starting', isRunning: false, _loading: true } : {})
+    }
     debugLog('应用状态已更新:', apps.value[index].name, appData)
     // 重新应用过滤
     applyFilters()
@@ -1185,11 +1388,14 @@ const updateAppsStatus = (appsData: any[]) => {
   appsData.forEach(appData => {
     const index = apps.value.findIndex(app => app.id === appData.id)
     if (index !== -1) {
+      const currentApp = apps.value[index]
+      const lifecyclePending = isLifecycleOperationPending(currentApp._lifecycleOperation)
       // 确保更新的数据包含 isRunning 属性
       apps.value[index] = { 
-        ...apps.value[index], 
+        ...currentApp,
         ...appData,
-        isRunning: appData.status === 'online' || appData.isRunning || false
+        isRunning: lifecyclePending ? false : appData.status === 'online' || appData.isRunning || false,
+        ...(lifecyclePending ? { status: 'starting', _loading: true } : {})
       }
     }
   })
@@ -1335,7 +1541,7 @@ const batchStart = async () => {
 
   try {
     const promises = selectedApps.value
-      .filter(app => app.status !== 'online')
+      .filter(app => app.status !== 'online' && app.status !== 'starting' && !app._loading)
       .map(app => toggleApp(app))
 
     await Promise.all(promises)
@@ -1452,6 +1658,7 @@ const clearAddAppIntent = () => {
 const getStatusType = (status: string) => {
   switch (status) {
     case 'online': return 'success'
+    case 'starting': return 'warning'
     case 'offline': return 'info'
     case 'error': return 'danger'
     case 'maintenance': return 'warning'
@@ -1462,6 +1669,7 @@ const getStatusType = (status: string) => {
 const getStatusText = (status: string) => {
   switch (status) {
     case 'online': return '在线'
+    case 'starting': return '启动中'
     case 'offline': return '离线'
     case 'error': return '错误'
     case 'maintenance': return '维护中'
@@ -1473,6 +1681,7 @@ const getStatusText = (status: string) => {
 const getStatusClass = (status: string) => {
   switch (status) {
     case 'online': return 'status-online'
+    case 'starting': return 'status-starting'
     case 'offline': return 'status-offline'
     case 'error': return 'status-error'
     case 'maintenance': return 'status-maintenance'
@@ -1484,6 +1693,7 @@ const getStatusClass = (status: string) => {
 const getStatusIcon = (status: string) => {
   switch (status) {
     case 'online': return '🟢'
+    case 'starting': return '⏳'
     case 'offline': return '⚪'
     case 'error': return '🔴'
     case 'maintenance': return '🟡'
@@ -1980,6 +2190,11 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
     return
   }
 
+  if (app._loading || isLifecycleOperationPending(app._lifecycleOperation)) {
+    ElMessage.info(`应用 ${app.name} 的启动任务正在进行中`)
+    return
+  }
+
   const action = '启动'
 
   if (isExternalExeApp(app) && startMode === 'native') {
@@ -1989,6 +2204,7 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
 
   // 设置加载状态
   app._loading = true
+  app._statusBeforeLifecycle = app.status as App['status']
 
   try {
     // 🔧 新增：启动前动态配置端口
@@ -2006,6 +2222,9 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
       } else {
         // 生成生产环境PM2配置
         const pm2Config = generatePM2Config(app, true)
+        app.status = 'starting'
+        app.isRunning = false
+        applyFilters()
 
         const response = await pm2ApiService.startProcessByAppId(app.id, pm2Config, {
           showErrorMessage: false
@@ -2020,51 +2239,61 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
             console.warn('立即刷新门户应用列表失败:', err)
           })
           
-          // ⚡ 优化：缩短延迟到500ms（PM2启动通常很快）
-          setTimeout(async () => {
-            try {
-              const processes = await pm2ApiService.getProcessList()
-              const pm2Process = processes.find((p: any) => 
-                p.name === expectedName || 
-                p.name === app.name || 
-                p.name === app.id || 
-                p.name === toSlugName(app.name)
-              )
-              
-              if (pm2Process) {
-                // 根据PM2真实状态更新应用状态
-                const pm2Status = pm2Process.status as string
-                if (pm2Process.status === 'online') {
-                  app.status = 'online'
-                  ElMessage.success(`✅ 应用 ${app.name} 已成功启动`)
-                  queuePortMonitoringRefresh([0, 1200], `pm2-online:${app.id}`)
-                  // ✅ 再次刷新门户应用列表，确保首页显示正确的端口和模式
-                  portalStore.loadApps().catch(err => {
-                    console.warn('刷新门户应用列表失败:', err)
-                  })
-                } else if (pm2Status === 'error' || pm2Status === 'errored') {
-                  app.status = 'error'
-                  ElMessage.error(`❌ 应用 ${app.name} 启动失败，请前往PM2管理页面查看详情`)
+          // PM2 启动请求已返回，但状态确认完成前仍保持“启动中”，避免重复提交。
+          await new Promise<void>(resolve => {
+            setTimeout(async () => {
+              try {
+                const processes = await pm2ApiService.getProcessList()
+                const pm2Process = processes.find((p: any) =>
+                  p.name === expectedName ||
+                  p.name === app.name ||
+                  p.name === app.id ||
+                  p.name === toSlugName(app.name)
+                )
+
+                if (pm2Process) {
+                  // 根据PM2真实状态更新应用状态
+                  const pm2Status = pm2Process.status as string
+                  if (pm2Process.status === 'online') {
+                    app.status = 'online'
+                    app.isRunning = true
+                    ElMessage.success(`✅ 应用 ${app.name} 已成功启动`)
+                    queuePortMonitoringRefresh([0, 1200], `pm2-online:${app.id}`)
+                    // ✅ 再次刷新门户应用列表，确保首页显示正确的端口和模式
+                    portalStore.loadApps().catch(err => {
+                      console.warn('刷新门户应用列表失败:', err)
+                    })
+                  } else if (pm2Status === 'error' || pm2Status === 'errored') {
+                    app.status = 'error'
+                    app.isRunning = false
+                    ElMessage.error(`❌ 应用 ${app.name} 启动失败，请前往PM2管理页面查看详情`)
+                  } else {
+                    app.status = 'offline'
+                    app.isRunning = false
+                    ElMessage.warning(`⚠️ 应用 ${app.name} PM2状态异常: ${pm2Process.status}`)
+                  }
                 } else {
                   app.status = 'offline'
-                  ElMessage.warning(`⚠️ 应用 ${app.name} PM2状态异常: ${pm2Process.status}`)
+                  app.isRunning = false
+                  ElMessage.warning(`⚠️ 应用 ${app.name} 未在PM2进程列表中找到`)
                 }
-              } else {
-                app.status = 'offline'
-                ElMessage.warning(`⚠️ 应用 ${app.name} 未在PM2进程列表中找到`)
+                applyFilters()
+              } catch (error) {
+                console.error('获取PM2状态失败:', error)
+                app.status = 'starting'
+                app.isRunning = false
+                // 如果获取状态失败，刷新整个应用列表；保留启动中状态避免误报失败。
+                loadApps()
+                // ✅ 同时刷新门户应用列表
+                portalStore.loadApps().catch(err => {
+                  console.warn('刷新门户应用列表失败:', err)
+                })
+              } finally {
+                resolve()
               }
-              applyFilters()
-            } catch (error) {
-              console.error('获取PM2状态失败:', error)
-              // 如果获取状态失败，刷新整个应用列表
-              loadApps()
-              // ✅ 同时刷新门户应用列表
-              portalStore.loadApps().catch(err => {
-                console.warn('刷新门户应用列表失败:', err)
-              })
-            }
-          }, 500)
-          
+            }, 500)
+          })
+
           return
         } else {
           throw new Error('PM2启动失败')
@@ -2073,33 +2302,21 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
     }
 
     // 使用传统方式启动（开发模式）
+    app.status = 'starting'
+    app.isRunning = false
+    applyFilters()
+
     const response = await appsApiService.startApp(app.id, 'development', {
       showErrorMessage: false
     })
-    if (response.success) {
-      Object.assign(app, {
-        status: 'online',
-        isRunning: true
-      })
-      closePortConflictNotification()
-      applyFilters() // 刷新过滤列表
-      ElMessage.success(`应用 ${app.name} 已启动（开发模式）`)
-      queuePortMonitoringRefresh([400, 1800], `native-start:${app.id}`)
-
-      // 保持启动接口确认的在线态；后台同步成功后只合并新鲜快照，避免旧离线数据覆盖界面。
-      void syncRunningAppSnapshot(app).then((runningApp) => {
-        if (runningApp) {
-          Object.assign(app, runningApp, {
-            status: 'online',
-            isRunning: true
-          })
-          applyFilters()
-        }
-
-        return portalStore.loadApps()
-      }).catch((error) => {
-        console.warn('启动后后台同步应用状态失败:', error)
-      })
+    if (response.success && response.data) {
+      app._lifecycleOperation = response.data
+      ElMessage.info(
+        response.data.reused
+          ? `应用 ${app.name} 已在启动，继续等待就绪`
+          : `应用 ${app.name} 启动任务已提交`
+      )
+      await observeLifecycleStart(app, response.data, true)
     } else {
       throw new Error(response.message || '启动应用失败')
     }
@@ -2112,6 +2329,12 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
       if (recovered) {
         return
       }
+    }
+
+    if (app.status === 'starting') {
+      app.status = portConflict ? 'offline' : 'error'
+      app.isRunning = false
+      applyFilters()
     }
 
     console.error(`${action}应用失败:`, error)
@@ -2469,8 +2692,10 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
       }
     }
   } finally {
-    // 清除加载状态
-    app._loading = false
+    // 后台任务仍在运行时保留“启动中”，避免把未知结果误报为失败。
+    if (!isLifecycleOperationPending(app._lifecycleOperation)) {
+      app._loading = false
+    }
   }
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "intelligent-portal-frontend",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "智能多Web应用门户系统 - 前端",
   "type": "module",
   "scripts": {
@@ -26,12 +26,13 @@
   },
   "overrides": {
     "ajv": "^6.14.0",
-    "brace-expansion@<1.1.13": "1.1.15",
-    "brace-expansion@>=2.0.0 <2.0.3": "2.1.1",
+    "brace-expansion@<1.2.0": "1.1.18",
+    "brace-expansion@>=2.0.0 <3.0.0": "2.1.4",
     "flatted": "^3.4.2",
     "form-data": "^4.0.6",
-    "immutable": "^5.1.6",
-    "js-yaml": "^4.3.0",
+    "immutable": "^5.1.8",
+    "nanoid": "^3.3.18",
+    "js-yaml": "^4.3.1",
     "minimatch@<3.1.4": "3.1.5",
     "minimatch@>=9.0.0 <9.0.7": "9.0.9",
     "picomatch@<2.3.2": "2.3.2",

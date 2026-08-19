@@ -1,5 +1,8 @@
-import { apiService } from './api'
+import { apiService, ApiError } from './api'
 import type { ApiResponse, PaginatedResponse, RequestConfig } from './api'
+import type { LifecycleOperation } from '@/types/lifecycleOperation'
+
+export type { LifecycleOperation } from '@/types/lifecycleOperation'
 
 const BASE_PATH = '/v2/applications'
 
@@ -33,6 +36,7 @@ type ApplicationDto = {
   }
   deploymentMode?: string
   pm2ProcessName?: string | null
+  lifecycleOperation?: LifecycleOperation | null
   buildScript?: string
   build_script?: string
   [key: string]: any
@@ -48,7 +52,7 @@ export interface App {
   icon?: string
   color?: string
   tech_stack: string
-  status: 'online' | 'offline' | 'error' | 'maintenance'
+  status: 'online' | 'offline' | 'error' | 'maintenance' | 'starting'
   frontend_port?: number
   backend_port?: number
   network?: {
@@ -61,6 +65,7 @@ export interface App {
   created_at: string
   updated_at: string
   build_script?: string
+  lifecycleOperation?: LifecycleOperation | null
 }
 
 export interface AppCreateRequest {
@@ -374,13 +379,36 @@ export class AppsApiService {
     id: string,
     mode: 'development' | 'production' = 'development',
     config: RequestConfig = {}
-  ): Promise<ApiResponse<{
-    app: App
-    process: any
-    url: string
-    mode: string
-  }>> {
-    return apiService.put<ApiResponse<any>>(`${BASE_PATH}/${id}/start`, { mode }, config)
+  ): Promise<ApiResponse<LifecycleOperation>> {
+    return apiService.put<ApiResponse<LifecycleOperation>>(`${BASE_PATH}/${id}/start`, { mode }, {
+      timeout: 120_000,
+      ...config
+    })
+  }
+
+  async getLifecycleOperation(operationId: string): Promise<LifecycleOperation> {
+    const response = await apiService.get<ApiResponse<LifecycleOperation>>(
+      `${BASE_PATH}/lifecycle-operations/${operationId}`,
+      { timeout: 15_000, showErrorMessage: false }
+    )
+
+    if (!response.success || !response.data) {
+      throw new ApiError(
+        response.message || '无法读取启动任务状态',
+        500,
+        'LIFECYCLE_OPERATION_STATUS_UNAVAILABLE'
+      )
+    }
+
+    return response.data
+  }
+
+  async getLatestLifecycleOperation(appId: string): Promise<LifecycleOperation | null> {
+    const response = await apiService.get<ApiResponse<LifecycleOperation | null>>(
+      `${BASE_PATH}/${appId}/lifecycle-operation`,
+      { timeout: 15_000, showErrorMessage: false }
+    )
+    return response.data ?? null
   }
 
   /**
@@ -647,6 +675,7 @@ function mapApplicationDtoToApp(dto: ApplicationDto): App {
     } : undefined,
     access_path: (metadata as any).accessPath ?? (metadata as any).access_path ?? undefined,
     build_script: dto.build_script ?? dto.buildScript,
+    lifecycleOperation: dto.lifecycleOperation ?? null,
     pinned_to_homepage: Boolean((metadata as any).pinned),
     created_at: toIsoString(metadata.createdAt),
     updated_at: toIsoString(metadata.updatedAt)

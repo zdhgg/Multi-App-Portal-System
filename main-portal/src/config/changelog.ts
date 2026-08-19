@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.5.1',
+    date: '2026-08-19',
+    title: '应用启动生命周期与状态确认补丁',
+    items: [
+      { type: 'feature', description: '应用启动改为可查询的异步生命周期任务，支持慢启动、失败状态和页面刷新后的任务恢复' },
+      { type: 'improvement', description: '重复启动请求会复用正在执行的任务，前端轮询确认最终运行结果并保留结构化错误信息' },
+      { type: 'fix', description: 'PM2 启动在真实状态确认完成前保持启动中，修复短暂确认窗口内重复点击导致重复启动的问题' },
+      { type: 'improvement', description: '兼容升级生产与构建依赖，清除后端审计告警和前端 high 风险依赖' },
+      { type: 'improvement', description: '同步根项目、前后端包、系统配置、锁文件和主要发布文档版本到 1.5.1' }
+    ]
+  },
+  {
     version: '1.5.0',
     date: '2026-08-15',
     title: '统一端口清单与运行态可靠性升级',
