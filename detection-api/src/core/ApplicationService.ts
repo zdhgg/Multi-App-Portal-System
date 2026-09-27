@@ -41,6 +41,16 @@ const BACKEND_DIRECTORY_CANDIDATES = [
   'app-server'
 ] as const
 
+/**
+ * 全栈探测结果的日志去重缓存。
+ *
+ * PM2 状态同步每 30 秒会对全部应用重新解析一次配置，进而反复调用
+ * detectFullStackConfiguration()。同一批项目每轮都打印同样的 info 日志，
+ * 是日志文件无限增长的主要来源之一（曾累积到 1.3GB）。
+ * 这里记住每个目录上次打印过的探测结果，只在结果真正变化时输出。
+ */
+const FULLSTACK_DETECTION_LOG_CACHE = new Map<string, string>()
+
 export class ApplicationService implements IApplicationService {
   constructor(
     private repository: ApplicationRepository,
@@ -1615,11 +1625,16 @@ export class ApplicationService implements IApplicationService {
       return { isFullStack: false }
     }
 
-    logger.info('Detected fullstack project', {
-      directory,
-      frontendDir,
-      backendDir
-    })
+    // 去重：只在探测结果发生变化时打印，避免状态同步循环每 30 秒重复刷同样内容
+    const detectionSignature = `${frontendDir}|${backendDir}`
+    if (FULLSTACK_DETECTION_LOG_CACHE.get(directory) !== detectionSignature) {
+      FULLSTACK_DETECTION_LOG_CACHE.set(directory, detectionSignature)
+      logger.info('Detected fullstack project', {
+        directory,
+        frontendDir,
+        backendDir
+      })
+    }
 
     // 配置前端
     let frontendConfig: import('./types').ProcessConfiguration | undefined
