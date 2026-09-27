@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.5.2',
+    date: '2026-09-27',
+    title: '控制台窗口与日志噪声修复',
+    items: [
+      { type: 'fix', description: '补齐 11 处子进程调用的 windowsHide，修复 Windows 上执行 PM2 诊断、端口清理或状态保存时闪出控制台黑框的问题' },
+      { type: 'fix', description: '全栈探测日志按目录去重，周期性状态同步不再每 30 秒重复输出同一批日志' },
+      { type: 'improvement', description: '新增门户看门狗与隐藏启动包装，后端异常退出后可自动恢复且不再弹出控制台窗口' },
+      { type: 'improvement', description: '新增子进程窗口审计脚本，可在提交前检查所有子进程调用是否隐藏窗口' },
+      { type: 'improvement', description: '同步根项目、前后端包、系统配置、锁文件和主要发布文档版本到 1.5.2' }
+    ]
+  },
+  {
     version: '1.5.1',
     date: '2026-08-19',
     title: '应用启动生命周期与状态确认补丁',

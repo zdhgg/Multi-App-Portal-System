@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.5.1-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.5.1-success.svg)
+![Version](https://img.shields.io/badge/version-1.5.2-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.5.2-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.5.1`
-- **GitHub Release**: [v1.5.1: 应用启动生命周期与状态确认补丁](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.1)
+- **当前版本**: `1.5.2`
+- **GitHub Release**: [v1.5.2: 控制台窗口与日志噪声修复](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.2)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -248,6 +248,15 @@ VITE_WS_BASE=
 ## 📝 更新日志
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
+
+### v1.5.2 (2026-09-27) — 控制台窗口与日志噪声修复
+- 🪟 **控制台窗口**
+  - 补齐 11 处子进程调用的 `windowsHide`，修复 Windows 上执行 PM2 诊断、端口清理或状态保存时闪出黑框的问题
+  - 离线还原助手窗口保持可见（该处为面向用户的交互窗口，属于有意保留）
+- 🧾 **日志噪声**
+  - 全栈探测日志按目录去重，周期性状态同步不再每 30 秒重复输出同一批日志
+- 🛠️ **运维脚本**
+  - 新增门户看门狗、隐藏启动包装与子进程窗口审计脚本
 
 ### v1.5.1 (2026-08-19) — 应用启动生命周期与状态确认补丁
 - 🔄 **异步启动任务**
@@ -507,4 +516,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.5.1 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.5.2 - 让应用管理更简单、更智能！*

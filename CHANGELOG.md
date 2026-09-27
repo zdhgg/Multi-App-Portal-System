@@ -2,6 +2,28 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.5.2] - 2026-09-27
+
+### Added
+
+- 新增门户看门狗脚本 `scripts/monitoring/portal-watchdog.ps1`：PM2 守护进程缺失或 `portal-api` 不健康时自动执行 `pm2 resurrect` / `pm2 restart` / `pm2 start`，并把每次运行的结论写入 `logs/watchdog-last-run.txt` 与 `logs/watchdog.log`。
+- 新增隐藏启动包装 `scripts/monitoring/run-watchdog-hidden.vbs`，经 `wscript` 以隐藏窗口启动看门狗，避免计划任务运行时闪出控制台窗口。
+- 新增子进程窗口审计脚本 `scripts/diagnostics/audit-spawn-windows-hide.cjs`，检查所有子进程调用是否设置了 `windowsHide`，可用于提交前检查或 CI 门禁。
+
+### Changed
+
+- 全栈探测日志改为按目录去重：PM2 状态同步每 30 秒会重新解析全部应用，此前每轮都重复输出同一条 info 日志，在历史日志中约占 90% 的体量。
+- 将根项目、前端、后端、系统配置、锁文件和前端内置更新记录版本统一提升到 `1.5.2`。
+
+### Fixed
+
+- 修复 Windows 上 11 处子进程调用缺少 `windowsHide`、会闪出控制台窗口的问题：`pm2 save` / `pm2 resurrect` 的 `exec` 兜底分支、端口状态清理的 `tasklist` 与 `netstat`、以及 PM2 诊断中的 `netstat` 与 `pm2 logs`。
+- 保留 `routes/configurationExport.ts` 的 `windowsHide: false`：该处启动的是面向用户的离线还原助手窗口，必须保持可见。
+
+### Compatibility
+
+- 无接口变更，行为与 `1.5.1` 兼容。
+
 ## [1.5.1] - 2026-08-19
 
 ### Added
