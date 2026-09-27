@@ -63,10 +63,10 @@ class PortStateCleanup {
   private async isProcessRunning(pid: number): Promise<boolean> {
     try {
       if (process.platform === 'win32') {
-        const { stdout } = await execAsync(`tasklist /fi "PID eq ${pid}" /fo csv`);
+        const { stdout } = await execAsync(`tasklist /fi "PID eq ${pid}" /fo csv`, { windowsHide: true });
         return stdout.includes(`"${pid}"`);
       } else {
-        await execAsync(`kill -0 ${pid}`);
+        await execAsync(`kill -0 ${pid}`, { windowsHide: true });
         return true;
       }
     } catch {
@@ -80,10 +80,10 @@ class PortStateCleanup {
   private async isPortInUse(port: number): Promise<boolean> {
     try {
       if (process.platform === 'win32') {
-        const { stdout } = await execAsync(`netstat -ano | findstr :${port}`);
+        const { stdout } = await execAsync(`netstat -ano | findstr :${port}`, { windowsHide: true });
         return stdout.trim().length > 0;
       } else {
-        const { stdout } = await execAsync(`lsof -i :${port}`);
+        const { stdout } = await execAsync(`lsof -i :${port}`, { windowsHide: true });
         return stdout.trim().length > 0;
       }
     } catch {

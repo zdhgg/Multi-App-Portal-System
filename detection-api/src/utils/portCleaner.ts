@@ -87,7 +87,7 @@ export class SimplePortCleaner {
       } else {
         // Unix/Linux: lsof + kill -9
         try {
-          const { stdout } = await execAsync(`lsof -ti:${port}`)
+          const { stdout } = await execAsync(`lsof -ti:${port}`, { windowsHide: true })
           const pids = stdout.trim().split('\n').filter(Boolean)
 
           for (const pid of pids) {
@@ -102,7 +102,7 @@ export class SimplePortCleaner {
               } catch { }
 
               // 强制杀死
-              await execAsync(`kill -9 ${numericPid}`)
+              await execAsync(`kill -9 ${numericPid}`, { windowsHide: true })
               logger.info(`成功杀死进程 ${pid} (端口 ${port})`)
             } catch (killError) {
               logger.warn(`杀死进程 ${pid} 失败:`, killError)

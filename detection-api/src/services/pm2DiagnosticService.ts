@@ -256,7 +256,7 @@ export class PM2DiagnosticService {
         logger.info(`执行自动修复: ${issue.title}`)
         logger.info(`修复命令: ${issue.fixCommand}`)
 
-        await execAsync(issue.fixCommand)
+        await execAsync(issue.fixCommand, { windowsHide: true })
         fixedIssues.push(issue.title)
         logger.info(`✅ 修复成功: ${issue.title}`)
       } catch (error) {
@@ -314,7 +314,7 @@ export class PM2DiagnosticService {
     }
 
     try {
-      const { stdout } = await execAsync(`netstat -ano | findstr :${port}`)
+      const { stdout } = await execAsync(`netstat -ano | findstr :${port}`, { windowsHide: true })
       const lines = stdout.split('\n').filter(line => line.includes('LISTENING'))
       
       if (lines.length > 0) {
@@ -400,7 +400,7 @@ export class PM2DiagnosticService {
    */
   private async analyzeLogs(processName: string): Promise<LogAnalysisResult> {
     try {
-      const { stdout } = await execAsync(`pm2 logs ${processName} --err --lines 50 --nostream`)
+      const { stdout } = await execAsync(`pm2 logs ${processName} --err --lines 50 --nostream`, { windowsHide: true })
       
       const detectedErrors: Array<{ type: string; message: string }> = []
 

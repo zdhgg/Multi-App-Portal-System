@@ -2504,7 +2504,7 @@ export class PM2Service {
         dump((err: any) => (err ? reject(err) : resolve()))
       } else {
         import('child_process').then(({ exec }) => {
-          exec('pm2 save', (err) => (err ? reject(err) : resolve()))
+          exec('pm2 save', { windowsHide: true }, (err) => (err ? reject(err) : resolve()))
         })
       }
     })
@@ -2519,7 +2519,7 @@ export class PM2Service {
         anyPm2.resurrect((err: any) => (err ? reject(err) : resolve()))
       } else {
         import('child_process').then(({ exec }) => {
-          exec('pm2 resurrect', (err) => (err ? reject(err) : resolve()))
+          exec('pm2 resurrect', { windowsHide: true }, (err) => (err ? reject(err) : resolve()))
         })
       }
     })
