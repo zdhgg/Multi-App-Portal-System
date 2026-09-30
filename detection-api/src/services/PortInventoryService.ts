@@ -18,6 +18,40 @@ import { logger } from '../utils/logger.js'
 
 const execAsync = promisify(exec)
 const INVENTORY_CACHE_TTL_MS = 10000
+const PROCESS_DETAILS_TIMEOUT_MS = 4000
+const PROCESS_DETAILS_ERROR_MAX_LENGTH = 120
+
+/**
+ * 汇总进程列表查询失败的原因，用于警告文案。
+ * exec 超时不会体现为 error.message，需要按 killed 标记单独识别。
+ */
+const describeProcessDetailsError = (error: unknown): string => {
+  const killed = Boolean((error as { killed?: boolean } | null)?.killed)
+  const raw = killed
+    ? `进程列表查询超时，已在 ${PROCESS_DETAILS_TIMEOUT_MS}ms 内中止`
+    : error instanceof Error ? error.message : String(error)
+  const compact = raw.replace(/\s+/g, ' ').trim() || '未知原因'
+  return compact.length > PROCESS_DETAILS_ERROR_MAX_LENGTH
+    ? `${compact.slice(0, PROCESS_DETAILS_ERROR_MAX_LENGTH)}…`
+    : compact
+}
+
+/**
+ * 归一化进程表读取结果。命令成功但解析为空时同样视为不可用，
+ * 否则会静默退回严格判定，把缺少父子关系导致的误报重新带回来。
+ */
+const buildProcessDetails = (
+  names: Map<number, string>,
+  parents: Map<number, number>,
+  warnings: string[]
+): ProcessDetails => {
+  if (!parents.size) {
+    const treeWarning = '进程列表为空，无法核验应用归属，PID 与监听状态仍可用'
+    warnings.push(treeWarning)
+    return { names, parents, treeAvailable: false, treeWarning }
+  }
+  return { names, parents, treeAvailable: true }
+}
 
 interface ProcessManagerLike {
   getRunningProcesses?: () => Map<string, {
@@ -35,6 +69,10 @@ interface ReservedPort {
 interface ProcessDetails {
   names: Map<number, string>
   parents: Map<number, number>
+  // 父子关系是否读取成功。失败时无法推导子进程归属，判定只能降级为“证据不足”。
+  treeAvailable: boolean
+  // 降级原因文案；命中缓存时需要重放，避免相邻快照的 quality 在 partial/fresh 间跳动
+  treeWarning?: string
 }
 
 const normalizePath = (value: string | undefined): string => (
@@ -132,7 +170,13 @@ export class PortInventoryService {
       const expectedApps = expectedByPort.get(port) || []
       const reserved = reservedByPort.get(port) || null
       const protectedPort = Boolean(reserved && ['system', 'portal'].includes(reserved.category))
-      const ownership = this.resolveOwnership(expectedApps, observed.pid, runtimePids, reserved)
+      const ownership = this.resolveOwnership(
+        expectedApps,
+        observed.pid,
+        runtimePids,
+        reserved,
+        processDetails.treeAvailable
+      )
       const conflictReason = this.resolveConflictReason(ownership, protectedPort, expectedApps)
 
       rows.push({
@@ -354,7 +398,8 @@ export class PortInventoryService {
     expectedApps: ExpectedPortApplication[],
     observedPid: number | undefined,
     runtimePids: Map<string, Set<number>>,
-    reserved: ReservedPort | null
+    reserved: ReservedPort | null,
+    processTreeAvailable = true
   ): PortOwnership {
     if (reserved) return 'reserved'
     if (expectedApps.length > 1) return 'duplicate-config'
@@ -364,7 +409,16 @@ export class PortInventoryService {
     const expectedApp = expectedApps[0]
     const expectedPids = runtimePids.get(expectedApp.id)
     if (expectedPids?.has(observedPid)) return 'verified'
-    if (expectedPids?.size || expectedApp.state !== 'running') return 'mismatch'
+    // 应用不在运行态却仍有进程监听，判定不依赖进程树，可直接认定归属不符
+    if (expectedApp.state !== 'running') return 'mismatch'
+    // 监听 PID 若明确属于另一个受管应用的根进程，就不可能是本应用的后代。
+    // 该判定同样不依赖进程树，故在降级态与健康态下保持一致。
+    for (const [appId, pids] of runtimePids) {
+      if (appId !== expectedApp.id && pids.has(observedPid)) return 'mismatch'
+    }
+    // 进程树不可用时无法推导子进程，监听 PID 不在集合中不足以证明“不符”
+    if (!processTreeAvailable) return 'unverified'
+    if (expectedPids?.size) return 'mismatch'
     return 'unverified'
   }
 
@@ -392,13 +446,16 @@ export class PortInventoryService {
       this.processDetailsCache &&
       Date.now() - this.processDetailsTimestamp < 2000
     ) {
-      return this.processDetailsCache
+      // 缓存里可能保存着降级结果，警告需要一并重放
+      const cached = this.processDetailsCache
+      if (cached.treeWarning) warnings.push(cached.treeWarning)
+      return cached
     }
 
     try {
       if (process.platform === 'win32') {
         const command = 'powershell.exe -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Csv -NoTypeInformation"'
-        const { stdout } = await execAsync(command, { windowsHide: true, timeout: 4000 })
+        const { stdout } = await execAsync(command, { windowsHide: true, timeout: PROCESS_DETAILS_TIMEOUT_MS })
         const names = new Map<number, string>()
         const parents = new Map<number, number>()
         for (const line of stdout.split(/\r?\n/).slice(1)) {
@@ -409,7 +466,7 @@ export class PortInventoryService {
           names.set(pid, match[3])
           parents.set(pid, parentPid)
         }
-        const result = { names, parents }
+        const result = buildProcessDetails(names, parents, warnings)
         this.processDetailsCache = result
         this.processDetailsTimestamp = Date.now()
         return result
@@ -425,14 +482,15 @@ export class PortInventoryService {
         names.set(pid, match[3])
         parents.set(pid, Number.parseInt(match[2], 10))
       }
-      const result = { names, parents }
+      const result = buildProcessDetails(names, parents, warnings)
       this.processDetailsCache = result
       this.processDetailsTimestamp = Date.now()
       return result
     } catch (error) {
       logger.warn('端口进程名称读取失败', { error })
-      warnings.push('进程名称及父子关系读取失败，PID 与监听状态仍可用')
-      return { names: new Map(), parents: new Map() }
+      const treeWarning = `进程名称及父子关系读取失败（${describeProcessDetailsError(error)}），PID 与监听状态仍可用`
+      warnings.push(treeWarning)
+      return { names: new Map(), parents: new Map(), treeAvailable: false, treeWarning }
     }
   }
 }
