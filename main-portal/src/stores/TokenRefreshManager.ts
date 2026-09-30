@@ -5,6 +5,7 @@
  */
 
 import { authApiService } from '@/services/authApi'
+import { ApiError } from '@/services/api'
 import type { AuthTokens } from './auth'
 
 export class TokenRefreshManager {
@@ -15,11 +16,14 @@ export class TokenRefreshManager {
 
   /**
    * 防止并发刷新的 token 刷新
+   *
+   * onFailure 会收到失败原因，调用方据此区分
+   * 「刷新令牌被后端拒绝」与「网络等临时故障」
    */
   async refreshToken(
     refreshToken: string,
     onSuccess: (tokens: AuthTokens) => void,
-    onFailure: () => void
+    onFailure: (error?: unknown) => void
   ): Promise<boolean> {
     // 检查是否刚刚刷新过
     const timeSinceLastRefresh = Date.now() - this.lastRefreshTime
@@ -55,7 +59,7 @@ export class TokenRefreshManager {
   private async doRefresh(
     refreshToken: string,
     onSuccess: (tokens: AuthTokens) => void,
-    onFailure: () => void
+    onFailure: (error?: unknown) => void
   ): Promise<boolean> {
     try {
       console.debug('Starting token refresh...')
@@ -64,22 +68,23 @@ export class TokenRefreshManager {
       if (response.success && response.data) {
         // 更新最后刷新时间
         this.lastRefreshTime = Date.now()
-        
+
         // 调用成功回调
         onSuccess(response.data)
-        
+
         console.info('Token refreshed successfully')
         return true
       }
-      
+
       console.error('Token refresh failed', { response })
-      onFailure()
+      // HTTP 200 但 success=false 视为后端明确拒绝
+      onFailure(new ApiError(response.message || 'Refresh token无效', 401, 'REFRESH_REJECTED'))
       return false
     } catch (error) {
-      console.error('Token refresh error', { 
-        error: error instanceof Error ? error.message : String(error) 
+      console.error('Token refresh error', {
+        error: error instanceof Error ? error.message : String(error)
       })
-      onFailure()
+      onFailure(error)
       return false
     }
   }

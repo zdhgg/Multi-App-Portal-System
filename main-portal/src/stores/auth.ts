@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { authApiService } from '@/services/authApi'
+import { ApiError } from '@/services/api'
 import { logLoginStart, logLoginSuccess, logLoginError } from '@/utils/loginDebug'
 import { TokenRefreshManager } from './TokenRefreshManager'
 import {
@@ -108,6 +109,76 @@ const clearAuthData = () => {
   clearStoredAuthData()
 }
 
+// 刷新失败是否意味着会话不可恢复（后端明确拒绝刷新令牌）。
+// 网络故障、超时、服务临时不可用等保留会话，与 verifyToken 的容错策略一致
+const isSessionFatalRefreshError = (error: unknown): boolean =>
+  error instanceof ApiError && error.status === 401
+
+// 应用刷新后的新令牌（写入状态与浏览器存储）
+const applyRefreshedTokens = (tokens: AuthTokens) => {
+  accessToken.value = tokens.accessToken
+  refreshToken.value = tokens.refreshToken
+  tokenExpiresAt.value = new Date(Date.now() + tokens.expiresIn * 1000)
+  updateStoredTokens({
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken
+  })
+  startTokenRefreshTimer()
+}
+
+// 恢复会话时的刷新续期。
+// 返回 'refreshed'：续期成功；'rejected'：刷新令牌被后端拒绝，会话不可恢复；
+// 'transient'：网络等临时故障，会话保留
+const restoreSessionViaRefreshToken = async (
+  candidateRefreshToken: string
+): Promise<'refreshed' | 'rejected' | 'transient'> => {
+  let rejected = false
+
+  const refreshed = await tokenRefreshManager.refreshToken(
+    candidateRefreshToken,
+    applyRefreshedTokens,
+    (error) => {
+      if (isSessionFatalRefreshError(error)) {
+        rejected = true
+      }
+    }
+  )
+
+  if (refreshed) {
+    return 'refreshed'
+  }
+
+  if (!rejected) {
+    return 'transient'
+  }
+
+  // 刷新令牌被拒绝的一种常见原因是被其他标签页的并发刷新轮换撤销：
+  // 重新读取存储中的最新令牌再试一次
+  const latestStoredRefreshToken = readStoredAuthData<User>().refreshToken
+  if (latestStoredRefreshToken && latestStoredRefreshToken !== candidateRefreshToken) {
+    console.warn('刷新令牌已被轮换，使用最新令牌重试')
+    rejected = false
+
+    const retried = await tokenRefreshManager.refreshToken(
+      latestStoredRefreshToken,
+      applyRefreshedTokens,
+      (error) => {
+        if (isSessionFatalRefreshError(error)) {
+          rejected = true
+        }
+      }
+    )
+
+    if (retried) {
+      return 'refreshed'
+    }
+
+    return rejected ? 'rejected' : 'transient'
+  }
+
+  return 'rejected'
+}
+
 // 从浏览器存储恢复认证信息
 const restoreAuthData = async (): Promise<boolean> => {
   try {
@@ -145,8 +216,21 @@ const restoreAuthData = async (): Promise<boolean> => {
             tokenExpiresAt.value = new Date(payload.exp * 1000)
           }
 
-          if (payload.exp && (now - payload.exp) > 3600) {
-            console.warn('JWT Token已过期超过1小时，清除认证数据')
+          if (payload.exp && now > payload.exp) {
+            // 访问令牌已过期：先用刷新令牌续期，避免浪费后端7天的刷新令牌有效期。
+            // 仅在刷新令牌被后端明确拒绝时清除会话
+            const outcome = await restoreSessionViaRefreshToken(refreshTokenValue)
+
+            if (outcome === 'refreshed') {
+              return true
+            }
+
+            if (outcome === 'transient') {
+              console.warn('刷新请求暂时失败，保留本地登录状态')
+              return true
+            }
+
+            console.warn('刷新令牌已失效，清除认证数据')
             clearAuthData()
             return false
           }
@@ -288,6 +372,12 @@ const restoreAuthData = async (): Promise<boolean> => {
     }
   }
 
+// 刷新失败后本地会话是否仍然保留。
+// refreshAccessToken 只在刷新令牌被后端明确拒绝时才清除会话，因此会话仍在
+// 代表网络等临时故障。api.ts 与 routeGuards 依据这个单点判定区分
+// 「认证失效」与「暂时故障」，不再各自反推 refreshToken。
+const isSessionRetainedAfterRefreshFailure = (): boolean => Boolean(refreshToken.value)
+
 // 刷新访问token（使用 TokenRefreshManager 防止竞态）
 const refreshAccessToken = async (): Promise<boolean> => {
   if (!refreshToken.value) {
@@ -296,18 +386,13 @@ const refreshAccessToken = async (): Promise<boolean> => {
 
   return await tokenRefreshManager.refreshToken(
     refreshToken.value,
-    (tokens: AuthTokens) => {
-      accessToken.value = tokens.accessToken
-      refreshToken.value = tokens.refreshToken
-      tokenExpiresAt.value = new Date(Date.now() + tokens.expiresIn * 1000)
-      updateStoredTokens({
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken
-      })
-      startTokenRefreshTimer()
-    },
-    () => {
-      clearAuthData()
+    applyRefreshedTokens,
+    (error) => {
+      // 仅在刷新令牌被后端明确拒绝时清除会话；
+      // 网络等临时故障保留会话，待访问令牌真正失效时由 API 层统一处理
+      if (isSessionFatalRefreshError(error)) {
+        clearAuthData()
+      }
     }
   )
 }
@@ -466,6 +551,7 @@ const fetchUserProfile = async (): Promise<User | null> => {
     logout,
     verifyToken,
     refreshAccessToken,
+    isSessionRetainedAfterRefreshFailure,
     fetchUserProfile,
     changePassword,
     hasPermission,

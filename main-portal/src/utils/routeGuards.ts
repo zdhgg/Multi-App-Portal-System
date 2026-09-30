@@ -176,20 +176,17 @@ export class RouteGuardUtils {
   ): Promise<PermissionCheckResult> {
     // 如果token即将过期，尝试刷新
     if (authStore.isTokenExpiringSoon && authStore.refreshToken) {
+      let failedFatally = false
+
       try {
         const refreshed = await authStore.refreshAccessToken()
-        if (!refreshed) {
-          return {
-            allowed: false,
-            reason: 'token_refresh_failed',
-            redirectTo: '/portal',
-            redirectQuery: {
-              message: 'token_expired'
-            }
-          }
-        }
+        failedFatally = !refreshed && !authStore.isSessionRetainedAfterRefreshFailure()
       } catch (error) {
         console.error('Token刷新失败:', error)
+        failedFatally = !authStore.isSessionRetainedAfterRefreshFailure()
+      }
+
+      if (failedFatally) {
         return {
           allowed: false,
           reason: 'token_refresh_failed',
@@ -199,6 +196,8 @@ export class RouteGuardUtils {
           }
         }
       }
+      // 刷新失败但会话仍在：网络等临时故障，放行本次导航，
+      // 真正的认证失效交由 API 层的 401 兜底处理，避免反复误报“登录已过期”
     }
 
     return { allowed: true }

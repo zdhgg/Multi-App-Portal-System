@@ -117,9 +117,14 @@ export class ApiService {
       if (isExpiringSoon && hasRefreshToken) {
         const success = await this.authStore.refreshAccessToken()
         if (!success) {
-          // 刷新失败，清除认证状态
-          await this.authStore.logout(false, false)
-          return false
+          // 会话已清除说明刷新令牌被后端拒绝（认证失效）；
+          // 会话仍在则只是网络等临时故障，保留登录状态继续本次请求
+          if (!this.authStore.isSessionRetainedAfterRefreshFailure()) {
+            await this.authStore.logout(false, false)
+            return false
+          }
+          console.warn('Token refresh temporarily failed, keeping session')
+          return true
         }
       }
       return true
