@@ -117,7 +117,8 @@
       "allowedBasePaths": [
         "D:\\My Programs",
         "D:\\CLIProxyAPI_6.8.40",
-        "D:\\cliproxyapi"
+        "D:\\cliproxyapi",
+        "D:\\APP"
       ]
     }
   },
