@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.5.2-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.5.2-success.svg)
+![Version](https://img.shields.io/badge/version-1.5.3-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.5.3-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.5.2`
-- **GitHub Release**: [v1.5.2: 控制台窗口与日志噪声修复](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.2)
+- **当前版本**: `1.5.3`
+- **GitHub Release**: [v1.5.3: 会话保持与端口归属判定优化](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.3)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -248,6 +248,16 @@ VITE_WS_BASE=
 ## 📝 更新日志
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
+
+### v1.5.3 (2026-10-01) — 会话保持与端口归属判定优化
+- 🔐 **会话保持**
+  - 刷新令牌失败区分「后端明确拒绝」与「临时故障」，网络抖动不再误登出
+  - 页面刷新时过期的访问令牌自动通过刷新令牌续期，充分利用后端 7 天有效期
+  - 多标签页并发刷新导致令牌轮换时自动改用最新令牌重试
+- 🌐 **游客浏览**
+  - 游客可匿名浏览公开应用只读列表，管理操作仍需登录
+- 🎯 **端口归属判定**
+  - 进程树查询超时或为空时降级为「无法核验」并提示原因，不再误报 PID 不匹配
 
 ### v1.5.2 (2026-09-27) — 控制台窗口与日志噪声修复
 - 🪟 **控制台窗口**
@@ -516,4 +526,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.5.2 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.5.3 - 让应用管理更简单、更智能！*

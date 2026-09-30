@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.5.3',
+    date: '2026-10-01',
+    title: '会话保持与端口归属判定优化',
+    items: [
+      { type: 'improvement', description: '页面刷新时访问令牌已过期会先用刷新令牌自动续期，充分利用后端 7 天有效期' },
+      { type: 'fix', description: '网络抖动等临时刷新失败不再误登出，仅刷新令牌被后端明确拒绝时才要求重新登录' },
+      { type: 'improvement', description: '多标签页并发刷新导致令牌轮换撤销时，自动改用存储中的最新令牌重试' },
+      { type: 'improvement', description: '游客可匿名浏览公开应用只读列表，管理操作仍需登录' },
+      { type: 'fix', description: '进程树查询超时或为空时端口归属降级为「无法核验」并提示原因，不再误报 PID 不匹配' },
+      { type: 'improvement', description: '同步根项目、前后端包、系统配置、锁文件和主要发布文档版本到 1.5.3' }
+    ]
+  },
+  {
     version: '1.5.2',
     date: '2026-09-27',
     title: '控制台窗口与日志噪声修复',
