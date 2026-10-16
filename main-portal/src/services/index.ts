@@ -1,5 +1,5 @@
 // API服务模块统一导出
-import { apiService, ApiError } from './api'
+import { apiService, ApiError, isAuthError } from './api'
 import { authApiService } from './authApi'
 import { appsApiService } from './appsApi'
 import { publicApiService } from './publicApi'
@@ -16,7 +16,7 @@ import { portPerformanceApiService } from './portPerformanceApi'
 import { logService } from './logService'
 
 // 重新导出所有服务
-export { apiService, ApiError }
+export { apiService, ApiError, isAuthError }
 export { authApiService }
 export { appsApiService }
 export { publicApiService }

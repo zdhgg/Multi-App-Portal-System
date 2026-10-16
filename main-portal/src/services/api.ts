@@ -33,6 +33,8 @@ export interface RequestConfig extends RequestInit {
   requireAuth?: boolean
   retryCount?: number
   responseType?: 'json' | 'text' | 'blob'
+  // 为 true 时不走全局认证失效处理（登出/提示/跳转），由调用方自行接管 401/403
+  suppressAuthHandling?: boolean
 }
 
 // API错误类
@@ -50,12 +52,22 @@ export class ApiError extends Error {
   }
 }
 
+// 判断是否为认证/授权类错误（401 / 403）
+export function isAuthError(error: unknown): error is ApiError {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403)
+}
+
 // API服务类
 export class ApiService {
   private baseUrl: string
   private defaultTimeout: number = 30000
   private maxRetries: number = 3
   private authStore: any = null
+
+  // 认证失效处理的并发与冷却控制：避免多个并发 401 重复登出、重复提示
+  private authInvalidationInFlight = false
+  private lastAuthInvalidationAt = 0
+  private static readonly AUTH_INVALIDATION_COOLDOWN = 2000
 
   constructor(baseUrl?: string) {
     // 优先使用代理（空字符串），降级到环境变量
@@ -236,18 +248,41 @@ export class ApiService {
   }
 
   // 处理认证错误
-  private async handleAuthError(error: ApiError): Promise<never> {
+  private async handleAuthError(error: ApiError, options: { silent?: boolean } = {}): Promise<never> {
+    // 访客态（本地无任何可用凭证）的鉴权请求直接静默失败：
+    // 既不登出也不提示，是否跳转登录页交由路由守卫决定
+    if (options.silent) {
+      throw error
+    }
+
     if (error.status === 401) {
-      // 认证已失效时只清理本地状态，避免再次等待失效会话的网络请求。
-      if (this.authStore) {
-        await this.authStore.logout(false, false)
+      const now = Date.now()
+      // 并发 401 只处理一次：避免重复登出、重复派发失效事件与重复提示
+      const alreadyHandling =
+        this.authInvalidationInFlight ||
+        now - this.lastAuthInvalidationAt < ApiService.AUTH_INVALIDATION_COOLDOWN
+
+      if (alreadyHandling) {
+        throw error
       }
 
-      dispatchAuthInvalidation({
-        source: 'api',
-        message: '登录已过期，请重新登录'
-      })
-      ElMessage.error('登录已过期，请重新登录')
+      this.authInvalidationInFlight = true
+      this.lastAuthInvalidationAt = now
+
+      try {
+        // 认证已失效时只清理本地状态，避免再次等待失效会话的网络请求。
+        if (this.authStore) {
+          await this.authStore.logout(false, false)
+        }
+
+        dispatchAuthInvalidation({
+          source: 'api',
+          message: '登录已过期，请重新登录'
+        })
+        ElMessage.error('登录已过期，请重新登录')
+      } finally {
+        this.authInvalidationInFlight = false
+      }
     } else if (error.status === 403) {
       ElMessage.error('权限不足，无法执行此操作')
     }
@@ -266,14 +301,29 @@ export class ApiService {
       requireAuth = true,
       retryCount = 0,
       responseType,
+      suppressAuthHandling = false,
       ...fetchConfig
     } = config
 
     // 如果需要认证，检查并刷新token
-    if (requireAuth && this.authStore) {
-      const tokenValid = await this.checkAndRefreshToken()
-      if (!tokenValid) {
-        return this.handleAuthError(new ApiError('Authentication failed', 401, 'AUTH_FAILED'))
+    if (requireAuth) {
+      const hasAccessToken = !!this.getAccessToken()
+      const hasRefreshToken = !!this.unwrapComputed(this.authStore?.refreshToken)
+
+      // 访客态短路：本地既无访问令牌也无刷新令牌时不发出请求，
+      // 避免未登录状态下每个鉴权接口都产生一次 401 网络噪音
+      if (!hasAccessToken && !hasRefreshToken) {
+        return this.handleAuthError(
+          new ApiError('未登录，已跳过需要认证的请求', 401, 'AUTH_REQUIRED'),
+          { silent: true }
+        )
+      }
+
+      if (this.authStore) {
+        const tokenValid = await this.checkAndRefreshToken()
+        if (!tokenValid) {
+          return this.handleAuthError(new ApiError('Authentication failed', 401, 'AUTH_FAILED'))
+        }
       }
     }
 
@@ -309,8 +359,9 @@ export class ApiService {
 
     } catch (error) {
       if (error instanceof ApiError) {
-        // 仅认证请求触发全局认证处理，避免公共接口/访客态产生误报
-        if (requireAuth && (error.status === 401 || error.status === 403)) {
+        // 仅认证请求触发全局认证处理，避免公共接口/访客态产生误报；
+        // 会话预检等场景由调用方自行判定，避免与守卫跳转互相干扰
+        if (requireAuth && !suppressAuthHandling && (error.status === 401 || error.status === 403)) {
           return this.handleAuthError(error)
         }
 
