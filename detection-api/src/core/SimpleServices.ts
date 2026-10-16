@@ -33,6 +33,7 @@ import {
   getSortedDetectionRules
 } from './WebAppDetectionConfig'
 import { logger } from '../utils/logger'
+import { DEFAULT_STARTUP_TIMEOUT_MS, resolveStartupTimeoutMs, StartupDiagnostics } from './startupDiagnostics'
 
 // =============================================================================
 // FILE SCANNER - Enhanced Web Application Detection
@@ -877,6 +878,9 @@ export class SimpleTechStackAnalyzer implements TechStackAnalyzer {
 import { platform } from 'os'
 
 interface ProcessInfo {
+  startupTimeoutMs?: number
+  startupGraceUntil?: number
+  startupDiagnostics?: StartupDiagnostics
   process: ChildProcess
   startedAt: Date
   command: string
@@ -905,7 +909,7 @@ export class SimpleProcessManager implements ProcessManager {
     originalContent: string
   }> // 全栈项目进程组
   private readonly maxLogLines = 1000 // 增加日志容量
-  private readonly fullStackReadinessTimeoutMs = 90000
+  private readonly fullStackReadinessTimeoutMs = DEFAULT_STARTUP_TIMEOUT_MS
   private readonly fullStackReadinessPollMs = 500
   private readonly healthStartupGraceMs = 120000 // 覆盖全栈端口就绪等待，避免健康检查误杀冷启动进程
   private readonly healthFailureThreshold = 2 // 连续失败阈值，避免瞬时端口抖动或检测误差误杀进程
@@ -917,6 +921,7 @@ export class SimpleProcessManager implements ProcessManager {
   private db?: any // 数据库实例
 
   private clearTrackedProcess(processId: string): void {
+    this.processes.get(processId)?.startupDiagnostics?.finish('tracking_removed')
     this.processes.delete(processId)
     this.healthFailureCounts.delete(processId)
   }
@@ -1149,7 +1154,7 @@ export class SimpleProcessManager implements ProcessManager {
     }
 
     const uptimeMs = Date.now() - processInfo.startedAt.getTime()
-    if (uptimeMs < this.healthStartupGraceMs) {
+    if (Date.now() < (processInfo.startupGraceUntil ?? processInfo.startedAt.getTime() + this.healthStartupGraceMs)) {
       logger.debug('Skipping port health verification during startup grace period', {
         appId,
         pid: childProcess.pid,
@@ -1767,7 +1772,7 @@ export class SimpleProcessManager implements ProcessManager {
         throw new Error(`${processId} 未被进程管理器跟踪`)
       }
 
-      await this.waitForProcessPortReady(processId, processInfo)
+      await this.waitForProcessPortReady(processId, processInfo, processInfo.startupTimeoutMs)
       logger.info('Fullstack child process is ready', {
         appId,
         processId,
@@ -1783,20 +1788,26 @@ export class SimpleProcessManager implements ProcessManager {
     pollIntervalMs: number = this.fullStackReadinessPollMs
   ): Promise<void> {
     const startedAt = Date.now()
+    processInfo.startupGraceUntil = startedAt + timeoutMs + this.fullStackReadinessPollMs
+    processInfo.startupDiagnostics?.phase('port_wait_started')
 
     while (Date.now() - startedAt < timeoutMs) {
       const childProcess = processInfo.process
       if (!childProcess || childProcess.killed || childProcess.exitCode !== null) {
+        processInfo.startupDiagnostics?.finish('exited_before_ready')
         throw new Error(`${processId} 在端口 ${processInfo.port} 就绪前退出`)
       }
 
       if (!processInfo.port || await this.isPortListening(processInfo.port)) {
+        processInfo.startupGraceUntil = undefined
+        processInfo.startupDiagnostics?.finish('port_ready')
         return
       }
 
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
     }
 
+    processInfo.startupDiagnostics?.finish('port_timeout')
     throw new Error(`${processId} 未能在 ${Math.round(timeoutMs / 1000)} 秒内监听端口 ${processInfo.port}`)
   }
 
@@ -1900,6 +1911,7 @@ export class SimpleProcessManager implements ProcessManager {
 
     // 根据进程类型构建环境变量
     const processEnv = this.buildProcessEnvironmentVariables(type, config)
+    const startupTimeoutMs = resolveStartupTimeoutMs(config.environmentVariables)
 
     const childProcess = spawn(command, args, {
       cwd: config.workingDirectory,
@@ -1919,6 +1931,9 @@ export class SimpleProcessManager implements ProcessManager {
       port: config.port,
       logs: [],
       processType: type,
+      startupTimeoutMs,
+      startupGraceUntil: Date.now() + startupTimeoutMs + 30_000,
+      startupDiagnostics: new StartupDiagnostics(processId, childProcess.pid),
       parentAppId: appId,
       appName: `${appId}-${type}` // 添加应用名称（全栈应用的子进程）
     }
@@ -3146,6 +3161,7 @@ export default defineConfig(async (env) => {
     if (childProcess.stdout) {
       childProcess.stdout.on('data', (data: Buffer) => {
         const message = data.toString().trim()
+        processInfo.startupDiagnostics?.output(message)
         const logLine = `[STDOUT] ${new Date().toISOString()}: ${message}`
         this.addLog(processInfo, logLine)
         logger.debug('Process stdout', { appId, data: message })
@@ -3158,6 +3174,7 @@ export default defineConfig(async (env) => {
     if (childProcess.stderr) {
       childProcess.stderr.on('data', (data: Buffer) => {
         const message = data.toString().trim()
+        processInfo.startupDiagnostics?.output(message)
         const logLine = `[STDERR] ${new Date().toISOString()}: ${message}`
         this.addLog(processInfo, logLine)
         logger.debug('Process stderr', { appId, data: message })
@@ -3169,6 +3186,7 @@ export default defineConfig(async (env) => {
 
     // 进程退出监听
     childProcess.on('exit', (code, signal) => {
+      processInfo.startupDiagnostics?.finish('exited')
       logger.info('Process exited', { appId, code, signal, pid: childProcess.pid })
       const message = `Process exited with code ${code}, signal ${signal}`
       const logLine = `[EXIT] ${new Date().toISOString()}: ${message}`
@@ -3180,6 +3198,7 @@ export default defineConfig(async (env) => {
 
     // 进程错误监听
     childProcess.on('error', (error) => {
+      processInfo.startupDiagnostics?.finish('spawn_error')
       logger.error('Process error', { appId, error: error.message, pid: childProcess.pid })
       const logLine = `[ERROR] ${new Date().toISOString()}: ${error.message}`
       this.addLog(processInfo, logLine)

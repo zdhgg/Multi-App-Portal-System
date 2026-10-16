@@ -182,6 +182,54 @@ describe('SimpleProcessManager environment handling', () => {
     expect(isPortListeningSpy).toHaveBeenCalledWith(8010)
   })
 
+  it('allows a 150 second cold start and keeps health checks from killing it', async () => {
+    const manager = new SimpleProcessManager()
+    const startedAt = Date.now()
+    let clock = startedAt
+    vi.spyOn(Date, 'now').mockImplementation(() => clock)
+    const info: any = {
+      process: createMockChildProcess(), startedAt: new Date(startedAt),
+      command: 'npm', args: [], cwd: process.cwd(), port: 8010, logs: []
+    }
+    const healthChecks: boolean[] = []
+    vi.spyOn(manager as any, 'isPortListening').mockImplementation(async () => {
+      clock += 50_000
+      healthChecks.push(await (manager as any).checkProcessHealth('app-1', info))
+      return clock - startedAt >= 150_000
+    })
+    await (manager as any).waitForProcessPortReady('app-1-backend', info, undefined, 0)
+    expect(healthChecks).toEqual([true, true, true])
+    expect(info.startupGraceUntil).toBeUndefined()
+  })
+
+  it('uses each child timeout when waiting for a fullstack group', async () => {
+    const manager = new SimpleProcessManager()
+    const info = { startupTimeoutMs: 240_000 }
+    ;(manager as any).processes.set('app-1-backend', info)
+    const wait = vi.spyOn(manager as any, 'waitForProcessPortReady').mockResolvedValue(undefined)
+    await (manager as any).waitForFullStackProcessesReady('app-1', { backendConfig: { port: 8010 } })
+    expect(wait).toHaveBeenCalledWith('app-1-backend', info, 240_000)
+  })
+
+  it('still rejects a real startup timeout and resumes normal port health checks', async () => {
+    const manager = new SimpleProcessManager()
+    let clock = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => clock)
+    const info = {
+      process: createMockChildProcess(), startedAt: new Date(clock),
+      command: 'npm', args: [], cwd: process.cwd(), port: 8010, logs: []
+    }
+    const port = vi.spyOn(manager as any, 'isPortListening').mockImplementation(async () => {
+      clock += 60_000
+      return false
+    })
+    await expect((manager as any).waitForProcessPortReady('app-1-backend', info, undefined, 0))
+      .rejects.toThrow('180 秒内监听端口')
+    clock += 501
+    port.mockResolvedValue(false)
+    expect(await (manager as any).checkProcessHealth('app-1', info)).toBe(false)
+  })
+
   it('fails readiness immediately when a fullstack child exits before listening', async () => {
     const manager = new SimpleProcessManager()
     const childProcess = createMockChildProcess()
