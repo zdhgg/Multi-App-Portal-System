@@ -129,9 +129,9 @@ export class PublicApiService {
   }
 
   private getPublicRequestConfig(extra: Record<string, any> = {}): Record<string, any> {
-    const anonymousMode = this.resolveAnonymousMode()
+    // 有凭证就带上，放行与否交给后端；匿名模式不应让已登录用户丢掉 token
     return {
-      requireAuth: !anonymousMode && this.hasAuthenticatedSession(),
+      requireAuth: this.hasAuthenticatedSession(),
       showErrorMessage: false,
       ...extra
     }
