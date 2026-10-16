@@ -32,6 +32,9 @@ dist
 dist-ssr
 *.local
 
+# 本地工作记录（AI 会话笔记，不随仓库分发）
+.workbuddy/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
