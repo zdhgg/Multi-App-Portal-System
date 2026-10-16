@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
 import { isVerboseRouteLoggingEnabled } from './debugControl'
 import { hasStoredAccessToken } from './authStorage'
+import { apiService, isAuthError } from '@/services/api'
 
 // 权限检查结果类型
 export interface PermissionCheckResult {
@@ -15,7 +16,13 @@ export interface PermissionCheckResult {
 
 // 路由守卫工具类
 export class RouteGuardUtils {
-  
+
+  // 会话有效性确认的节流状态：同一凭证在窗口期内只向后端确认一次
+  private static verifiedSessionToken = ''
+  private static verifiedSessionAt = 0
+  private static readonly SESSION_VERIFY_INTERVAL = 30 * 1000
+  private static readonly SESSION_VERIFY_TIMEOUT = 8000
+
   /**
    * 检查基础认证权限
    */
@@ -204,6 +211,70 @@ export class RouteGuardUtils {
   }
 
   /**
+   * 会话有效性确认
+   *
+   * 本地存储的会话可能已被后端撤销（服务重启、会话过期、令牌被轮换），
+   * 此时仅凭本地状态会误判为「已登录」，用户进入受保护页面后才收到一串 401。
+   * 因此在放行前向后端确认一次凭证是否仍然有效，确认失败则按未登录处理。
+   */
+  static async checkServerSession(
+    to: RouteLocationNormalized,
+    authStore: ReturnType<typeof useAuthStore>
+  ): Promise<PermissionCheckResult> {
+    const token = authStore.accessToken
+
+    if (!token) {
+      return {
+        allowed: false,
+        reason: 'authentication_required',
+        redirectTo: '/portal',
+        redirectQuery: {
+          redirect: to.fullPath,
+          authRequired: 'true'
+        }
+      }
+    }
+
+    const now = Date.now()
+    if (
+      this.verifiedSessionToken === token &&
+      now - this.verifiedSessionAt < this.SESSION_VERIFY_INTERVAL
+    ) {
+      return { allowed: true }
+    }
+
+    try {
+      await apiService.get('/v2/auth/verify', {
+        requireAuth: true,
+        showErrorMessage: false,
+        // 由守卫自行接管 401，避免与全局失效处理叠加提示与跳转
+        suppressAuthHandling: true,
+        timeout: this.SESSION_VERIFY_TIMEOUT
+      })
+
+      this.verifiedSessionToken = token
+      this.verifiedSessionAt = now
+      return { allowed: true }
+    } catch (error) {
+      if (isAuthError(error)) {
+        return {
+          allowed: false,
+          reason: 'session_invalid',
+          redirectTo: '/portal',
+          redirectQuery: {
+            redirect: to.fullPath,
+            authRequired: 'true'
+          }
+        }
+      }
+
+      // 网络异常等无法确认会话的情况予以放行，
+      // 避免后端抖动把已登录用户挡在门外，真正的认证问题由 API 层兜底
+      return { allowed: true }
+    }
+  }
+
+  /**
    * 综合权限检查
    */
   static async checkAllPermissions(
@@ -232,15 +303,25 @@ export class RouteGuardUtils {
       const tokenCheck = await this.checkTokenStatus(authStore)
       if (!tokenCheck.allowed) return tokenCheck
 
-      // 4. 检查管理员权限
+      // 4. 向后端确认会话是否仍然有效（本地状态可能已失效）
+      const sessionCheck = await this.checkServerSession(to, authStore)
+      if (!sessionCheck.allowed) {
+        if (sessionCheck.reason === 'session_invalid') {
+          // 后端已不认可该会话，清掉本地残留凭证，避免再次进入受保护页面
+          await authStore.logout(false, false)
+        }
+        return sessionCheck
+      }
+
+      // 5. 检查管理员权限
       const adminCheck = this.checkAdminPermission(to, authStore)
       if (!adminCheck.allowed) return adminCheck
 
-      // 5. 检查运维权限
+      // 6. 检查运维权限
       const operatorCheck = this.checkOperatorPermission(to, authStore)
       if (!operatorCheck.allowed) return operatorCheck
 
-      // 6. 检查特定权限
+      // 7. 检查特定权限
       const permissionCheck = this.checkSpecificPermissions(to, authStore)
       if (!permissionCheck.allowed) return permissionCheck
     }
@@ -257,6 +338,7 @@ export class RouteGuardUtils {
   ): void {
     const messages: Record<string, string> = {
       authentication_required: '请先登录',
+      session_invalid: '登录状态已失效，请重新登录',
       admin_permission_required: '需要管理员权限才能访问此页面',
       account_disabled: '您的账户已被禁用',
       token_refresh_failed: '登录已过期，请重新登录',
