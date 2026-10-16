@@ -2,6 +2,36 @@
 
 本项目遵循语义化版本（Semantic Versioning）。
 
+## [1.5.4] - 2026-10-16
+
+### Added
+
+- 新增启动阶段诊断（`detection-api/src/core/startupDiagnostics.ts`）：`startup_phase` 日志按启动尝试关联子进程与耗时，覆盖启动命令发出、首条输出、Nest 初始化、端口等待与结果；超过 30 秒的启动每 15 秒采样一次 Windows 进程树资源（累计 CPU 时间、工作集、系统 CPU、可用内存、读页/写页与磁盘活动，不记录命令行或环境变量），计数器不可用时仍记录内存并标记 `resourceSampleStatus: partial`。
+- 全栈子进程就绪等待支持 `PORTAL_STARTUP_TIMEOUT_MS`：应用进程配置的 `environmentVariables` 优先，Portal 服务环境变量作为默认值，接受 10000–240000 毫秒的有限数字，非法值回落 180000。
+- 新增前端公开接口凭证回归测试 `public-api-auth-header.test.ts`，锁定「有本地会话就携带凭证」与游客受限判定。
+
+### Changed
+
+- 全栈子进程端口就绪等待默认从 90 秒延长为 180 秒，减少慢启动被误判为启动失败；管理页面五分钟的观察窗口不变。
+- 启动阶段的端口健康检查宽限改为跟随各子进程自己的就绪截止时间（原为从启动起固定 120 秒），端口就绪后立即恢复常规健康检查，已退出的进程不享受宽限；单进程应用仍为 120 秒。
+- 离开管理页面只取消本页的启动状态观察，不再把这次取消当成启动失败，也不取消后台启动任务；再次进入页面沿用服务端任务继续确认，请求返回后同样检查页面是否已退出。
+- 公开接口改为「有本地会话就携带凭证」：匿名开关不再影响已登录用户的请求头，放行与否交由后端判定。
+- 匿名浏览基线对齐：`configs/production.env.template`、`configs/production.env` 与 `detection-api/.env.example` 的 `ENABLE_V2_PUBLIC_ANONYMOUS` 统一为 `true`，`docs/guides/p0-p1-security-runbook.md` 同步更新，环境模板补充 `PORTAL_STARTUP_TIMEOUT_MS` 说明。
+- 将根项目、前端、后端、系统配置、锁文件和前端内置更新记录版本统一提升到 `1.5.4`。
+
+### Fixed
+
+- 修复匿名模式开启时已登录用户的公开接口请求不带 Authorization、连管理员也返回 401 的问题：前端此前把匿名开关代入请求配置，配置漂移会直接让首页应用列表为空。
+- 修复离开管理页面时正在观察的启动任务被抛成 `AbortError`、迟到响应仍更新已卸载页面的问题；只有本地取消才忽略 `AbortError`，服务端失败、进程提前退出与真实超时照旧上报。
+- 修复慢启动进程在端口就绪等待结束前健康检查宽限就已到期、被健康检查误杀的问题。
+
+### Compatibility
+
+- 无后端接口变更；公开只读接口的鉴权范围未放宽，`ENABLE_V2_PUBLIC_ANONYMOUS=false` 时仍要求认证。
+- 行为变化：全栈子进程默认就绪等待 90 秒 → 180 秒，启动失败检出相应延后；需要更快失败时用 `PORTAL_STARTUP_TIMEOUT_MS` 收紧（最小 10000）。单进程应用不受影响。
+- 前端需重新构建 `main-portal/dist` 才会显示 1.5.4 与新的内置更新记录，`dist/` 不入库。
+- 匿名浏览需两端一致：后端 `ENABLE_V2_PUBLIC_ANONYMOUS` 与前端 `VITE_PUBLIC_API_ANONYMOUS` 只关一端会让游客拿到 401。
+
 ## [1.5.3] - 2026-10-01
 
 ### Added

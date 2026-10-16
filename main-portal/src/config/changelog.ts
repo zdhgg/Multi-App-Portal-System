@@ -16,6 +16,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.5.4',
+    date: '2026-10-16',
+    title: '慢启动可靠性与启动阶段诊断',
+    items: [
+      { type: 'improvement', description: '全栈应用子进程端口就绪等待从 90 秒延长到 180 秒，可用 PORTAL_STARTUP_TIMEOUT_MS 按应用或全局调整（10-240 秒）' },
+      { type: 'feature', description: '新增启动阶段日志：记录启动命令、首条输出、Nest 初始化、端口等待与结果，超过 30 秒的启动每 15 秒采样一次进程树资源' },
+      { type: 'improvement', description: '启动阶段的端口健康检查宽限跟随就绪截止时间，慢启动不再被健康检查误杀' },
+      { type: 'fix', description: '离开管理页面只取消本页的启动观察，不再把取消当成启动失败，重新进入页面继续沿用服务端启动任务' },
+      { type: 'fix', description: '已登录用户的公开接口请求始终携带凭证，匿名开关不再导致管理员也拿到 401' },
+      { type: 'improvement', description: '生产环境匿名浏览开关在模板、示例与运行配置中对齐为开启，避免两端不一致导致游客无法浏览' },
+      { type: 'improvement', description: '同步根项目、前后端包、系统配置、锁文件和主要发布文档版本到 1.5.4' }
+    ]
+  },
+  {
     version: '1.5.3',
     date: '2026-10-01',
     title: '会话保持与端口归属判定优化',

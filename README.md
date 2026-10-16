@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.5.3-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.5.3-success.svg)
+![Version](https://img.shields.io/badge/version-1.5.4-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.5.4-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.5.3`
-- **GitHub Release**: [v1.5.3: 会话保持与端口归属判定优化](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.3)
+- **当前版本**: `1.5.4`
+- **GitHub Release**: [v1.5.4: 慢启动可靠性与启动阶段诊断](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.4)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -17,6 +17,7 @@
 - **统一端口清单**: 监听列表、容量统计、归属核验和冲突提示共享同一份系统快照
 - **端口操作安全增强**: 强制释放重新核验 PID，失效分配支持管理员预览确认，系统与门户保留端口禁止直接释放
 - **全栈启动就绪检查**: 前后端子进程必须真正监听端口才会确认启动成功，失败时自动清理部分启动进程
+- **慢启动诊断**: 就绪等待默认 180 秒并可按应用调整，`startup_phase` 日志与慢启动资源采样记录启动全过程
 - **控制中心界面焕新**: 门户首页、应用管理、PM2 管理、端口管理和系统设置升级为统一的指标总览 + 快捷操作布局
 - **应用信息表达增强**: 应用卡片与详情弹窗新增运行模式、访问端口、访问入口、最近更新和更清晰的状态摘要
 - **管道架构重构**: 全新的检测管道架构（Scanner → Analyzer → Aggregator → PortAllocator）
@@ -248,6 +249,19 @@ VITE_WS_BASE=
 ## 📝 更新日志
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
+
+### v1.5.4 (2026-10-16) — 慢启动可靠性与启动阶段诊断
+- ⏱️ **慢启动可靠性**
+  - 全栈子进程端口就绪等待 90 秒 → 180 秒，可用 `PORTAL_STARTUP_TIMEOUT_MS` 按应用或全局调整
+  - 健康检查宽限跟随各子进程的就绪截止时间，慢启动不再被误杀
+- 🔍 **启动阶段诊断**
+  - 新增 `startup_phase` 日志，串联启动命令、首条输出、Nest 初始化、端口等待与结果
+  - 超过 30 秒的启动每 15 秒采样一次进程树资源，慢启动可复盘
+- 🧭 **启动观察**
+  - 离开管理页面只取消本页观察，不再显示为启动失败；重新进入页面继续沿用服务端任务
+- 🔑 **公开接口凭证**
+  - 已登录用户的公开接口请求始终携带凭证，匿名开关配置漂移不再让管理员拿到 401
+  - 匿名浏览开关在环境模板、示例与运行配置中对齐为开启
 
 ### v1.5.3 (2026-10-01) — 会话保持与端口归属判定优化
 - 🔐 **会话保持**
@@ -526,4 +540,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.5.3 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.5.4 - 让应用管理更简单、更智能！*
