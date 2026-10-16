@@ -20,6 +20,7 @@ configs/*.env
 *.bak
 backups/*.zip
 backups/data/*.zip
+backups/dist-*/
 backups/backup-config.json
 backups/backup-registry.json
 npm-debug.log*

@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\management\generate-security-
 - `PM2_CONFIRMATION_REQUIRED=true`
 - `ENABLE_PUBLIC_MONITORING=false`
 - `ENABLE_PUBLIC_SYSTEM_ENDPOINTS=false`
-- `ENABLE_V2_PUBLIC_ANONYMOUS=false`
+- `ENABLE_V2_PUBLIC_ANONYMOUS=true`（门户公开只读接口 `/api/v2/public/*` 允许游客浏览；`/applications`、`/detection`、`/config`、`/filesystem` 仍需登录。若要收紧为全站需认证，改为 `false` 并同步前端 `VITE_PUBLIC_API_ANONYMOUS`）
 - `ADMIN_MFA_REQUIRED=true`
 - `ALLOW_WORKSPACE_PARENT=false`
 
