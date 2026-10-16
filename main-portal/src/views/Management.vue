@@ -625,7 +625,7 @@ import * as Icons from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { Connection, VideoPlay, VideoPause, Setting, Delete, Monitor, Document, ArrowDown, Cpu, Search, Upload, FolderOpened, Edit } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
-import { appsApiService, ApiError } from '@/services'
+import { appsApiService, ApiError, isAuthError } from '@/services'
 import { pm2ApiService } from '@/services/pm2Api'
 import { buildApiService, buildExecutionApiService } from '@/services/buildApi'
 import { filesystemApiService } from '@/services/filesystemApi'
@@ -1271,29 +1271,37 @@ const ANALYSIS_CACHE_TTL = 5 * 60 * 1000 // 5分钟缓存
 // WebSocket 连接
 const { connect, disconnect, isConnected } = useWebSocket()
 
+// 应用列表 → 技术栈选项：后者依赖前者结果，串行执行以避免重复请求同一接口
+const initializeAppData = async () => {
+  await loadApps()
+  await loadTechStacks()
+}
+
 // 生命周期
 onMounted(() => {
-  loadApps()
-  loadTechStacks()
+  void initializeAppData()
   loadSupportedBuildTools()
 
-  // 建立 WebSocket 连接以接收实时状态更新
-  connect({
-    onConnect: () => {
-      debugLog('管理页面WebSocket连接成功')
-    },
-    onMessage: (message) => {
-      // 处理应用状态更新消息
-      if (message.type === 'portal_app_status') {
-        updateAppStatus(message.payload)
-      } else if (message.type === 'apps_status') {
-        updateAppsStatus(message.payload.apps)
+  // 未登录时不建立实时连接，避免访客态产生无意义的连接与错误
+  if (authStore.isAuthenticated) {
+    // 建立 WebSocket 连接以接收实时状态更新
+    connect({
+      onConnect: () => {
+        debugLog('管理页面WebSocket连接成功')
+      },
+      onMessage: (message) => {
+        // 处理应用状态更新消息
+        if (message.type === 'portal_app_status') {
+          updateAppStatus(message.payload)
+        } else if (message.type === 'apps_status') {
+          updateAppsStatus(message.payload.apps)
+        }
+      },
+      onError: (error) => {
+        console.error('管理页面WebSocket错误:', error)
       }
-    },
-    onError: (error) => {
-      console.error('管理页面WebSocket错误:', error)
-    }
-  })
+    })
+  }
 })
 
 // 组件卸载时断开 WebSocket 连接
@@ -1358,8 +1366,11 @@ const loadApps = async () => {
       throw new Error(response.message || '获取应用列表失败')
     }
   } catch (error) {
-    console.error('加载应用列表失败:', error)
-    ElMessage.error(`加载应用列表失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    // 认证类失败已由 api 层统一处理（访客态静默失败），此处不再重复提示
+    if (!isAuthError(error)) {
+      console.error('加载应用列表失败:', error)
+      ElMessage.error(`加载应用列表失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    }
     apps.value = []
     filteredApps.value = []
   } finally {
@@ -1407,30 +1418,18 @@ const updateAppsStatus = (appsData: any[]) => {
   applyFilters()
 }
 
-// 加载技术栈选项
+// 加载技术栈选项（基于已加载的应用列表做本地分析，不再单独请求 applications 接口）
 const loadTechStacks = async () => {
   loadingTechStacks.value = true
   try {
-    // 直接使用本地分析方式获取技术栈选项（避免API调用失败）
-    let appsToAnalyze = apps.value
-    
-    // 如果当前没有应用数据，先获取应用列表
-    if (appsToAnalyze.length === 0) {
-      const appsResponse = await appsApiService.getApps({ limit: 1000 })
-      if (appsResponse.success && appsResponse.data) {
-        appsToAnalyze = appsResponse.data.map(app => ({
-          ...app,
-          isRunning: app.status === 'online'
-        })) as AppWithUIState[]
-      }
-    }
-    
     // 使用工具函数提取技术栈选项
-    availableTechStacks.value = extractTechStackOptions(appsToAnalyze)
+    availableTechStacks.value = extractTechStackOptions(apps.value)
     debugLog('技术栈选项加载成功:', availableTechStacks.value)
-      
   } catch (error) {
-    console.error('加载技术栈选项失败:', error)
+    // 认证类失败已由 api 层统一处理（访客态静默失败），此处不再重复提示
+    if (!isAuthError(error)) {
+      console.error('加载技术栈选项失败:', error)
+    }
     availableTechStacks.value = []
   } finally {
     loadingTechStacks.value = false
@@ -2889,7 +2888,10 @@ const loadSupportedBuildTools = async () => {
       supportedBuildTools.value = response.data.tools
     }
   } catch (error) {
-    console.error('加载构建工具列表失败:', error)
+    // 认证类失败已由 api 层统一处理（访客态静默失败），此处不再重复提示
+    if (!isAuthError(error)) {
+      console.error('加载构建工具列表失败:', error)
+    }
   }
 }
 
