@@ -46,6 +46,18 @@ export const isLifecycleOperationPending = (operation?: LifecycleOperation | nul
   operation?.status === 'queued' || operation?.status === 'running'
 )
 
+// Only a cancelled observer may ignore AbortError; server failures stay visible.
+export const isLifecycleObservationCancelled = (error: unknown, signal: AbortSignal): boolean => (
+  signal.aborted && typeof error === 'object' && error !== null &&
+  'name' in error && error.name === 'AbortError'
+)
+
+const assertObservationActive = (signal?: AbortSignal): void => {
+  if (signal?.aborted) {
+    throw new DOMException('Lifecycle operation polling was aborted', 'AbortError')
+  }
+}
+
 export async function pollLifecycleOperation(
   initialOperation: LifecycleOperation,
   fetchOperation: (operationId: string) => Promise<LifecycleOperation>,
@@ -58,12 +70,11 @@ export async function pollLifecycleOperation(
   const deadline = now() + timeoutMs
   let operation = initialOperation
 
+  assertObservationActive(options.signal)
   options.onUpdate?.(operation)
 
   while (isLifecycleOperationPending(operation)) {
-    if (options.signal?.aborted) {
-      throw new DOMException('Lifecycle operation polling was aborted', 'AbortError')
-    }
+    assertObservationActive(options.signal)
 
     if (now() >= deadline) {
       throw new LifecycleOperationTimeoutError(operation.id)
@@ -71,14 +82,14 @@ export async function pollLifecycleOperation(
 
     await wait(pollIntervalMs)
 
-    if (options.signal?.aborted) {
-      throw new DOMException('Lifecycle operation polling was aborted', 'AbortError')
-    }
+    assertObservationActive(options.signal)
 
     try {
       operation = await fetchOperation(operation.id)
+      assertObservationActive(options.signal)
       options.onUpdate?.(operation)
     } catch (error) {
+      assertObservationActive(options.signal)
       options.onTransientError?.(error)
     }
   }

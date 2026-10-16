@@ -660,6 +660,7 @@ import { syncRunningApplicationState } from '@/utils/runtimeStateRecovery'
 import {
   LifecycleOperationTimeoutError,
   isLifecycleOperationPending,
+  isLifecycleObservationCancelled,
   pollLifecycleOperation
 } from '@/types/lifecycleOperation'
 
@@ -1147,6 +1148,7 @@ const observeLifecycleStart = async (
 ) => {
   try {
     const finalOperation = await monitorLifecycleStart(app, operation)
+    if (lifecyclePollingController.signal.aborted) return
     app._lifecycleOperation = finalOperation
 
     if (finalOperation.status === 'failed') {
@@ -1155,6 +1157,7 @@ const observeLifecycleStart = async (
 
     await applySuccessfulLifecycleStart(app, finalOperation, announce)
   } catch (error) {
+    if (isLifecycleObservationCancelled(error, lifecyclePollingController.signal)) return
     if (error instanceof LifecycleOperationTimeoutError) {
       const recovered = await reconcileLifecycleStart(app, operation, announce)
       if (!recovered) {
@@ -1170,7 +1173,7 @@ const observeLifecycleStart = async (
 
 const resumeLifecycleStart = (app: AppWithUIState, operation: LifecycleOperation) => {
   void observeLifecycleStart(app, operation, false).catch((error: any) => {
-    if (error?.name === 'AbortError') {
+    if (isLifecycleObservationCancelled(error, lifecyclePollingController.signal)) {
       return
     }
 
@@ -2322,6 +2325,7 @@ const handleStartApp = async (app: AppWithUIState, startMode: 'native' | 'pm2-pr
     }
   } catch (error: any) {
     const portConflict = isPortConflictError(error)
+    if (isLifecycleObservationCancelled(error, lifecyclePollingController.signal)) return
     if (portConflict) {
       queuePortMonitoringRefresh([0, 1200], `start-conflict:${app.id}`)
 
