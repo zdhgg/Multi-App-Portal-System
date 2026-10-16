@@ -16,6 +16,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.5.5',
+    date: '2026-10-16',
+    title: '认证请求噪音治理与登录态预检',
+    items: [
+      { type: 'fix', description: '未登录且本地无凭证时不再把鉴权请求发到后端换取 401，访客进入管理页不再产生成片认证报错' },
+      { type: 'fix', description: '并发 401 只登出、只派发一次失效事件、只提示一次，不再每个失败请求各走一遍失效处理' },
+      { type: 'fix', description: '进入管理页不再重复查询应用接口（limit=100 与 limit=1000 两次），技术栈选项直接基于已加载的列表分析' },
+      { type: 'fix', description: '受保护页面放行前向后端确认会话是否有效，已被撤销的会话会清理本地残留凭证并跳回门户首页' },
+      { type: 'improvement', description: '会话确认对同一凭证 30 秒内只做一次，网络异常时放行，避免后端抖动把已登录用户锁在门外' },
+      { type: 'improvement', description: '访客态不再建立实时连接，管理页的认证类失败不再重复弹提示与打印控制台错误' },
+      { type: 'improvement', description: '同步根项目、前后端包、系统配置、锁文件和主要发布文档版本到 1.5.5' }
+    ]
+  },
+  {
     version: '1.5.4',
     date: '2026-10-16',
     title: '慢启动可靠性与启动阶段诊断',

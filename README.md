@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.5.4-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.5.4-success.svg)
+![Version](https://img.shields.io/badge/version-1.5.5-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.5.5-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.5.4`
-- **GitHub Release**: [v1.5.4: 慢启动可靠性与启动阶段诊断](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.4)
+- **当前版本**: `1.5.5`
+- **GitHub Release**: [v1.5.5: 认证请求噪音治理与登录态预检](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.5)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -249,6 +249,15 @@ VITE_WS_BASE=
 ## 📝 更新日志
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
+
+### v1.5.5 (2026-10-16) — 认证请求噪音治理与登录态预检
+- 🔇 **认证请求噪音治理**
+  - 未登录且本地无凭证时，鉴权请求不再发到后端换取 401；访客进入管理页不再出现成片「认证失败」
+  - 并发 401 只登出、只提示一次，不再每个失败请求各走一遍失效处理
+  - 管理页进入时同一接口不再查询两次，技术栈选项直接基于已加载列表分析
+- 🔍 **登录态预检**
+  - 受保护页面放行前向后端确认会话有效性，已被撤销的会话会清理本地残留凭证并跳回门户首页
+  - 同一凭证 30 秒内只确认一次，网络异常时放行，避免后端抖动把已登录用户锁在门外
 
 ### v1.5.4 (2026-10-16) — 慢启动可靠性与启动阶段诊断
 - ⏱️ **慢启动可靠性**
@@ -540,4 +549,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.5.4 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.5.5 - 让应用管理更简单、更智能！*
