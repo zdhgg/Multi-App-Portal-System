@@ -788,6 +788,10 @@ const onlineAppsCount = computed(() =>
   apps.value.filter(app => app.isRunning || app.status === 'online').length
 )
 
+// 已启动（含正在启动）的应用排在列表前列
+const isAppActive = (app: AppWithUIState): boolean =>
+  app.isRunning === true || app.status === 'online' || app.status === 'starting'
+
 const headerSnapshots = computed<Array<{
   label: string
   value: string | number
@@ -1478,6 +1482,9 @@ const applyFilters = () => {
       app.tech_stack && app.tech_stack.toLowerCase() === techStackFilter.value.toLowerCase()
     )
   }
+
+  // 运行中的应用优先展示（与门户首页一致），组内保持后端顺序
+  filtered.sort((a, b) => Number(isAppActive(b)) - Number(isAppActive(a)))
 
   filteredApps.value = filtered
   
