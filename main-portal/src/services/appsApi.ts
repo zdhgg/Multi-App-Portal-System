@@ -37,6 +37,10 @@ type ApplicationDto = {
   deploymentMode?: string
   pm2ProcessName?: string | null
   lifecycleOperation?: LifecycleOperation | null
+  fullStack?: {
+    isFullStack?: boolean
+    [key: string]: any
+  }
   buildScript?: string
   build_script?: string
   [key: string]: any
@@ -61,10 +65,14 @@ export interface App {
     protocol: 'http' | 'https'
   }
   access_path?: string
+  accessPath?: string
   pinned_to_homepage?: boolean
   created_at: string
   updated_at: string
   build_script?: string
+  deploymentMode?: 'development' | 'production' | 'unknown'
+  pm2ProcessName?: string | null
+  isFullStack?: boolean
   lifecycleOperation?: LifecycleOperation | null
 }
 
@@ -668,12 +676,16 @@ function mapApplicationDtoToApp(dto: ApplicationDto): App {
     status: mapStateToStatus(dto.state),
     frontend_port: frontendPort,
     backend_port: backendPort,
+    deploymentMode: mapDeploymentMode(dto.deploymentMode),
+    pm2ProcessName: dto.pm2ProcessName ?? null,
+    isFullStack: Boolean(dto.fullStack?.isFullStack),
     network: network.primaryPort !== undefined ? {
       primaryPort: network.primaryPort,
       secondaryPorts: Array.isArray(network.secondaryPorts) ? network.secondaryPorts : [],
       protocol: (network.protocol === 'http' || network.protocol === 'https') ? network.protocol : 'http'
     } : undefined,
     access_path: (metadata as any).accessPath ?? (metadata as any).access_path ?? undefined,
+    accessPath: (metadata as any).accessPath ?? (metadata as any).access_path ?? undefined,
     build_script: dto.build_script ?? dto.buildScript,
     lifecycleOperation: dto.lifecycleOperation ?? null,
     pinned_to_homepage: Boolean((metadata as any).pinned),
@@ -686,6 +698,10 @@ function normalizeTechStack(techStack?: ApplicationDto['techStack']): string {
   if (!techStack) return ''
   if (typeof techStack === 'string') return techStack
   return techStack.name ?? ''
+}
+
+function mapDeploymentMode(mode?: string): App['deploymentMode'] {
+  return mode === 'production' || mode === 'development' ? mode : 'unknown'
 }
 
 function mapStateToStatus(state?: string): App['status'] {

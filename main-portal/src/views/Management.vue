@@ -188,7 +188,22 @@
                     </el-icon>
                   </div>
                   <div class="app-info">
-                    <div class="app-name">{{ row.name }}</div>
+                    <el-tooltip
+                      :content="getAppNameTooltip(row)"
+                      placement="top"
+                      :show-after="150"
+                    >
+                      <span
+                        class="app-name"
+                        :class="{ 'app-name--openable': isAppOpenable(row) }"
+                        @click="openAppInBrowser(row)"
+                      >
+                        {{ row.name }}
+                        <el-icon v-if="isAppOpenable(row)" class="app-name-link-icon">
+                          <TopRight />
+                        </el-icon>
+                      </span>
+                    </el-tooltip>
                     <div class="app-description" v-if="row.description">
                       {{ row.description }}
                     </div>
@@ -623,7 +638,7 @@
 import { ref, onMounted, onUnmounted, computed, watch, h } from 'vue'
 import * as Icons from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
-import { Connection, VideoPlay, VideoPause, Setting, Delete, Monitor, Document, ArrowDown, Cpu, Search, Upload, FolderOpened, Edit } from '@element-plus/icons-vue'
+import { Connection, VideoPlay, VideoPause, Setting, Delete, Monitor, Document, ArrowDown, Cpu, Search, Upload, FolderOpened, Edit, TopRight } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { appsApiService, ApiError, isAuthError } from '@/services'
 import { pm2ApiService } from '@/services/pm2Api'
@@ -647,6 +662,7 @@ import {
   extractTechStackOptions
 } from '@/utils/techStackUtils'
 import { formatPortsDisplay, getAllPorts } from '@/types/app'
+import { isAppOnline, isAppOpenable, resolveAppOpenUrl } from '@/utils/appAccess'
 import { useAuthStore } from '@/stores/auth'
 import { usePortalStore } from '@/stores/portal'
 import { usePortMonitoringStore } from '@/stores/portMonitoring'
@@ -1997,6 +2013,34 @@ const configApp = (app: AppWithUIState) => {
   }
   currentConfigApp.value = app
   configDialogVisible.value = true
+}
+
+// 应用名的悬停提示
+const getAppNameTooltip = (app: AppWithUIState): string => {
+  if (isAppOpenable(app)) {
+    return '在新标签页中打开应用'
+  }
+  if (isAppOnline(app)) {
+    return '应用访问地址不可用，请检查端口配置'
+  }
+  return '应用未运行，启动后可点击名称访问'
+}
+
+// 点击应用名打开已启动的应用
+const openAppInBrowser = (app: AppWithUIState) => {
+  if (!isAppOnline(app)) {
+    ElMessage.warning(`${app.name} 未运行，请先启动后再访问`)
+    return
+  }
+
+  const url = resolveAppOpenUrl(app)
+  if (!url) {
+    ElMessage.error(`应用 ${app.name} 的访问地址不可用，请检查端口配置`)
+    return
+  }
+
+  debugLog('🌐 打开应用:', { name: app.name, url })
+  window.open(url, '_blank')
 }
 
 // 打开应用文件夹
@@ -3930,6 +3974,32 @@ const getCategoryLabel = (category: string) => {
   color: #303133;
   font-size: 14px;
   line-height: 1.4;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
+/* 已启动且可访问的应用：名称可点击打开 */
+.app-name--openable {
+  color: #409eff;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.app-name--openable:hover {
+  color: #66b1ff;
+  text-decoration: underline;
+}
+
+.app-name-link-icon {
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.app-name--openable:hover .app-name-link-icon {
+  opacity: 1;
 }
 
 .app-description {
