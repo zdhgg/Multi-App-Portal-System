@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.5.6',
+    date: '2026-10-17',
+    title: '管理页直达应用与运行优先排序',
+    items: [
+      { type: 'feature', description: '应用管理页点击已启动应用的名称即可在新标签页打开该应用，离线应用名保持不可点击并在悬停时说明原因' },
+      { type: 'feature', description: '打开端口按运行模式选择：开发模式用前端端口，PM2 生产模式用后端端口，访问地址跟随访问门户时使用的主机名' },
+      { type: 'improvement', description: '应用管理页把已启动（含启动中）的应用排在列表前列，与门户首页的运行中优先排序一致' },
+      { type: 'fix', description: '应用列表数据映射补齐运行模式、PM2 进程名、全栈标记与访问路径，此前这些字段在转换时丢失导致无法判断该打开哪个端口' },
+      { type: 'improvement', description: '同步根项目、前后端包、系统配置、锁文件和主要发布文档版本到 1.5.6' }
+    ]
+  },
+  {
     version: '1.5.5',
     date: '2026-10-16',
     title: '认证请求噪音治理与登录态预检',

@@ -1,15 +1,15 @@
 # 智能多Web应用门户系统 (Multi-App Portal System)
 
-![Version](https://img.shields.io/badge/version-1.5.5-blue.svg)
-![Release](https://img.shields.io/badge/release-v1.5.5-success.svg)
+![Version](https://img.shields.io/badge/version-1.5.6-blue.svg)
+![Release](https://img.shields.io/badge/release-v1.5.6-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 一个面向多应用工作区的智能 Web 应用检测、管理与统一控制中心系统，能够自动识别各种技术栈应用，并提供一致的管理与运维体验。
 
 ## 📌 当前发布
 
-- **当前版本**: `1.5.5`
-- **GitHub Release**: [v1.5.5: 认证请求噪音治理与登录态预检](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.5)
+- **当前版本**: `1.5.6`
+- **GitHub Release**: [v1.5.6: 管理页直达应用与运行优先排序](https://github.com/zdhgg/Multi-App-Portal-System/releases/tag/v1.5.6)
 - **完整更新日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## ✨ 新特性
@@ -249,6 +249,13 @@ VITE_WS_BASE=
 ## 📝 更新日志
 
 完整版本历史请查看 [CHANGELOG.md](./CHANGELOG.md)。
+
+### v1.5.6 (2026-10-17) — 管理页直达应用与运行优先排序
+- 🖱️ **点击即达**
+  - 应用管理页点击已启动应用的名称，直接在新标签页打开该应用；离线应用名不可点击并说明原因
+  - 打开的端口按运行模式选择：开发模式用前端端口，PM2 生产模式用后端端口；地址跟随访问门户的主机名
+- 📊 **运行中优先**
+  - 管理页把已启动（含启动中）的应用排在列表前列，组内顺序不变，与门户首页的排序规则一致
 
 ### v1.5.5 (2026-10-16) — 认证请求噪音治理与登录态预检
 - 🔇 **认证请求噪音治理**
@@ -549,4 +556,4 @@ _这是一个经过全链路压力沉淀与重构的完整企业级起航版。_
 
 
 
-*智能多Web应用门户系统 v1.5.5 - 让应用管理更简单、更智能！*
+*智能多Web应用门户系统 v1.5.6 - 让应用管理更简单、更智能！*
